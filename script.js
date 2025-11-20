@@ -100,9 +100,9 @@ async function checkEOL(rowIndex) {
 
         const result = await response.json();
 
-        // Handle model loading state (503)
-        if (response.status === 503 && result.modelLoading) {
-            showStatus('LLM model is loading. Please wait 20-30 seconds and try again.', 'error');
+        // Handle rate limiting (429)
+        if (response.status === 429 && result.rateLimited) {
+            showStatus('Rate limit exceeded. Please wait a moment and try again.', 'error');
             checkButton.textContent = originalButtonText;
             checkButton.disabled = false;
             return;

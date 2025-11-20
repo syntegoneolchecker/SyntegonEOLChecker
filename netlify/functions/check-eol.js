@@ -81,8 +81,8 @@ Content: ${result.content}`;
             })
             .join('\n\n---\n\n');
 
-        // Step 3: Analyze with Hugging Face LLM
-        console.log('Step 2: Analyzing with Hugging Face...');
+        // Step 3: Analyze with Groq LLM
+        console.log('Step 2: Analyzing with Groq...');
 
         const prompt = `TASK: Determine if the product "${model}" by ${maker} is discontinued (end-of-life).
 
@@ -137,36 +137,39 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
 
 Respond ONLY with valid JSON. Do not include any other text before or after the JSON.`;
 
-        const hfResponse = await fetch(
-            'https://router.huggingface.co/hf-inference/models/meta-llama/Meta-Llama-3.1-8B-Instruct',
+        const groqResponse = await fetch(
+            'https://api.groq.com/openai/v1/chat/completions',
             {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+                    'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    inputs: prompt,
-                    parameters: {
-                        max_new_tokens: 500,
-                        temperature: 0.1,
-                        return_full_text: false
-                    }
+                    model: 'llama-3.1-8b-instant',
+                    messages: [
+                        {
+                            role: 'user',
+                            content: prompt
+                        }
+                    ],
+                    temperature: 0.1,
+                    max_tokens: 500
                 })
             }
         );
 
-        if (!hfResponse.ok) {
-            const errorText = await hfResponse.text();
-            console.error('Hugging Face API error:', errorText);
+        if (!groqResponse.ok) {
+            const errorText = await groqResponse.text();
+            console.error('Groq API error:', errorText);
 
-            // Check if model is loading
-            if (hfResponse.status === 503) {
+            // Check for rate limiting
+            if (groqResponse.status === 429) {
                 return {
-                    statusCode: 503,
+                    statusCode: 429,
                     body: JSON.stringify({
-                        error: 'LLM model is loading. Please try again in 20-30 seconds.',
-                        modelLoading: true
+                        error: 'Rate limit exceeded. Please try again in a moment.',
+                        rateLimited: true
                     })
                 };
             }
@@ -174,28 +177,26 @@ Respond ONLY with valid JSON. Do not include any other text before or after the 
             return {
                 statusCode: 500,
                 body: JSON.stringify({
-                    error: `Hugging Face API failed: ${hfResponse.status}`,
+                    error: `Groq API failed: ${groqResponse.status}`,
                     details: errorText
                 })
             };
         }
 
-        const hfData = await hfResponse.json();
-        console.log('Hugging Face response:', JSON.stringify(hfData));
+        const groqData = await groqResponse.json();
+        console.log('Groq response:', JSON.stringify(groqData));
 
-        // Extract the generated text
+        // Extract the generated text from OpenAI-compatible format
         let generatedText = '';
-        if (Array.isArray(hfData) && hfData[0]?.generated_text) {
-            generatedText = hfData[0].generated_text;
-        } else if (hfData.generated_text) {
-            generatedText = hfData.generated_text;
+        if (groqData.choices && groqData.choices[0]?.message?.content) {
+            generatedText = groqData.choices[0].message.content;
         } else {
-            console.error('Unexpected HF response format:', hfData);
+            console.error('Unexpected Groq response format:', groqData);
             return {
                 statusCode: 500,
                 body: JSON.stringify({
                     error: 'Unexpected response format from LLM',
-                    details: hfData
+                    details: groqData
                 })
             };
         }
