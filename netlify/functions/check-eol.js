@@ -67,9 +67,9 @@ exports.handler = async function(event, context) {
             };
         }
 
-        // Filter results by relevance score (> 0.5)
-        const relevantResults = tavilyData.results.filter(r => r.score > 0.5);
-        console.log(`${relevantResults.length} results with score > 0.5`);
+        // Use all top results (no score filtering - let LLM decide)
+        const relevantResults = tavilyData.results;
+        console.log(`Sending ${relevantResults.length} results to LLM for analysis`);
 
         // Step 2: Prepare search context for LLM
         const searchContext = relevantResults
