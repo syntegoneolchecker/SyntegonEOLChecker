@@ -1,4 +1,4 @@
-let data = [['Col1', 'Col2', 'Col3', 'Col4', 'Col5', 'Col6', 'Col7']];
+let data = [['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment']];
 
 // Initialize the app
 async function init() {
@@ -24,7 +24,7 @@ function render() {
     ).join('');
 }
 
-function addRow() {
+async function addRow() {
     let row = [];
     for (let i = 1; i <= 7; i++) {
         let v = document.getElementById('c' + i).value;
@@ -33,13 +33,13 @@ function addRow() {
     }
     data.push(row);
     render();
-    showStatus('Row added locally - remember to save to server!');
+    await saveToServer();
 }
 
-function delRow(i) {
+async function delRow(i) {
     data.splice(i, 1);
     render();
-    showStatus('Row deleted locally - remember to save to server!');
+    await saveToServer();
 }
 
 function downloadCSV() {
@@ -53,13 +53,13 @@ function downloadCSV() {
 function loadCSV(e) {
     let f = e.target.files[0];
     if (!f) return;
-    
+
     let r = new FileReader();
-    r.onload = function(ev) {
+    r.onload = async function(ev) {
         let lines = ev.target.result.split('\n').filter(l => l.trim());
         data = lines.map(l => l.split(',').map(c => c.replace(/^"|"$/g, '')));
         render();
-        showStatus('CSV loaded locally - remember to save to server!');
+        await saveToServer();
     };
     r.readAsText(f);
 }
@@ -78,9 +78,9 @@ async function saveToServer() {
         const result = await response.json();
         
         if (response.ok) {
-            showStatus('Data saved to server successfully!');
+            showStatus('Changes saved to database.csv successfully!');
         } else {
-            showStatus('Error saving to server: ' + result.error, 'error');
+            showStatus('Error saving to database.csv: ' + result.error, 'error');
         }
     } catch (error) {
         showStatus('Network error: ' + error.message, 'error');
@@ -95,34 +95,15 @@ async function loadFromServer() {
         if (response.ok && result.data) {
             data = result.data;
             render();
-            showStatus('Data loaded from server successfully!');
+            showStatus('Database loaded from database.csv successfully!');
         } else {
-            // Fallback to local storage or default data
-            const saved = localStorage.getItem('csvData');
-            if (saved) {
-                data = JSON.parse(saved);
-                render();
-                showStatus('Loaded from local storage (server unavailable)');
-            } else {
-                showStatus('Using default data - server unavailable', 'error');
-            }
+            showStatus('Error loading database.csv - using default headers', 'error');
+            render();
         }
     } catch (error) {
-        // Fallback to local storage
-        const saved = localStorage.getItem('csvData');
-        if (saved) {
-            data = JSON.parse(saved);
-            render();
-            showStatus('Loaded from local storage (server error)');
-        } else {
-            showStatus('Server unavailable - using default data', 'error');
-        }
+        showStatus('Error loading database.csv: ' + error.message, 'error');
+        render();
     }
-}
-
-// Save to local storage as backup when changes are made
-function autoSaveLocal() {
-    localStorage.setItem('csvData', JSON.stringify(data));
 }
 
 // Initialize when page loads
