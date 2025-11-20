@@ -146,7 +146,7 @@ Respond ONLY with valid JSON. Do not include any other text before or after the 
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'llama-3.1-8b-instant',
+                    model: 'llama-3.3-70b-versatile',
                     messages: [
                         {
                             role: 'user',
