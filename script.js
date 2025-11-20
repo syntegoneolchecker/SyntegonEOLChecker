@@ -5,16 +5,10 @@ async function init() {
     await loadFromServer();
 }
 
-function showStatus(message, type = 'success', permanent = false) {
+function showStatus(message, type = 'success') {
     const status = document.getElementById('status');
     status.textContent = message;
     status.className = type;
-    if (!permanent) {
-        setTimeout(() => {
-            status.textContent = '';
-            status.className = '';
-        }, 3000);
-    }
 }
 
 function render() {
