@@ -20,9 +20,9 @@ function showStatus(message, type = 'success', permanent = true) {
 function render() {
     let t = document.getElementById('table');
     t.innerHTML = data.map((r, i) =>
-        `<tr>${r.map((c, j) =>
+        `<tr id="row-${i}">${r.map((c, j) =>
             i == 0 ? `<th>${c}</th>` : `<td>${c}</td>`
-        ).join('')}${i > 0 ? `<td><button class="delete" onclick="delRow(${i})">Delete</button></td>` : ''}</tr>`
+        ).join('')}${i > 0 ? `<td><button class="check-eol" onclick="checkEOL(${i})">Check EOL</button><button class="delete" onclick="delRow(${i})">Delete</button></td>` : '<th>Actions</th>'}</tr>`
     ).join('');
 }
 
@@ -66,6 +66,97 @@ async function delRow(i) {
     data.splice(i, 1);
     render();
     await saveToServer();
+}
+
+async function checkEOL(rowIndex) {
+    const row = data[rowIndex];
+    const model = row[0]; // Model is column 0
+    const maker = row[1]; // Maker is column 1
+
+    if (!model || !maker) {
+        showStatus('Error: Model and Maker are required for EOL check', 'error');
+        return;
+    }
+
+    try {
+        // Show loading state
+        const rowElement = document.getElementById(`row-${rowIndex}`);
+        const checkButton = rowElement.querySelector('.check-eol');
+        const originalButtonText = checkButton.textContent;
+        checkButton.textContent = 'Checking...';
+        checkButton.disabled = true;
+
+        showStatus(`Checking EOL status for ${maker} ${model}...`, 'info', false);
+
+        // Call the Netlify function
+        const response = await fetch('/.netlify/functions/check-eol', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ model, maker })
+        });
+
+        const result = await response.json();
+
+        // Handle model loading state (503)
+        if (response.status === 503 && result.modelLoading) {
+            showStatus('LLM model is loading. Please wait 20-30 seconds and try again.', 'error');
+            checkButton.textContent = originalButtonText;
+            checkButton.disabled = false;
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error(result.error || `Server error: ${response.status}`);
+        }
+
+        // Update the row with results
+        // Columns: Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment
+
+        // Column 2: EOL Status
+        if (result.status === 'DISCONTINUED') {
+            row[2] = 'YES';
+        } else if (result.status === 'ACTIVE') {
+            row[2] = 'NO';
+        } else {
+            row[2] = 'UNKNOWN';
+        }
+
+        // Column 3: EOL Comment
+        row[3] = result.explanation || '';
+
+        // Column 4: Successor Status
+        if (result.successor?.status === 'FOUND') {
+            row[4] = 'YES';
+        } else {
+            row[4] = 'UNKNOWN';
+        }
+
+        // Column 5: Successor Name
+        row[5] = result.successor?.model || '';
+
+        // Column 6: Successor Comment
+        row[6] = result.successor?.explanation || '';
+
+        // Re-render the table
+        render();
+
+        // Save to server
+        await saveToServer();
+
+        showStatus(`✓ EOL check completed for ${maker} ${model}`, 'success');
+
+    } catch (error) {
+        console.error('EOL check failed:', error);
+        showStatus(`Error checking EOL: ${error.message}`, 'error');
+
+        // Re-enable button
+        const rowElement = document.getElementById(`row-${rowIndex}`);
+        const checkButton = rowElement.querySelector('.check-eol');
+        checkButton.textContent = 'Check EOL';
+        checkButton.disabled = false;
+    }
 }
 
 async function downloadExcel() {
