@@ -7,6 +7,7 @@
 </head>
 <body>
     <h2>CSV Database Manager</h2>
+    <div id="status"></div>
     
     <div>
         <input id="c1" placeholder="Column 1">
@@ -21,8 +22,12 @@
     
     <table id="table"></table>
     
-    <button onclick="downloadCSV()">Download CSV</button>
-    <input type="file" id="upload" accept=".csv" onchange="loadCSV(event)">
+    <div>
+        <button onclick="downloadCSV()">Download CSV</button>
+        <input type="file" id="upload" accept=".csv" onchange="loadCSV(event)">
+        <button onclick="saveToServer()">Save to Server</button>
+        <button onclick="loadFromServer()">Load from Server</button>
+    </div>
 
     <script src="script.js"></script>
 </body>
