@@ -1,86 +1,29 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>CSV Database</title>
-<style>
-body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5}
-table{width:100%;border-collapse:collapse;background:white;margin:20px 0}
-th,td{border:1px solid #ddd;padding:8px;text-align:left}
-th{background:#4CAF50;color:white}
-tr:hover{background:#f1f1f1}
-button{background:#4CAF50;color:white;border:none;padding:8px 16px;cursor:pointer;margin:5px}
-button:hover{background:#45a049}
-.delete{background:#f44336}
-.delete:hover{background:#da190b}
-input{padding:6px;margin:2px;width:120px}
-</style>
+    <meta charset="UTF-8">
+    <title>CSV Database</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<h2>CSV Database Manager</h2>
-<div>
-<input id="c1" placeholder="Column 1">
-<input id="c2" placeholder="Column 2">
-<input id="c3" placeholder="Column 3">
-<input id="c4" placeholder="Column 4">
-<input id="c5" placeholder="Column 5">
-<input id="c6" placeholder="Column 6">
-<input id="c7" placeholder="Column 7">
-<button onclick="addRow()">Add Entry</button>
-</div>
-<table id="table"></table>
-<button onclick="downloadCSV()">Download CSV</button>
-<input type="file" id="upload" accept=".csv" onchange="loadCSV(event)">
+    <h2>CSV Database Manager</h2>
+    
+    <div>
+        <input id="c1" placeholder="Column 1">
+        <input id="c2" placeholder="Column 2">
+        <input id="c3" placeholder="Column 3">
+        <input id="c4" placeholder="Column 4">
+        <input id="c5" placeholder="Column 5">
+        <input id="c6" placeholder="Column 6">
+        <input id="c7" placeholder="Column 7">
+        <button onclick="addRow()">Add Entry</button>
+    </div>
+    
+    <table id="table"></table>
+    
+    <button onclick="downloadCSV()">Download CSV</button>
+    <input type="file" id="upload" accept=".csv" onchange="loadCSV(event)">
 
-<script>
-let data=[['Col1','Col2','Col3','Col4','Col5','Col6','Col7']];
-
-function render(){
-let t=document.getElementById('table');
-t.innerHTML=data.map((r,i)=>
-`<tr>${r.map((c,j)=>
-i==0?`<th>${c}</th>`:`<td>${c}</td>`
-).join('')}${i>0?`<td><button class="delete" onclick="delRow(${i})">Delete</button></td>`:''}</tr>`
-).join('');
-}
-
-function addRow(){
-let row=[];
-for(let i=1;i<=7;i++){
-let v=document.getElementById('c'+i).value;
-row.push(v);
-document.getElementById('c'+i).value='';
-}
-data.push(row);
-render();
-}
-
-function delRow(i){
-data.splice(i,1);
-render();
-}
-
-function downloadCSV(){
-let csv=data.map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
-let a=document.createElement('a');
-a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-a.download='database.csv';
-a.click();
-}
-
-function loadCSV(e){
-let f=e.target.files[0];
-if(!f)return;
-let r=new FileReader();
-r.onload=function(ev){
-let lines=ev.target.result.split('\n').filter(l=>l.trim());
-data=lines.map(l=>l.split(',').map(c=>c.replace(/^"|"$/g,'')));
-render();
-};
-r.readAsText(f);
-}
-
-render();
-</script>
+    <script src="script.js"></script>
 </body>
 </html>
