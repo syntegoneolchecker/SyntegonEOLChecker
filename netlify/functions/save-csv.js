@@ -10,6 +10,7 @@ exports.handler = async function(event, context) {
     }
 
     try {
+        console.log('Parsing request body...');
         const { data } = JSON.parse(event.body);
 
         if (!data || !Array.isArray(data)) {
@@ -19,14 +20,18 @@ exports.handler = async function(event, context) {
             };
         }
 
+        console.log('Converting data to CSV format...');
         // Convert data back to CSV format
         const csvContent = data.map(row =>
             row.map(cell => `"${cell}"`).join(',')
         ).join('\n');
 
         // Save to Netlify Blobs
+        console.log('Getting Netlify Blobs store...');
         const store = getStore('eol-database');
+        console.log('Saving to Blobs...');
         await store.set('database.csv', csvContent);
+        console.log('Save successful!');
 
         return {
             statusCode: 200,
@@ -36,10 +41,13 @@ exports.handler = async function(event, context) {
             })
         };
     } catch (error) {
+        console.error('Error in save-csv function:', error);
+        console.error('Error stack:', error.stack);
         return {
             statusCode: 500,
             body: JSON.stringify({
-                error: 'Failed to save CSV data: ' + error.message
+                error: 'Failed to save CSV data: ' + error.message,
+                stack: error.stack
             })
         };
     }
