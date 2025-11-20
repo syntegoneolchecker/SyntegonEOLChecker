@@ -1,6 +1,6 @@
 let data = [['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment']];
 
-// Initialize the app
+// Initialize the app 
 async function init() {
     await loadFromServer();
 }
