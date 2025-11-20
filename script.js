@@ -33,9 +33,33 @@ async function addRow() {
         row.push(v);
         document.getElementById('c' + i).value = '';
     }
-    data.push(row);
-    render();
-    await saveToServer();
+
+    // Check if entry with same Model (index 0) and Maker (index 1) already exists
+    const model = row[0].trim();
+    const maker = row[1].trim();
+
+    // Find existing entry (skip header row at index 0)
+    let existingIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+        if (data[i][0].trim() === model && data[i][1].trim() === maker) {
+            existingIndex = i;
+            break;
+        }
+    }
+
+    if (existingIndex !== -1) {
+        // Update existing entry
+        data[existingIndex] = row;
+        render();
+        showStatus(`Updated existing entry for "${model}" (${maker})`);
+        await saveToServer();
+    } else {
+        // Add new entry
+        data.push(row);
+        render();
+        showStatus(`Added new entry for "${model}" (${maker})`);
+        await saveToServer();
+    }
 }
 
 async function delRow(i) {
