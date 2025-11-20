@@ -10,13 +10,13 @@
     <div id="status"></div>
     
     <div>
-        <input id="c1" placeholder="Column 1">
-        <input id="c2" placeholder="Column 2">
-        <input id="c3" placeholder="Column 3">
-        <input id="c4" placeholder="Column 4">
-        <input id="c5" placeholder="Column 5">
-        <input id="c6" placeholder="Column 6">
-        <input id="c7" placeholder="Column 7">
+        <input id="c1" placeholder="Model">
+        <input id="c2" placeholder="Maker">
+        <input id="c3" placeholder="EOL Status">
+        <input id="c4" placeholder="EOL Comment">
+        <input id="c5" placeholder="Successor Status">
+        <input id="c6" placeholder="Successor Name">
+        <input id="c7" placeholder="Successor Comment">
         <button onclick="addRow()">Add Entry</button>
     </div>
     
@@ -25,8 +25,6 @@
     <div>
         <button onclick="downloadCSV()">Download CSV</button>
         <input type="file" id="upload" accept=".csv" onchange="loadCSV(event)">
-        <button onclick="saveToServer()">Save to Server</button>
-        <button onclick="loadFromServer()">Load from Server</button>
     </div>
 
     <script src="script.js"></script>
