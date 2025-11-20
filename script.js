@@ -165,7 +165,7 @@ async function loadFromServer() {
                 return cells;
             });
             render();
-            showStatus('⚠️ WARNING: Static file mode - Changes will NOT be saved! Netlify functions are unavailable.', 'error', true);
+            showStatus('⚠️ WARNING: Static file mode - Changes will NOT be saved! Netlify functions are unavailable.', 'error');
             return;
         }
     } catch (error) {
