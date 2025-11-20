@@ -115,14 +115,8 @@ async function checkEOL(rowIndex) {
         // Update the row with results
         // Columns: Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment
 
-        // Column 2: EOL Status
-        if (result.status === 'DISCONTINUED') {
-            row[2] = 'YES';
-        } else if (result.status === 'ACTIVE') {
-            row[2] = 'NO';
-        } else {
-            row[2] = 'UNKNOWN';
-        }
+        // Column 2: EOL Status (DISCONTINUED, ACTIVE, or UNKNOWN)
+        row[2] = result.status || 'UNKNOWN';
 
         // Column 3: EOL Comment
         row[3] = result.explanation || '';
