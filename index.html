@@ -9,9 +9,15 @@
 <body>
     <div class="header">
         <h2>EOL Database Manager</h2>
-        <div id="tavily-credits" class="credits-display">
-            <span class="credits-label">Tavily Credits:</span>
-            <span id="credits-remaining" class="credits-value">Loading...</span>
+        <div class="credits-container">
+            <div id="tavily-credits" class="credits-display">
+                <span class="credits-label">Tavily Credits:</span>
+                <span id="credits-remaining" class="credits-value">Loading...</span>
+            </div>
+            <div id="groq-limits" class="credits-display">
+                <span class="credits-label">Groq Requests:</span>
+                <span id="groq-remaining" class="credits-value">-</span>
+            </div>
         </div>
     </div>
     <div id="status"></div>

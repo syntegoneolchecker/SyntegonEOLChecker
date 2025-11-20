@@ -186,6 +186,14 @@ Respond ONLY with valid JSON. Do not include any other text before or after the 
         const groqData = await groqResponse.json();
         console.log('Groq response:', JSON.stringify(groqData));
 
+        // Extract rate limit information from headers
+        const rateLimitInfo = {
+            remainingRequests: groqResponse.headers.get('x-ratelimit-remaining-requests'),
+            limitRequests: groqResponse.headers.get('x-ratelimit-limit-requests'),
+            remainingTokens: groqResponse.headers.get('x-ratelimit-remaining-tokens'),
+            limitTokens: groqResponse.headers.get('x-ratelimit-limit-tokens')
+        };
+
         // Extract the generated text from OpenAI-compatible format
         let generatedText = '';
         if (groqData.choices && groqData.choices[0]?.message?.content) {
@@ -256,7 +264,8 @@ Respond ONLY with valid JSON. Do not include any other text before or after the 
                 status: analysisResult.status,
                 explanation: analysisResult.explanation,
                 successor: analysisResult.successor,
-                sources: relevantResults.map(r => r.url)
+                sources: relevantResults.map(r => r.url),
+                rateLimits: rateLimitInfo
             })
         };
 
