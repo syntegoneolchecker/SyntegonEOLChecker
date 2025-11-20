@@ -143,6 +143,11 @@ async function checkEOL(rowIndex) {
         // Refresh Tavily credits
         await loadTavilyCredits();
 
+        // Update Groq rate limit display
+        if (result.rateLimits) {
+            updateGroqRateLimits(result.rateLimits);
+        }
+
         showStatus(`✓ EOL check completed for ${maker} ${model}`, 'success');
 
     } catch (error) {
@@ -366,6 +371,33 @@ async function loadTavilyCredits() {
         const creditsElement = document.getElementById('credits-remaining');
         creditsElement.textContent = 'Error loading credits';
         creditsElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+    }
+}
+
+function updateGroqRateLimits(rateLimits) {
+    const groqElement = document.getElementById('groq-remaining');
+
+    if (!rateLimits || !rateLimits.remainingRequests || !rateLimits.limitRequests) {
+        groqElement.textContent = 'N/A';
+        return;
+    }
+
+    const remaining = parseInt(rateLimits.remainingRequests);
+    const limit = parseInt(rateLimits.limitRequests);
+
+    groqElement.textContent = `${remaining}/${limit} today`;
+
+    // Apply color coding based on percentage remaining
+    groqElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+
+    const percentRemaining = (remaining / limit) * 100;
+
+    if (percentRemaining > 50) {
+        groqElement.classList.add('credits-high');
+    } else if (percentRemaining > 20) {
+        groqElement.classList.add('credits-medium');
+    } else {
+        groqElement.classList.add('credits-low');
     }
 }
 

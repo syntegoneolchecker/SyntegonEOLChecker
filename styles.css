@@ -15,6 +15,11 @@ body {
     margin: 0;
 }
 
+.credits-container {
+    display: flex;
+    gap: 15px;
+}
+
 .credits-display {
     background: white;
     padding: 10px 15px;
