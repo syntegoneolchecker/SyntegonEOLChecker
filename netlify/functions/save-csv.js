@@ -28,7 +28,11 @@ exports.handler = async function(event, context) {
 
         // Save to Netlify Blobs
         console.log('Getting Netlify Blobs store...');
-        const store = getStore('eol-database');
+        const store = getStore({
+            name: 'eol-database',
+            siteID: process.env.SITE_ID,
+            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+        });
         console.log('Saving to Blobs...');
         await store.set('database.csv', csvContent);
         console.log('Save successful!');

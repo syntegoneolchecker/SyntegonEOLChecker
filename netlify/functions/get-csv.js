@@ -3,7 +3,11 @@ const { getStore } = require('@netlify/blobs');
 exports.handler = async function(event, context) {
     try {
         console.log('Getting Netlify Blobs store...');
-        const store = getStore('eol-database');
+        const store = getStore({
+            name: 'eol-database',
+            siteID: process.env.SITE_ID,
+            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+        });
 
         // Try to get the CSV data from Netlify Blobs
         console.log('Fetching database.csv from Blobs...');
