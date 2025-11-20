@@ -1,20 +1,14 @@
 let data = [['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment']];
 
-// Initialize the app
+// Initialize the app 
 async function init() {
     await loadFromServer();
 }
 
-function showStatus(message, type = 'success', permanent = false) {
+function showStatus(message, type = 'success') {
     const status = document.getElementById('status');
     status.textContent = message;
     status.className = type;
-    if (!permanent) {
-        setTimeout(() => {
-            status.textContent = '';
-            status.className = '';
-        }, 3000);
-    }
 }
 
 function render() {
@@ -122,9 +116,8 @@ async function loadFromServer() {
         if (result.data && Array.isArray(result.data)) {
             data = result.data;
             render();
-            showStatus('✓ Database loaded successfully from cloud storage');
-        } else {
-            throw new Error('Invalid data format received');
+            showStatus('⚠️ WARNING: Static file mode - Changes will NOT be saved! Netlify functions are unavailable.', 'error');
+            return;
         }
     } catch (error) {
         console.error('Load error:', error);
