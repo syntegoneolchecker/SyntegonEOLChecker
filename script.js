@@ -5,10 +5,16 @@ async function init() {
     await loadFromServer();
 }
 
-function showStatus(message, type = 'success') {
+function showStatus(message, type = 'success', permanent = false) {
     const status = document.getElementById('status');
     status.textContent = message;
     status.className = type;
+    if (!permanent) {
+        setTimeout(() => {
+            status.textContent = '';
+            status.className = '';
+        }, 3000);
+    }
 }
 
 function render() {
@@ -116,7 +122,7 @@ async function loadFromServer() {
         if (result.data && Array.isArray(result.data)) {
             data = result.data;
             render();
-            showStatus('⚠️ WARNING: Static file mode - Changes will NOT be saved! Netlify functions are unavailable.', 'error');
+            showStatus('✓ Database loaded successfully from cloud storage');
             return;
         }
     } catch (error) {
