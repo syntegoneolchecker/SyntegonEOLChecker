@@ -5,14 +5,16 @@ async function init() {
     await loadFromServer();
 }
 
-function showStatus(message, type = 'success') {
+function showStatus(message, type = 'success', permanent = false) {
     const status = document.getElementById('status');
     status.textContent = message;
     status.className = type;
-    setTimeout(() => {
-        status.textContent = '';
-        status.className = '';
-    }, 3000);
+    if (!permanent) {
+        setTimeout(() => {
+            status.textContent = '';
+            status.className = '';
+        }, 3000);
+    }
 }
 
 function render() {
@@ -128,7 +130,7 @@ async function loadFromServer() {
         if (response.ok && result.data) {
             data = result.data;
             render();
-            showStatus('Database loaded from database.csv successfully!');
+            showStatus('✓ Database loaded successfully - all changes will be saved automatically');
             return;
         }
     } catch (error) {
@@ -169,7 +171,7 @@ async function loadFromServer() {
                 return cells;
             });
             render();
-            showStatus('Database loaded successfully (static file mode)!');
+            showStatus('⚠️ WARNING: Static file mode - Changes will NOT be saved! Netlify functions are unavailable.', 'error', true);
             return;
         }
     } catch (error) {
