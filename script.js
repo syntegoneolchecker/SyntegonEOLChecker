@@ -4,6 +4,7 @@ let data = [['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 
 async function init() {
     await loadFromServer();
     await loadTavilyCredits();
+    await loadGroqUsage();
 }
 
 function showStatus(message, type = 'success', permanent = true) {
@@ -371,6 +372,27 @@ async function loadTavilyCredits() {
         const creditsElement = document.getElementById('credits-remaining');
         creditsElement.textContent = 'Error loading credits';
         creditsElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+    }
+}
+
+async function loadGroqUsage() {
+    try {
+        const response = await fetch('/.netlify/functions/get-groq-usage');
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch Groq usage: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        // Update the display using the same function we use after EOL checks
+        updateGroqRateLimits(result);
+
+    } catch (error) {
+        console.error('Failed to load Groq usage:', error);
+        const groqElement = document.getElementById('groq-remaining');
+        groqElement.textContent = 'Error loading';
+        groqElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
     }
 }
 

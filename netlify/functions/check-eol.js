@@ -81,6 +81,11 @@ Content: ${result.content}`;
             })
             .join('\n\n---\n\n');
 
+        // Log the full search context being sent to LLM
+        console.log('=== FULL SEARCH CONTEXT SENT TO LLM ===');
+        console.log(searchContext);
+        console.log('=== END SEARCH CONTEXT ===');
+
         // Step 3: Analyze with Groq LLM
         console.log('Step 2: Analyzing with Groq...');
 
