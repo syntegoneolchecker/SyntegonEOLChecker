@@ -5,7 +5,7 @@ async function init() {
     await loadFromServer();
 }
 
-function showStatus(message, type = 'success', permanent = false) {
+function showStatus(message, type = 'success', permanent = true) {
     const status = document.getElementById('status');
     status.textContent = message;
     status.className = type;
@@ -68,7 +68,7 @@ async function delRow(i) {
     await saveToServer();
 }
 
-async function downloadCSV() {
+async function downloadExcel() {
     try {
         const response = await fetch('/.netlify/functions/get-csv');
 
@@ -79,12 +79,18 @@ async function downloadCSV() {
         const result = await response.json();
 
         if (result.data) {
-            // Convert data to CSV format
-            const csv = result.data.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-            const a = document.createElement('a');
-            a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-            a.download = 'database.csv';
-            a.click();
+            // Create a new workbook
+            const wb = XLSX.utils.book_new();
+
+            // Convert data array to worksheet
+            const ws = XLSX.utils.aoa_to_sheet(result.data);
+
+            // Add worksheet to workbook
+            XLSX.utils.book_append_sheet(wb, ws, 'EOL Database');
+
+            // Generate Excel file and trigger download
+            XLSX.writeFile(wb, 'eol-database.xlsx');
+
             showStatus('Database downloaded successfully!');
         } else {
             showStatus('No data available to download', 'error');
@@ -95,19 +101,100 @@ async function downloadCSV() {
     }
 }
 
-function loadCSV(e) {
+function loadExcel(e) {
     let f = e.target.files[0];
     if (!f) return;
 
     let r = new FileReader();
     r.onload = async function(ev) {
-        let lines = ev.target.result.split('\n').filter(l => l.trim());
-        data = lines.map(l => l.split(',').map(c => c.replace(/^"|"$/g, '')));
-        render();
-        showStatus('Importing CSV and saving to cloud storage...');
-        await saveToServer();
+        try {
+            // Parse Excel file
+            const workbook = XLSX.read(ev.target.result, { type: 'binary' });
+
+            // Get first worksheet
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+
+            // Convert to array of arrays
+            const importedData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+            if (importedData.length === 0) {
+                showStatus('Error: Excel file is empty', 'error');
+                return;
+            }
+
+            // Find column indices for Model and Maker
+            const headers = importedData[0];
+            const modelIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === 'model');
+            const makerIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === 'maker');
+
+            if (modelIndex === -1 || makerIndex === -1) {
+                showStatus('Error: Excel file must contain "Model" and "Maker" columns', 'error');
+                return;
+            }
+
+            // Track statistics
+            let newEntries = 0;
+            let updatedEntries = 0;
+
+            // Process each row from the imported file (skip header)
+            for (let i = 1; i < importedData.length; i++) {
+                const importedRow = importedData[i];
+
+                // Skip empty rows
+                if (!importedRow || importedRow.length === 0) continue;
+
+                const model = (importedRow[modelIndex] || '').toString().trim();
+                const maker = (importedRow[makerIndex] || '').toString().trim();
+
+                // Skip rows without Model or Maker
+                if (!model || !maker) continue;
+
+                // Build a complete row with all 7 columns
+                const newRow = [];
+                const ourHeaders = data[0]; // Our standard headers
+
+                for (let j = 0; j < ourHeaders.length; j++) {
+                    const headerName = ourHeaders[j].toLowerCase().trim();
+                    const importColIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === headerName);
+
+                    if (importColIndex !== -1 && importedRow[importColIndex] !== undefined) {
+                        newRow.push(importedRow[importColIndex].toString());
+                    } else {
+                        newRow.push(''); // Fill missing columns with empty string
+                    }
+                }
+
+                // Find existing entry with same Model and Maker
+                let existingIndex = -1;
+                for (let k = 1; k < data.length; k++) {
+                    if (data[k][0].trim() === model && data[k][1].trim() === maker) {
+                        existingIndex = k;
+                        break;
+                    }
+                }
+
+                if (existingIndex !== -1) {
+                    // Update existing entry
+                    data[existingIndex] = newRow;
+                    updatedEntries++;
+                } else {
+                    // Add new entry
+                    data.push(newRow);
+                    newEntries++;
+                }
+            }
+
+            render();
+            showStatus(`Imported: ${newEntries} new entries, ${updatedEntries} updated entries`);
+            await saveToServer();
+
+        } catch (error) {
+            console.error('Excel import failed:', error);
+            showStatus('Error importing Excel file: ' + error.message, 'error');
+        }
     };
-    r.readAsText(f);
+    r.readAsBinaryString(f);
 }
 
 // Netlify Functions integration with Netlify Blobs
