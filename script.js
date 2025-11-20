@@ -40,11 +40,15 @@ async function delRow(i) {
 
 async function downloadCSV() {
     try {
-        // Try to fetch from Netlify function first
         const response = await fetch('/.netlify/functions/get-csv');
+
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+        }
+
         const result = await response.json();
 
-        if (response.ok && result.data) {
+        if (result.data) {
             // Convert data to CSV format
             const csv = result.data.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
             const a = document.createElement('a');
@@ -52,29 +56,13 @@ async function downloadCSV() {
             a.download = 'database.csv';
             a.click();
             showStatus('Database downloaded successfully!');
-            return;
+        } else {
+            showStatus('No data available to download', 'error');
         }
     } catch (error) {
-        console.log('Netlify function unavailable, trying direct download:', error);
+        console.error('Download failed:', error);
+        showStatus('Error downloading database: ' + error.message, 'error');
     }
-
-    // Fallback: try direct link to static file
-    try {
-        const response = await fetch('/database.csv');
-        if (response.ok) {
-            const text = await response.text();
-            const a = document.createElement('a');
-            a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(text);
-            a.download = 'database.csv';
-            a.click();
-            showStatus('Database downloaded successfully!');
-            return;
-        }
-    } catch (error) {
-        console.log('Static file download failed:', error);
-    }
-
-    showStatus('Error downloading database.csv', 'error');
 }
 
 function loadCSV(e) {
@@ -86,13 +74,13 @@ function loadCSV(e) {
         let lines = ev.target.result.split('\n').filter(l => l.trim());
         data = lines.map(l => l.split(',').map(c => c.replace(/^"|"$/g, '')));
         render();
-        showStatus('Importing CSV and replacing database.csv...');
+        showStatus('Importing CSV and saving to cloud storage...');
         await saveToServer();
     };
     r.readAsText(f);
 }
 
-// Netlify Functions integration
+// Netlify Functions integration with Netlify Blobs
 async function saveToServer() {
     try {
         const response = await fetch('/.netlify/functions/save-csv', {
@@ -102,79 +90,41 @@ async function saveToServer() {
             },
             body: JSON.stringify({ data: data })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
-            showStatus('Changes saved to database.csv successfully!');
+            showStatus('Changes saved to cloud storage successfully!');
         } else {
-            showStatus('Error saving to database.csv: ' + result.error, 'error');
+            showStatus('Error saving changes: ' + result.error, 'error');
         }
     } catch (error) {
-        showStatus('Network error: ' + error.message, 'error');
+        showStatus('Network error - unable to save: ' + error.message, 'error');
     }
 }
 
 async function loadFromServer() {
     try {
-        // Try Netlify function first
         const response = await fetch('/.netlify/functions/get-csv');
+
+        if (!response.ok) {
+            throw new Error(`Server returned ${response.status}`);
+        }
+
         const result = await response.json();
 
-        if (response.ok && result.data) {
+        if (result.data && Array.isArray(result.data)) {
             data = result.data;
-            render();
-            showStatus('✓ Database loaded successfully - all changes will be saved automatically');
-            return;
-        }
-    } catch (error) {
-        console.log('Netlify function unavailable, trying direct file access:', error);
-    }
-
-    // Fallback: try loading database.csv as a static file
-    try {
-        const response = await fetch('/database.csv');
-        if (response.ok) {
-            const text = await response.text();
-            const lines = text.split('\n').filter(l => l.trim());
-            data = lines.map(line => {
-                // Simple CSV parser for quoted fields
-                const cells = [];
-                let current = '';
-                let inQuotes = false;
-
-                for (let i = 0; i < line.length; i++) {
-                    const char = line[i];
-                    const nextChar = line[i + 1];
-
-                    if (char === '"' && !inQuotes) {
-                        inQuotes = true;
-                    } else if (char === '"' && inQuotes && nextChar === '"') {
-                        current += '"';
-                        i++; // Skip next quote
-                    } else if (char === '"' && inQuotes) {
-                        inQuotes = false;
-                    } else if (char === ',' && !inQuotes) {
-                        cells.push(current.trim());
-                        current = '';
-                    } else {
-                        current += char;
-                    }
-                }
-                cells.push(current.trim());
-                return cells;
-            });
             render();
             showStatus('⚠️ WARNING: Static file mode - Changes will NOT be saved! Netlify functions are unavailable.', 'error');
             return;
         }
     } catch (error) {
-        console.log('Static file access failed:', error);
+        console.error('Load error:', error);
+        showStatus('⚠️ Unable to connect to cloud storage. Please check your connection.', 'error', true);
+        // Keep default headers for display
+        render();
     }
-
-    // If both methods fail
-    showStatus('Error loading database.csv - using default headers', 'error');
-    render();
 }
 
 // Initialize when page loads
