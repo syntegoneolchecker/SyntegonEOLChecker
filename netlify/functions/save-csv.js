@@ -1,5 +1,4 @@
-const fs = require('fs');
-const path = require('path');
+const { getStore } = require('@netlify/blobs');
 
 exports.handler = async function(event, context) {
     // Only allow POST requests
@@ -25,38 +24,22 @@ exports.handler = async function(event, context) {
             row.map(cell => `"${cell}"`).join(',')
         ).join('\n');
 
-        // In Netlify Functions, try multiple possible paths
-        const possiblePaths = [
-            path.join(process.cwd(), 'database.csv'),
-            path.join(process.cwd(), '..', '..', 'database.csv'),
-            path.join(__dirname, '..', '..', '..', 'database.csv'),
-            '/var/task/database.csv'
-        ];
-
-        // Find existing file or use first path
-        let filePath = possiblePaths[0];
-        for (const p of possiblePaths) {
-            if (fs.existsSync(p)) {
-                filePath = p;
-                break;
-            }
-        }
-
-        fs.writeFileSync(filePath, csvContent, 'utf8');
+        // Save to Netlify Blobs
+        const store = getStore('eol-database');
+        await store.set('database.csv', csvContent);
 
         return {
             statusCode: 200,
             body: JSON.stringify({
                 message: 'Data saved successfully',
-                rows: data.length,
-                path: filePath
+                rows: data.length
             })
         };
     } catch (error) {
         return {
             statusCode: 500,
             body: JSON.stringify({
-                error: 'Failed to save CSV file: ' + error.message
+                error: 'Failed to save CSV data: ' + error.message
             })
         };
     }

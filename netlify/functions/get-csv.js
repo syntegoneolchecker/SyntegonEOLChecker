@@ -1,39 +1,22 @@
-const fs = require('fs');
-const path = require('path');
+const { getStore } = require('@netlify/blobs');
 
 exports.handler = async function(event, context) {
     try {
-        // In Netlify Functions, files are in the parent directories
-        // Try multiple possible paths
-        const possiblePaths = [
-            path.join(process.cwd(), 'database.csv'),
-            path.join(process.cwd(), '..', '..', 'database.csv'),
-            path.join(__dirname, '..', '..', '..', 'database.csv'),
-            '/var/task/database.csv'
-        ];
+        const store = getStore('eol-database');
 
-        let filePath = null;
-        for (const p of possiblePaths) {
-            if (fs.existsSync(p)) {
-                filePath = p;
-                break;
-            }
-        }
+        // Try to get the CSV data from Netlify Blobs
+        let csvContent = await store.get('database.csv');
 
-        if (!filePath) {
+        // If no data exists yet, return default headers
+        if (!csvContent) {
+            const defaultData = [['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment']];
             return {
-                statusCode: 404,
-                body: JSON.stringify({
-                    error: 'database.csv not found',
-                    searchedPaths: possiblePaths,
-                    cwd: process.cwd(),
-                    dirname: __dirname
-                })
+                statusCode: 200,
+                body: JSON.stringify({ data: defaultData })
             };
         }
 
-        const fileContent = fs.readFileSync(filePath, 'utf8');
-        const lines = fileContent.split('\n').filter(line => line.trim());
+        const lines = csvContent.split('\n').filter(line => line.trim());
 
         // Parse CSV data - handle quoted fields properly
         const data = lines.map(line => {
@@ -73,7 +56,7 @@ exports.handler = async function(event, context) {
         return {
             statusCode: 500,
             body: JSON.stringify({
-                error: 'Failed to read CSV file: ' + error.message
+                error: 'Failed to read CSV data: ' + error.message
             })
         };
     }
