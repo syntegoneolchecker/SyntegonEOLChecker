@@ -4,6 +4,52 @@ body {
     background: #f5f5f5;
 }
 
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.header h2 {
+    margin: 0;
+}
+
+.credits-display {
+    background: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    border: 2px solid #ddd;
+    font-size: 14px;
+}
+
+.credits-label {
+    font-weight: bold;
+    color: #555;
+    margin-right: 8px;
+}
+
+.credits-value {
+    font-weight: bold;
+    padding: 3px 8px;
+    border-radius: 3px;
+}
+
+.credits-high {
+    background: #d4edda;
+    color: #155724;
+}
+
+.credits-medium {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.credits-low {
+    background: #f8d7da;
+    color: #721c24;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;

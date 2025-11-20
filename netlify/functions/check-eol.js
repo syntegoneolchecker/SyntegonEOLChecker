@@ -138,7 +138,7 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
 Respond ONLY with valid JSON. Do not include any other text before or after the JSON.`;
 
         const hfResponse = await fetch(
-            'https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3.1-8B-Instruct',
+            'https://router.huggingface.co/hf-inference/models/meta-llama/Meta-Llama-3.1-8B-Instruct',
             {
                 method: 'POST',
                 headers: {
