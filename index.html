@@ -23,8 +23,11 @@
     <table id="table"></table>
     
     <div>
-        <button onclick="downloadCSV()">Download CSV</button>
-        <input type="file" id="upload" accept=".csv" onchange="loadCSV(event)">
+        <button onclick="downloadCSV()">Download Database</button>
+        <label for="upload" style="margin-left: 10px;">
+            <input type="file" id="upload" accept=".csv" onchange="loadCSV(event)" style="display: none;">
+            <button onclick="document.getElementById('upload').click(); return false;">Import CSV (Replace Database)</button>
+        </label>
     </div>
 
     <script src="script.js"></script>

@@ -12,7 +12,7 @@ exports.handler = async function(event, context) {
 
     try {
         const { data } = JSON.parse(event.body);
-        
+
         if (!data || !Array.isArray(data)) {
             return {
                 statusCode: 400,
@@ -21,26 +21,42 @@ exports.handler = async function(event, context) {
         }
 
         // Convert data back to CSV format
-        const csvContent = data.map(row => 
+        const csvContent = data.map(row =>
             row.map(cell => `"${cell}"`).join(',')
         ).join('\n');
 
-        // Save to database.csv file
-        const filePath = path.join(process.cwd(), 'database.csv');
+        // In Netlify Functions, try multiple possible paths
+        const possiblePaths = [
+            path.join(process.cwd(), 'database.csv'),
+            path.join(process.cwd(), '..', '..', 'database.csv'),
+            path.join(__dirname, '..', '..', '..', 'database.csv'),
+            '/var/task/database.csv'
+        ];
+
+        // Find existing file or use first path
+        let filePath = possiblePaths[0];
+        for (const p of possiblePaths) {
+            if (fs.existsSync(p)) {
+                filePath = p;
+                break;
+            }
+        }
+
         fs.writeFileSync(filePath, csvContent, 'utf8');
 
         return {
             statusCode: 200,
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 message: 'Data saved successfully',
-                rows: data.length 
+                rows: data.length,
+                path: filePath
             })
         };
     } catch (error) {
         return {
             statusCode: 500,
-            body: JSON.stringify({ 
-                error: 'Failed to save CSV file: ' + error.message 
+            body: JSON.stringify({
+                error: 'Failed to save CSV file: ' + error.message
             })
         };
     }
