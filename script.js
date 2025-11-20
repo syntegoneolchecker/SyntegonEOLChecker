@@ -1,8 +1,9 @@
 let data = [['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment']];
 
-// Initialize the app 
+// Initialize the app
 async function init() {
     await loadFromServer();
+    await loadTavilyCredits();
 }
 
 function showStatus(message, type = 'success', permanent = true) {
@@ -144,6 +145,9 @@ async function checkEOL(rowIndex) {
 
         // Save to server
         await saveToServer();
+
+        // Refresh Tavily credits
+        await loadTavilyCredits();
 
         showStatus(`✓ EOL check completed for ${maker} ${model}`, 'success');
 
@@ -332,6 +336,42 @@ async function loadFromServer() {
         showStatus('⚠️ Unable to connect to cloud storage. Please check your connection.', 'error', true);
         // Keep default headers for display
         render();
+    }
+}
+
+async function loadTavilyCredits() {
+    try {
+        const response = await fetch('/.netlify/functions/get-tavily-usage');
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch Tavily credits: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        // Update the display
+        const creditsElement = document.getElementById('credits-remaining');
+        const remaining = result.remaining;
+        const limit = result.limit;
+
+        creditsElement.textContent = `${remaining}/${limit} remaining`;
+
+        // Apply color coding based on remaining credits
+        creditsElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+
+        if (remaining > 500) {
+            creditsElement.classList.add('credits-high');
+        } else if (remaining > 100) {
+            creditsElement.classList.add('credits-medium');
+        } else {
+            creditsElement.classList.add('credits-low');
+        }
+
+    } catch (error) {
+        console.error('Failed to load Tavily credits:', error);
+        const creditsElement = document.getElementById('credits-remaining');
+        creditsElement.textContent = 'Error loading credits';
+        creditsElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
     }
 }
 
