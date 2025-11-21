@@ -289,7 +289,8 @@ exports.handler = async function(event, context) {
         console.log(`Sending ${relevantResults.length} results to LLM for analysis`);
 
         // Step 2: Prepare search context for LLM with table processing and smart truncation
-        const MAX_CONTENT_LENGTH = 8000; // Maximum characters per result to avoid token limits
+        const MAX_CONTENT_LENGTH = 5000; // Maximum characters per result to avoid token limits
+        // With 5 results × 5000 chars = 25000 chars ≈ 7000 tokens + prompt overhead ≈ 8000 tokens total
 
         const searchContext = relevantResults
             .map((result, index) => {
