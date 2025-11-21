@@ -1,3 +1,176 @@
+// Function to process and reformat tables in content for better LLM comprehension
+function processTablesInContent(content) {
+    if (!content) return content;
+
+    // Detect markdown tables by looking for multiple lines with pipe characters
+    const lines = content.split('\n');
+    const processedLines = [];
+    let inTable = false;
+    let tableLines = [];
+    let headerRow = null;
+    let separatorFound = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+
+        // Check if line looks like a table row (contains | characters)
+        const hasPipes = line.includes('|');
+        const pipeCount = (line.match(/\|/g) || []).length;
+
+        if (hasPipes && pipeCount >= 2) {
+            // This looks like a table line
+            if (!inTable) {
+                inTable = true;
+                tableLines = [];
+            }
+            tableLines.push(line);
+        } else {
+            // Not a table line
+            if (inTable && tableLines.length > 0) {
+                // End of table, process it
+                processedLines.push(formatTable(tableLines));
+                tableLines = [];
+                inTable = false;
+            }
+            processedLines.push(line);
+        }
+    }
+
+    // Handle case where table extends to end of content
+    if (inTable && tableLines.length > 0) {
+        processedLines.push(formatTable(tableLines));
+    }
+
+    return processedLines.join('\n');
+}
+
+// Helper function to format a table into a clear structure
+function formatTable(tableLines) {
+    if (tableLines.length === 0) return '';
+
+    // Parse table structure
+    const rows = tableLines.map(line => {
+        // Split by | and clean up
+        return line.split('|')
+            .map(cell => cell.trim())
+            .filter(cell => cell.length > 0 && !cell.match(/^-+$/)); // Remove empty cells and separator rows
+    }).filter(row => row.length > 0);
+
+    if (rows.length === 0) return '';
+
+    // First non-separator row is usually headers
+    const headers = rows[0];
+    const dataRows = rows.slice(1);
+
+    // Format as explicit table structure
+    let formatted = '\n=== TABLE START ===\n';
+    formatted += `Column Headers: ${headers.join(' | ')}\n`;
+    formatted += '---\n';
+
+    dataRows.forEach((row, idx) => {
+        if (row.length > 0) {
+            // Pad row to match header length if needed
+            while (row.length < headers.length) {
+                row.push('-');
+            }
+
+            // Create explicit column mappings
+            const rowData = headers.map((header, i) => {
+                const value = row[i] || '-';
+                return `${header}="${value}"`;
+            }).join(', ');
+
+            formatted += `Row ${idx + 1}: ${rowData}\n`;
+        }
+    });
+
+    formatted += '=== TABLE END ===\n';
+
+    return formatted;
+}
+
+// Smart truncation that preserves complete tables
+function smartTruncate(content, maxLength) {
+    if (content.length <= maxLength) return content;
+
+    // Find all table sections
+    const tableRegex = /=== TABLE START ===[\s\S]*?=== TABLE END ===/g;
+    const tables = [];
+    let match;
+    let tablePositions = [];
+
+    while ((match = tableRegex.exec(content)) !== null) {
+        tables.push(match[0]);
+        tablePositions.push({
+            start: match.index,
+            end: match.index + match[0].length,
+            content: match[0]
+        });
+    }
+
+    // If no tables, simple truncation at sentence boundary
+    if (tables.length === 0) {
+        let truncated = content.substring(0, maxLength);
+        // Try to end at a sentence
+        const lastPeriod = truncated.lastIndexOf('.');
+        const lastNewline = truncated.lastIndexOf('\n');
+        const cutPoint = Math.max(lastPeriod, lastNewline);
+        if (cutPoint > maxLength * 0.7) { // Only use sentence boundary if it's not too far back
+            truncated = truncated.substring(0, cutPoint + 1);
+        }
+        return truncated + '\n\n[Content truncated due to length]';
+    }
+
+    // Calculate total table size
+    const totalTableSize = tables.reduce((sum, table) => sum + table.length, 0);
+
+    // If tables alone exceed max length, keep all tables and truncate
+    if (totalTableSize >= maxLength) {
+        return tables.join('\n\n') + '\n\n[Non-table content removed due to length constraints]';
+    }
+
+    // Otherwise, keep all tables and fill remaining space with non-table content
+    const remainingSpace = maxLength - totalTableSize;
+
+    // Extract non-table content
+    let nonTableContent = content;
+    tablePositions.reverse().forEach(pos => {
+        nonTableContent = nonTableContent.substring(0, pos.start) +
+                         '###TABLE_PLACEHOLDER###' +
+                         nonTableContent.substring(pos.end);
+    });
+
+    // Truncate non-table content
+    if (nonTableContent.length > remainingSpace) {
+        const parts = nonTableContent.split('###TABLE_PLACEHOLDER###');
+        let truncatedParts = [];
+        let currentLength = 0;
+
+        for (let part of parts) {
+            if (currentLength + part.length <= remainingSpace) {
+                truncatedParts.push(part);
+                currentLength += part.length;
+            } else {
+                const spaceLeft = remainingSpace - currentLength;
+                if (spaceLeft > 100) { // Only add partial if we have reasonable space
+                    truncatedParts.push(part.substring(0, spaceLeft) + '...');
+                }
+                break;
+            }
+        }
+
+        nonTableContent = truncatedParts.join('###TABLE_PLACEHOLDER###');
+    }
+
+    // Reinsert tables
+    let result = nonTableContent;
+    tables.forEach(table => {
+        result = result.replace('###TABLE_PLACEHOLDER###', table);
+    });
+
+    return result;
+}
+
 exports.handler = async function(event, context) {
     // Only allow POST requests
     if (event.httpMethod !== 'POST') {
@@ -33,7 +206,51 @@ exports.handler = async function(event, context) {
                 query: searchQuery,
                 search_depth: 'advanced',
                 max_results: 5,
-                include_raw_content: false
+                include_raw_content: 'text',
+                chunks_per_source: 5,
+                include_domains: [
+                    'jp.misumi-ec.com',
+                    'www.orimvexta.co.jp',
+                    'anelva.canon',
+                    'www.printerland.co.uk',
+                    '.ysol.co.jp',
+                    'pdf.directindustry.com',
+                    '.manualslib.com',
+                    'fa.omron.co.jp',
+                    '.mouser.jp',
+                    '.digikey.jp',
+                    '.rs-components.com',
+                    '.fa-ubon.jp',
+                    '.monotaro.com',
+                    '.misumi.co.jp',
+                    '.fujitsu.com',
+                    '.hubbell.com',
+                    '.adlinktech.com',
+                    '.touchsystems.com',
+                    '.elotouch.com',
+                    '.aten.com',
+                    '.canon.com',
+                    '.axiomtek.com',
+                    '.apc.com',
+                    '.hp.com',
+                    '.fujielectric.co.jp',
+                    '.panasonic.jp',
+                    '.wago.com',
+                    '.schmersal.com',
+                    '.apiste.co.jp',
+                    '.tdklamda.com',
+                    '.phoenixcontact.com',
+                    '.idec.com',
+                    '.patlite.co.jp',
+                    '.smcworld.com',
+                    '.sanyodenki.co.jp',
+                    '.nissin-ele.co.jp',
+                    '.sony.co.jp',
+                    '.mitsubishielectric.co.jp',
+                    '.orientalmotor.co.jp',
+                    '.keyence.co.jp',
+                    '.omron.co.jp'
+                ]
             })
         });
 
@@ -71,13 +288,26 @@ exports.handler = async function(event, context) {
         const relevantResults = tavilyData.results;
         console.log(`Sending ${relevantResults.length} results to LLM for analysis`);
 
-        // Step 2: Prepare search context for LLM
+        // Step 2: Prepare search context for LLM with table processing and smart truncation
+        const MAX_CONTENT_LENGTH = 8000; // Maximum characters per result to avoid token limits
+
         const searchContext = relevantResults
             .map((result, index) => {
-                return `Result #${index + 1} (Relevance: ${(result.score * 100).toFixed(0)}%)
+                // Use raw_content if available, otherwise fall back to content
+                let rawContent = result.raw_content || result.content || '';
+
+                // Process tables in the content for better LLM comprehension
+                let processedContent = processTablesInContent(rawContent);
+
+                // Smart truncation: preserve tables, truncate other content
+                if (processedContent.length > MAX_CONTENT_LENGTH) {
+                    processedContent = smartTruncate(processedContent, MAX_CONTENT_LENGTH);
+                }
+
+                return `Result #${index + 1}
 URL: ${result.url}
-Title: ${result.title}
-Content: ${result.content}`;
+Content:
+${processedContent}`;
             })
             .join('\n\n---\n\n');
 
@@ -91,7 +321,7 @@ Content: ${result.content}`;
 
         const prompt = `TASK: Determine if the product "${model}" by ${maker} is discontinued (end-of-life).
 
-SEARCH RESULTS (ranked by relevance):
+SEARCH RESULTS:
 ${searchContext}
 
 ANALYSIS RULES:
@@ -123,7 +353,6 @@ ANALYSIS RULES:
 
 5. USE COMMON SENSE
    - Prioritize official manufacturer information
-   - Higher-ranked search results are more relevant
    - When uncertain, lean toward UNKNOWN rather than guessing
    - Active sales = strong evidence of ACTIVE status
    - The information is provided in the form of scraped websites. Websites have links, footers, headers etc. Because of this circumstance, not all content is relevant to the task!
