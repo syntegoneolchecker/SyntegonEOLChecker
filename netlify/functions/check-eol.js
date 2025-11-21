@@ -330,7 +330,6 @@ ANALYSIS RULES:
 1. EXACT PRODUCT IDENTIFICATION
    - You are analyzing "${model}" ONLY
    - Product variants with ANY character difference (suffixes, prefixes, version numbers) are DIFFERENT products
-   - Example: "Q38B" ≠ "Q38B-E" ≠ "QA1S38B"
    - Only use information explicitly about "${model}"
 
 2. EVIDENCE OF ACTIVE STATUS (product is NOT discontinued if):
@@ -339,7 +338,6 @@ ANALYSIS RULES:
    - Listed as a replacement/successor for other products
    - Has recent documentation, pricing, or specifications listed
    - **CRITICAL: If "${model}" is listed as the REPLACEMENT for a discontinued product, then "${model}" is ACTIVE**
-     Example: "Product X discontinued, replacement: ${model}" means ${model} is ACTIVE
 
 3. EVIDENCE OF DISCONTINUED STATUS (ONLY mark discontinued with concrete proof):
    - Explicitly listed in official discontinuation/EOL tables or announcements
@@ -353,11 +351,8 @@ ANALYSIS RULES:
 4. REPLACEMENT LOGIC - READ CAREFULLY:
    - "Product X → Product Y" means: X is discontinued, Y is the active replacement
    - "Discontinued: X, Replacement: Y" means: X is old/discontinued, Y is new/active
-   - If you see "${model}" as the replacement target, "${model}" is ACTIVE
-   - Example interpretations:
-     * "QA1S38B discontinued, replacement: Q38B" → Q38B is ACTIVE
-     * "Q38B-E discontinued, replacement: Q38B" → Q38B is ACTIVE
-     * Document lists Q38B as replacement for 3 products → Q38B is ACTIVE (it's the current model)
+   - If you see "${model}" as the replacement target in tables or documentation, "${model}" is ACTIVE
+   - Being listed as a replacement/successor for multiple older products means "${model}" is the current active model
 
 5. SUCCESSOR IDENTIFICATION
    - If discontinued: Search all content for explicit successor mentions
