@@ -1,34 +1,35 @@
-// Function to process and reformat tables in content for better LLM comprehension
+// Function to mark tables clearly without reformatting (preserve original structure)
 function processTablesInContent(content) {
     if (!content) return content;
 
-    // Detect markdown tables by looking for multiple lines with pipe characters
+    // Detect markdown tables and mark them clearly
     const lines = content.split('\n');
     const processedLines = [];
     let inTable = false;
     let tableLines = [];
-    let headerRow = null;
-    let separatorFound = false;
 
     for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
+        const line = lines[i];
+        const trimmed = line.trim();
 
         // Check if line looks like a table row (contains | characters)
-        const hasPipes = line.includes('|');
-        const pipeCount = (line.match(/\|/g) || []).length;
+        const hasPipes = trimmed.includes('|');
+        const pipeCount = (trimmed.match(/\|/g) || []).length;
 
         if (hasPipes && pipeCount >= 2) {
             // This looks like a table line
             if (!inTable) {
                 inTable = true;
                 tableLines = [];
+                processedLines.push('\n=== TABLE START ===');
             }
             tableLines.push(line);
+            processedLines.push(line);
         } else {
             // Not a table line
             if (inTable && tableLines.length > 0) {
-                // End of table, process it
-                processedLines.push(formatTable(tableLines));
+                // End of table
+                processedLines.push('=== TABLE END ===\n');
                 tableLines = [];
                 inTable = false;
             }
@@ -38,55 +39,10 @@ function processTablesInContent(content) {
 
     // Handle case where table extends to end of content
     if (inTable && tableLines.length > 0) {
-        processedLines.push(formatTable(tableLines));
+        processedLines.push('=== TABLE END ===\n');
     }
 
     return processedLines.join('\n');
-}
-
-// Helper function to format a table into a clear structure
-function formatTable(tableLines) {
-    if (tableLines.length === 0) return '';
-
-    // Parse table structure
-    const rows = tableLines.map(line => {
-        // Split by | and clean up
-        return line.split('|')
-            .map(cell => cell.trim())
-            .filter(cell => cell.length > 0 && !cell.match(/^-+$/)); // Remove empty cells and separator rows
-    }).filter(row => row.length > 0);
-
-    if (rows.length === 0) return '';
-
-    // First non-separator row is usually headers
-    const headers = rows[0];
-    const dataRows = rows.slice(1);
-
-    // Format as explicit table structure
-    let formatted = '\n=== TABLE START ===\n';
-    formatted += `Column Headers: ${headers.join(' | ')}\n`;
-    formatted += '---\n';
-
-    dataRows.forEach((row, idx) => {
-        if (row.length > 0) {
-            // Pad row to match header length if needed
-            while (row.length < headers.length) {
-                row.push('-');
-            }
-
-            // Create explicit column mappings
-            const rowData = headers.map((header, i) => {
-                const value = row[i] || '-';
-                return `${header}="${value}"`;
-            }).join(', ');
-
-            formatted += `Row ${idx + 1}: ${rowData}\n`;
-        }
-    });
-
-    formatted += '=== TABLE END ===\n';
-
-    return formatted;
 }
 
 // Smart truncation that preserves complete tables
