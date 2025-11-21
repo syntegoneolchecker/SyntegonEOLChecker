@@ -336,8 +336,10 @@ ANALYSIS RULES:
 2. EVIDENCE OF ACTIVE STATUS (product is NOT discontinued if):
    - Currently sold on manufacturer's official website or authorized retailers
    - Available for purchase (not auction/secondhand sites)
-   - Appears as a replacement/successor for other products
+   - Listed as a replacement/successor for other products
    - Has recent documentation, pricing, or specifications listed
+   - **CRITICAL: If "${model}" is listed as the REPLACEMENT for a discontinued product, then "${model}" is ACTIVE**
+     Example: "Product X discontinued, replacement: ${model}" means ${model} is ACTIVE
 
 3. EVIDENCE OF DISCONTINUED STATUS (ONLY mark discontinued with concrete proof):
    - Explicitly listed in official discontinuation/EOL tables or announcements
@@ -345,14 +347,25 @@ ANALYSIS RULES:
    - Must be from reputable source (manufacturer, official distributor)
    - Auction sites or secondhand listings are NOT evidence
    - Make sure that the discontinuation is specifically mentioned for "${model}"
+   - **CRITICAL: Do NOT mark "${model}" as discontinued just because it appears in a document about OTHER discontinued products**
+   - **CRITICAL: If "${model}" is the REPLACEMENT/SUCCESSOR for discontinued products, "${model}" is ACTIVE, not discontinued**
 
-4. SUCCESSOR IDENTIFICATION
+4. REPLACEMENT LOGIC - READ CAREFULLY:
+   - "Product X → Product Y" means: X is discontinued, Y is the active replacement
+   - "Discontinued: X, Replacement: Y" means: X is old/discontinued, Y is new/active
+   - If you see "${model}" as the replacement target, "${model}" is ACTIVE
+   - Example interpretations:
+     * "QA1S38B discontinued, replacement: Q38B" → Q38B is ACTIVE
+     * "Q38B-E discontinued, replacement: Q38B" → Q38B is ACTIVE
+     * Document lists Q38B as replacement for 3 products → Q38B is ACTIVE (it's the current model)
+
+5. SUCCESSOR IDENTIFICATION
    - If discontinued: Search all content for explicit successor mentions
      ("replaced by X", "successor: X", "recommended replacement: X")
    - If active: No successor needed
    - Only report if explicitly stated for this exact product
 
-5. USE COMMON SENSE
+6. USE COMMON SENSE
    - Prioritize official manufacturer information
    - When uncertain, lean toward UNKNOWN rather than guessing
    - Active sales = strong evidence of ACTIVE status
