@@ -20,16 +20,48 @@ exports.handler = async function(event, context) {
         console.log(`Starting EOL check for: ${maker} ${model}`);
 
         // Prepare the prompt for Groq Compound
-        const prompt = `What is the end-of-life status of the ${model} by ${maker}?
+        const prompt = `TASK: Determine the current status of the exact product **${model}** by ${maker}.
 
-RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
+RULES
+
+1. **Exact model only**
+   - Consider ONLY the string "${model}".
+   - Anything with extra characters (e.g., ${model}‑E, ${model}A, ${model}‑V2) is a DIFFERENT product and must be ignored.
+
+2. **What counts as ACTIVE**
+   - The model is listed **as a current offering** on the official ${maker} website, an authorized distributor, or a current‑price sheet.
+   - The model appears **as a replacement, successor, or recommended alternative** for another (usually older) product.
+     *Important nuance*: If a document is titled "End‑of‑Life" **but the row for ${model} is in the "Replacement" column**, that is **evidence of ACTIVE status**, not discontinuation.
+   - Recent (within the last 2‑3 years) datasheets, price lists, or ordering guides that include ${model}.
+
+3. **What counts as DISCONTINUED**
+   - An official "Discontinued / End‑of‑Life" table that explicitly marks ${model} with a status such as "Discontinued", "EOL", "End of sales", or provides a "Last Time Buy" date **without also listing a replacement** for ${model}.
+   - A clear statement from ${maker} (or an authorized partner) that production of ${model} has stopped.
+
+4. **How to treat tables**
+   - Read every column header. Typical columns are:
+     \`Model | End‑of‑order date | Discontinued date | Repair‑support expiry | Replacement\`
+   - **If the "Replacement" column contains "${model}" for another model, treat ${model} as ACTIVE.**
+   - **If the row for ${model} itself has a non‑empty "Discontinued date" and the "Replacement" column is empty, treat it as DISCONTINUED.**
+   - Ignore rows that merely mention ${model} in a "Notes" or "Description" field unless the note explicitly says "${model} is a replacement for …".
+
+5. **Evidence hierarchy**
+   - Official ${maker} PDFs, web pages, or authorized distributor PDFs are highest priority.
+   - Third‑party reseller pages are secondary, but only if they show a current price/availability.
+   - Auction or second‑hand listings are **never** used as proof of ACTIVE status.
+
+6. **When in doubt**
+   - If the information is ambiguous (e.g., the table shows ${model} in both "Discontinued" and "Replacement" columns), answer **UNKNOWN** and note the conflict.
+
+OUTPUT FORMAT (JSON)
+
 {
     "status": "ACTIVE" | "DISCONTINUED" | "UNKNOWN",
-    "explanation": "ONE brief sentence citing the most definitive source (Result #N: URL, key evidence)",
+    "explanation": "One brief sentence citing the most definitive source (Result #N: URL, key evidence).",
     "successor": {
         "status": "FOUND" | "UNKNOWN",
         "model": "model name or null",
-        "explanation": "Brief explanation or 'Product is active, no successor needed'"
+        "explanation": "Brief explanation or 'Product is active, no successor needed'."
     }
 }`;
 
