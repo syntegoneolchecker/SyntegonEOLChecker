@@ -21,8 +21,8 @@
         </div>
     </div>
     <div id="status"></div>
-    
-    <div>
+
+    <div class="input-section">
         <input id="c1" placeholder="Model">
         <input id="c2" placeholder="Maker">
         <input id="c3" placeholder="EOL Status">
@@ -32,15 +32,17 @@
         <input id="c7" placeholder="Successor Comment">
         <button onclick="addRow()">Add Entry</button>
     </div>
-    
-    <table id="table"></table>
-    
-    <div>
-        <button onclick="downloadExcel()">Download Database (Excel)</button>
-        <label for="upload" style="margin-left: 10px;">
-            <input type="file" id="upload" accept=".xlsx,.xls" onchange="loadExcel(event)" style="display: none;">
-            <button onclick="document.getElementById('upload').click(); return false;">Import Excel File</button>
-        </label>
+
+    <div class="content-wrapper">
+        <table id="table"></table>
+
+        <div class="actions-section">
+            <button onclick="downloadExcel()">Download Database (Excel)</button>
+            <label for="upload" style="margin-left: 10px;">
+                <input type="file" id="upload" accept=".xlsx,.xls" onchange="loadExcel(event)" style="display: none;">
+                <button onclick="document.getElementById('upload').click(); return false;">Import Excel File</button>
+            </label>
+        </div>
     </div>
 
     <script src="script.js"></script>
