@@ -16,6 +16,9 @@ function processTablesInContent(content) {
         const hasPipes = trimmed.includes('|');
         const pipeCount = (trimmed.match(/\|/g) || []).length;
 
+        // Check if line is a separator row (mostly dashes, pipes, and spaces)
+        const isSeparator = /^[\s\-|]+$/.test(trimmed) && trimmed.length > 0;
+
         if (hasPipes && pipeCount >= 2) {
             // This looks like a table line
             if (!inTable) {
@@ -23,6 +26,10 @@ function processTablesInContent(content) {
                 tableLines = [];
                 processedLines.push('\n=== TABLE START ===');
             }
+            tableLines.push(line);
+            processedLines.push(line);
+        } else if (inTable && isSeparator) {
+            // This is a separator row, keep it as part of the table
             tableLines.push(line);
             processedLines.push(line);
         } else {
@@ -165,14 +172,24 @@ exports.handler = async function(event, context) {
                 include_raw_content: 'text',
                 chunks_per_source: 5,
                 include_domains: [
-                    'jp.misumi-ec.com',
-                    'www.orimvexta.co.jp',
+                    '.daitron.co.jp',
+                    '.kdwan.co.jp',
+                    '.hewtech.co.jp',
+                    '.directindustry.com',
+                    '.printerland.co.uk',
+                    '.orimvexta.co.jp',
+                    '.sankyo-seisakusho.co.jp',
+                    '.tsubakimoto.co.jp',
+                    '.nbk1560.com',
+                    '.habasit.com',
+                    '.nagoya.sc',
+                    '.ccs-inc.co.jp',
+                    '.shinkoh-faulhaber.jp',
+                    '.misumi-ec.com',
                     'anelva.canon',
-                    'www.printerland.co.uk',
+                    '.takabel.com',
                     '.ysol.co.jp',
-                    'pdf.directindustry.com',
                     '.manualslib.com',
-                    'fa.omron.co.jp',
                     '.mouser.jp',
                     '.digikey.jp',
                     '.rs-components.com',
