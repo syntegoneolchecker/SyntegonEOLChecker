@@ -52,8 +52,8 @@ function processTablesInContent(content) {
     return processedLines.join('\n');
 }
 
-// Smart truncation that preserves complete tables
-function smartTruncate(content, maxLength) {
+// Smart truncation that preserves complete tables but limits total content
+function smartTruncate(content, maxLength, productModel) {
     if (content.length <= maxLength) return content;
 
     // Find all table sections
@@ -63,47 +63,74 @@ function smartTruncate(content, maxLength) {
     let tablePositions = [];
 
     while ((match = tableRegex.exec(content)) !== null) {
-        tables.push(match[0]);
-        tablePositions.push({
+        tables.push({
+            content: match[0],
             start: match.index,
             end: match.index + match[0].length,
-            content: match[0]
+            containsProduct: productModel ? match[0].includes(productModel) : false
         });
+        tablePositions.push(match.index);
     }
 
-    // If no tables, simple truncation at sentence boundary
+    // If no tables, simple truncation
     if (tables.length === 0) {
         let truncated = content.substring(0, maxLength);
         // Try to end at a sentence
         const lastPeriod = truncated.lastIndexOf('.');
         const lastNewline = truncated.lastIndexOf('\n');
         const cutPoint = Math.max(lastPeriod, lastNewline);
-        if (cutPoint > maxLength * 0.7) { // Only use sentence boundary if it's not too far back
+        if (cutPoint > maxLength * 0.7) {
             truncated = truncated.substring(0, cutPoint + 1);
         }
         return truncated + '\n\n[Content truncated due to length]';
     }
 
-    // Calculate total table size
-    const totalTableSize = tables.reduce((sum, table) => sum + table.length, 0);
-
-    // If tables alone exceed max length, keep all tables and truncate
-    if (totalTableSize >= maxLength) {
-        return tables.join('\n\n') + '\n\n[Non-table content removed due to length constraints]';
-    }
-
-    // Otherwise, keep all tables and fill remaining space with non-table content
-    const remainingSpace = maxLength - totalTableSize;
-
-    // Extract non-table content
-    let nonTableContent = content;
-    tablePositions.reverse().forEach(pos => {
-        nonTableContent = nonTableContent.substring(0, pos.start) +
-                         '###TABLE_PLACEHOLDER###' +
-                         nonTableContent.substring(pos.end);
+    // Sort tables: ones containing the product first, then by position
+    tables.sort((a, b) => {
+        if (a.containsProduct && !b.containsProduct) return -1;
+        if (!a.containsProduct && b.containsProduct) return 1;
+        return a.start - b.start;
     });
 
-    // Truncate non-table content
+    // Step 1: Calculate total table size
+    const totalTableSize = tables.reduce((sum, table) => sum + table.content.length, 0);
+
+    // Step 2: If tables alone exceed max length, keep only prioritized tables that fit
+    if (totalTableSize >= maxLength) {
+        let keptTables = [];
+        let currentSize = 0;
+        
+        for (let table of tables) {
+            if (currentSize + table.content.length <= maxLength) {
+                keptTables.push(table.content);
+                currentSize += table.content.length;
+            } else {
+                // Add truncation notice for skipped tables
+                if (keptTables.length === 0) {
+                    // If we can't even fit one table, take first table partially
+                    const partialTable = table.content.substring(0, maxLength - 100) + '\n\n[Table truncated due to size constraints]';
+                    keptTables.push(partialTable);
+                }
+                break;
+            }
+        }
+        
+        return keptTables.join('\n\n') + '\n\n[Non-table content removed due to length constraints]';
+    }
+
+    // Step 3: If tables fit, keep all tables and fill remaining space with non-table content
+    const remainingSpace = maxLength - totalTableSize;
+    
+    // Extract non-table content
+    let nonTableContent = content;
+    // Remove tables from content to get non-table parts
+    tables.sort((a, b) => b.start - a.start).forEach(table => {
+        nonTableContent = nonTableContent.substring(0, table.start) + 
+                         '###TABLE_PLACEHOLDER###' + 
+                         nonTableContent.substring(table.end);
+    });
+
+    // Truncate non-table content to fit remaining space
     if (nonTableContent.length > remainingSpace) {
         const parts = nonTableContent.split('###TABLE_PLACEHOLDER###');
         let truncatedParts = [];
@@ -115,8 +142,16 @@ function smartTruncate(content, maxLength) {
                 currentLength += part.length;
             } else {
                 const spaceLeft = remainingSpace - currentLength;
-                if (spaceLeft > 100) { // Only add partial if we have reasonable space
-                    truncatedParts.push(part.substring(0, spaceLeft) + '...');
+                if (spaceLeft > 50) { // Only add partial if we have reasonable space
+                    // Try to end at sentence boundary
+                    let partial = part.substring(0, spaceLeft);
+                    const lastPeriod = partial.lastIndexOf('.');
+                    const lastNewline = partial.lastIndexOf('\n');
+                    const cutPoint = Math.max(lastPeriod, lastNewline);
+                    if (cutPoint > spaceLeft * 0.5) {
+                        partial = partial.substring(0, cutPoint + 1);
+                    }
+                    truncatedParts.push(partial + '...');
                 }
                 break;
             }
@@ -128,7 +163,7 @@ function smartTruncate(content, maxLength) {
     // Reinsert tables
     let result = nonTableContent;
     tables.forEach(table => {
-        result = result.replace('###TABLE_PLACEHOLDER###', table);
+        result = result.replace('###TABLE_PLACEHOLDER###', table.content);
     });
 
     return result;
@@ -168,7 +203,7 @@ exports.handler = async function(event, context) {
                 api_key: process.env.TAVILY_API_KEY,
                 query: searchQuery,
                 search_depth: 'advanced',
-                max_results: 3,  // Reduced from 5 to stay under 12000 token limit
+                max_results: 2,  // Reduced from 3 to 2 to stay under 6000 token limit
                 include_raw_content: 'markdown',
                 chunks_per_source: 5,
                 include_domains: [
@@ -262,8 +297,8 @@ exports.handler = async function(event, context) {
         console.log(`Sending ${relevantResults.length} results to LLM for analysis`);
 
         // Step 2: Prepare search context for LLM with table processing and smart truncation
-        const MAX_CONTENT_LENGTH = 6000; // Maximum characters per result to avoid token limits
-        // With 3 results × 12000 chars = 36000 chars ≈ 10500 tokens + prompt overhead ≈ 11500 tokens total (under 12000 limit)
+        const MAX_CONTENT_LENGTH = 8000; // Maximum characters per result (reduced from 12000)
+        // With 2 results × 8000 chars = 16000 chars ≈ 4000-5000 tokens + prompt overhead ≈ 5500-6000 tokens total (under 6000 limit)
 
         const searchContext = relevantResults
             .map((result, index) => {
@@ -279,9 +314,9 @@ exports.handler = async function(event, context) {
                 // Process tables in the content for better LLM comprehension
                 let processedContent = processTablesInContent(rawContent);
 
-                // Smart truncation: preserve tables, truncate other content
+                // Smart truncation: preserve prioritized tables, truncate other content
                 if (processedContent.length > MAX_CONTENT_LENGTH) {
-                    processedContent = smartTruncate(processedContent, MAX_CONTENT_LENGTH);
+                    processedContent = smartTruncate(processedContent, MAX_CONTENT_LENGTH, model);
                 }
 
                 return `Result #${index + 1}
