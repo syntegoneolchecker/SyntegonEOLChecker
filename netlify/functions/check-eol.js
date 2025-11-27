@@ -77,7 +77,7 @@ OUTPUT FORMAT (JSON)
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'groq/compound',
+                    model: 'groq/compound-mini',
                     messages: [
                         {
                             role: 'user',
@@ -85,12 +85,62 @@ OUTPUT FORMAT (JSON)
                         }
                     ],
                     temperature: 0,  // Deterministic - same input = same output
-                    max_completion_tokens: 1024,
+                    max_completion_tokens: 8192,
                     top_p: 1,
                     compound_custom: {
                         tools: {
-                            enabled_tools: ['visit_website', 'web_search']
+                            enabled_tools: ['web_search', 'visit_website']
                         }
+                    },
+                    search_settings: {
+                        include_domains: [
+                            '*.daitron.co.jp',
+                            '*.kdwan.co.jp',
+                            '*.hewtech.co.jp',
+                            '*.directindustry.com',
+                            '*.printerland.co.uk',
+                            '*.orimvexta.co.jp',
+                            '*.sankyo-seisakusho.co.jp',
+                            '*.tsubakimoto.co.jp',
+                            '*.nbk1560.com',
+                            '*.habasit.com',
+                            '*.nagoya.sc',
+                            '*.misumi-ec.com',
+                            '*.anelva.canon',
+                            '*.mouser.jp',
+                            '*.digikey.jp',
+                            '*.rs-components.com',
+                            '*.fa-ubon.jp',
+                            '*.monotaro.com',
+                            '*.misumi.co.jp',
+                            '*.fujitsu.com',
+                            '*.hubbell.com',
+                            '*.adlinktech.com',
+                            '*.touchsystems.com',
+                            '*.elotouch.com',
+                            '*.aten.com',
+                            '*.canon.com',
+                            '*.axiomtek.com',
+                            '*.apc.com',
+                            '*.hp.com',
+                            '*.fujielectric.co.jp',
+                            '*.panasonic.jp',
+                            '*.wago.com',
+                            '*.schmersal.com',
+                            '*.apiste.co.jp',
+                            '*.tdklamda.com',
+                            '*.phoenixcontact.com',
+                            '*.idec.com',
+                            '*.patlite.co.jp',
+                            '*.smcworld.com',
+                            '*.sanyodenki.co.jp',
+                            '*.nissin-ele.co.jp',
+                            '*.sony.co.jp',
+                            '*.mitsubishielectric.co.jp',
+                            '*.orientalmotor.co.jp',
+                            '*.keyence.co.jp',
+                            '*.omron.co.jp'
+                        ]
                     }
                 })
             }
