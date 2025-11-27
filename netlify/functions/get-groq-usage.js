@@ -11,14 +11,14 @@ exports.handler = async function(event, context) {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
+                    model: 'groq/compound-mini',
                     messages: [
                         {
                             role: 'user',
                             content: 'Hi'
                         }
                     ],
-                    max_tokens: 1  // Minimal token usage
+                    max_completion_tokens: 1  // Minimal token usage
                 })
             }
         );
@@ -46,9 +46,9 @@ exports.handler = async function(event, context) {
             statusCode: 200,
             body: JSON.stringify({
                 remainingTokens: remainingTokens || '0',
-                limitTokens: limitTokens || '6000',
+                limitTokens: limitTokens || '70000',
                 remainingRequests: remainingRequests || '0',
-                limitRequests: limitRequests || '14400'
+                limitRequests: limitRequests || '250'
             })
         };
 
