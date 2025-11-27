@@ -382,6 +382,10 @@ ANALYSIS RULES:
    - The information is provided in the form of scraped websites. Websites have links, footers, headers etc. Because of this circumstance, not all content is relevant to the task!
    - The term "discontinued" appearing somewhere on the page alone is not proof of discontinuation, it must be connected to "${model}" or relate to it specifically
 
+THIS PART IS EXTREMELY IMPORTANT:
+If you are provided with no search results, or irrelevant results: return the status UNKNOWN and write the reason in the explanation sections.
+Respond ONLY with valid JSON. Do not include any other text before or after the JSON.
+
 RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
 {
     "status": "ACTIVE" | "DISCONTINUED" | "UNKNOWN",
@@ -391,9 +395,7 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
         "model": "model name or null",
         "explanation": "Brief explanation or 'Product is active, no successor needed'"
     }
-}
-
-Respond ONLY with valid JSON. Do not include any other text before or after the JSON.`;
+}`;
 
         const groqResponse = await fetch(
             'https://api.groq.com/openai/v1/chat/completions',
