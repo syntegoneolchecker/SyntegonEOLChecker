@@ -43,7 +43,7 @@ exports.handler = async function(event, context) {
             statusCode: 200,
             body: JSON.stringify({
                 remainingTokens: remainingTokens || '0',
-                limitTokens: limitTokens || '12000'
+                limitTokens: limitTokens || '6000'
             })
         };
 
