@@ -262,7 +262,7 @@ exports.handler = async function(event, context) {
         console.log(`Sending ${relevantResults.length} results to LLM for analysis`);
 
         // Step 2: Prepare search context for LLM with table processing and smart truncation
-        const MAX_CONTENT_LENGTH = 12000; // Maximum characters per result to avoid token limits
+        const MAX_CONTENT_LENGTH = 6000; // Maximum characters per result to avoid token limits
         // With 3 results × 12000 chars = 36000 chars ≈ 10500 tokens + prompt overhead ≈ 11500 tokens total (under 12000 limit)
 
         const searchContext = relevantResults
@@ -369,7 +369,7 @@ Respond ONLY with valid JSON. Do not include any other text before or after the 
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'llama-3.3-70b-versatile',
+                    model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
                     messages: [
                         {
                             role: 'user',
