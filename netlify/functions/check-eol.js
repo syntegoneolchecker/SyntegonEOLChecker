@@ -376,7 +376,7 @@ Respond ONLY with valid JSON. Do not include any other text before or after the 
                             content: prompt
                         }
                     ],
-                    temperature: 0.1,
+                    temperature: 0,  // Completely deterministic - same input = same output
                     max_tokens: 500
                 })
             }
