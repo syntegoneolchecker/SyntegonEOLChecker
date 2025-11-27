@@ -15,7 +15,7 @@ function showStatus(message, type = 'success', permanent = true) {
         setTimeout(() => {
             status.textContent = '';
             status.className = '';
-        }, 3000);
+        }, 300000);
     }
 }
 
