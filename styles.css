@@ -98,6 +98,7 @@ button:disabled {
 
 .check-eol {
     background: #2196F3;
+    min-width: 100px;
 }
 
 .check-eol:hover:not(:disabled) {
