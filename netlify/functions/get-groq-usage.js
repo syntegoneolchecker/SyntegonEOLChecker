@@ -35,19 +35,15 @@ exports.handler = async function(event, context) {
             };
         }
 
-        // Extract rate limit information from headers
-        const remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
-        const limitRequests = response.headers.get('x-ratelimit-limit-requests');
+        // Extract token rate limit information from headers (TPM = Tokens Per Minute)
         const remainingTokens = response.headers.get('x-ratelimit-remaining-tokens');
         const limitTokens = response.headers.get('x-ratelimit-limit-tokens');
 
         return {
             statusCode: 200,
             body: JSON.stringify({
-                remainingRequests: remainingRequests || '0',
-                limitRequests: limitRequests || '14400',
                 remainingTokens: remainingTokens || '0',
-                limitTokens: limitTokens || '18000'
+                limitTokens: limitTokens || '12000'
             })
         };
 

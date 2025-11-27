@@ -168,7 +168,7 @@ exports.handler = async function(event, context) {
                 api_key: process.env.TAVILY_API_KEY,
                 query: searchQuery,
                 search_depth: 'advanced',
-                max_results: 5,
+                max_results: 3,  // Reduced from 5 to stay under 12000 token limit
                 include_raw_content: 'markdown',
                 chunks_per_source: 5,
                 include_domains: [
@@ -262,8 +262,8 @@ exports.handler = async function(event, context) {
         console.log(`Sending ${relevantResults.length} results to LLM for analysis`);
 
         // Step 2: Prepare search context for LLM with table processing and smart truncation
-        const MAX_CONTENT_LENGTH = 5000; // Maximum characters per result to avoid token limits
-        // With 5 results × 5000 chars = 25000 chars ≈ 7000 tokens + prompt overhead ≈ 8000 tokens total
+        const MAX_CONTENT_LENGTH = 12000; // Maximum characters per result to avoid token limits
+        // With 3 results × 12000 chars = 36000 chars ≈ 10500 tokens + prompt overhead ≈ 11500 tokens total (under 12000 limit)
 
         const searchContext = relevantResults
             .map((result, index) => {
@@ -409,10 +409,8 @@ Respond ONLY with valid JSON. Do not include any other text before or after the 
         const groqData = await groqResponse.json();
         console.log('Groq response:', JSON.stringify(groqData));
 
-        // Extract rate limit information from headers
+        // Extract token rate limit information from headers (TPM = Tokens Per Minute)
         const rateLimitInfo = {
-            remainingRequests: groqResponse.headers.get('x-ratelimit-remaining-requests'),
-            limitRequests: groqResponse.headers.get('x-ratelimit-limit-requests'),
             remainingTokens: groqResponse.headers.get('x-ratelimit-remaining-tokens'),
             limitTokens: groqResponse.headers.get('x-ratelimit-limit-tokens')
         };
