@@ -267,8 +267,14 @@ exports.handler = async function(event, context) {
 
         const searchContext = relevantResults
             .map((result, index) => {
-                // Use raw_content if available, otherwise fall back to content
-                let rawContent = result.raw_content || result.content || '';
+                // Use ONLY raw_content (not the summarized content field)
+                let rawContent = result.raw_content || '';
+
+                // Skip results without raw_content
+                if (!rawContent) {
+                    console.warn(`Result #${index + 1} has no raw_content, skipping`);
+                    return null;
+                }
 
                 // Process tables in the content for better LLM comprehension
                 let processedContent = processTablesInContent(rawContent);
@@ -283,6 +289,7 @@ URL: ${result.url}
 Content:
 ${processedContent}`;
             })
+            .filter(result => result !== null)
             .join('\n\n---\n\n');
 
         // Log the full search context being sent to LLM
