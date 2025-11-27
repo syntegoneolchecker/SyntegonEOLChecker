@@ -131,8 +131,8 @@ button:disabled {
     margin: 0;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     position: sticky;
-    top: 72px;
-    z-index: 99;
+    top: 110px;
+    z-index: 98;
 }
 
 .content-wrapper {
@@ -146,9 +146,13 @@ input {
 }
 
 #status {
-    padding: 10px;
+    padding: 10px 20px;
     margin: 0;
     border-radius: 0;
+    position: sticky;
+    top: 70px;
+    z-index: 99;
+    background: white;
 }
 
 .success {
