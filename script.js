@@ -3,7 +3,6 @@ let data = [['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 
 // Initialize the app
 async function init() {
     await loadFromServer();
-    await loadTavilyCredits();
     await loadGroqUsage();
 }
 
@@ -140,9 +139,6 @@ async function checkEOL(rowIndex) {
 
         // Save to server
         await saveToServer();
-
-        // Refresh Tavily credits
-        await loadTavilyCredits();
 
         // Update Groq rate limit display
         if (result.rateLimits) {
@@ -339,41 +335,6 @@ async function loadFromServer() {
     }
 }
 
-async function loadTavilyCredits() {
-    try {
-        const response = await fetch('/.netlify/functions/get-tavily-usage');
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch Tavily credits: ${response.status}`);
-        }
-
-        const result = await response.json();
-
-        // Update the display
-        const creditsElement = document.getElementById('credits-remaining');
-        const remaining = result.remaining;
-        const limit = result.limit;
-
-        creditsElement.textContent = `${remaining}/${limit} remaining`;
-
-        // Apply color coding based on remaining credits
-        creditsElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
-
-        if (remaining > 500) {
-            creditsElement.classList.add('credits-high');
-        } else if (remaining > 100) {
-            creditsElement.classList.add('credits-medium');
-        } else {
-            creditsElement.classList.add('credits-low');
-        }
-
-    } catch (error) {
-        console.error('Failed to load Tavily credits:', error);
-        const creditsElement = document.getElementById('credits-remaining');
-        creditsElement.textContent = 'Error loading credits';
-        creditsElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
-    }
-}
 
 async function loadGroqUsage() {
     try {
@@ -385,45 +346,76 @@ async function loadGroqUsage() {
 
         const result = await response.json();
 
-        // Update the display using the same function we use after EOL checks
+        // Update both displays using the same function we use after EOL checks
         updateGroqRateLimits(result);
 
     } catch (error) {
         console.error('Failed to load Groq usage:', error);
-        const groqElement = document.getElementById('groq-remaining');
-        groqElement.textContent = 'Error loading';
-        groqElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+        const groqTPMElement = document.getElementById('groq-tpm');
+        const groqRPDElement = document.getElementById('groq-rpd');
+        groqTPMElement.textContent = 'Error loading';
+        groqRPDElement.textContent = 'Error loading';
+        groqTPMElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+        groqRPDElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
     }
 }
 
 function updateGroqRateLimits(rateLimits) {
-    const groqElement = document.getElementById('groq-remaining');
+    const groqTPMElement = document.getElementById('groq-tpm');
+    const groqRPDElement = document.getElementById('groq-rpd');
 
+    // Update TPM (Tokens Per Minute) display
     if (!rateLimits || !rateLimits.remainingTokens || !rateLimits.limitTokens) {
-        groqElement.textContent = 'N/A';
-        return;
+        groqTPMElement.textContent = 'N/A';
+    } else {
+        const remainingTokens = parseInt(rateLimits.remainingTokens);
+        const limitTokens = parseInt(rateLimits.limitTokens);
+
+        // Format with comma separators for readability
+        const remainingFormatted = remainingTokens.toLocaleString();
+        const limitFormatted = limitTokens.toLocaleString();
+
+        groqTPMElement.textContent = `${remainingFormatted}/${limitFormatted}`;
+
+        // Apply color coding based on percentage remaining
+        groqTPMElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+
+        const percentRemaining = (remainingTokens / limitTokens) * 100;
+
+        if (percentRemaining > 50) {
+            groqTPMElement.classList.add('credits-high');
+        } else if (percentRemaining > 20) {
+            groqTPMElement.classList.add('credits-medium');
+        } else {
+            groqTPMElement.classList.add('credits-low');
+        }
     }
 
-    const remaining = parseInt(rateLimits.remainingTokens);
-    const limit = parseInt(rateLimits.limitTokens);
-
-    // Format with comma separators for readability
-    const remainingFormatted = remaining.toLocaleString();
-    const limitFormatted = limit.toLocaleString();
-
-    groqElement.textContent = `${remainingFormatted}/${limitFormatted} TPM`;
-
-    // Apply color coding based on percentage remaining
-    groqElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
-
-    const percentRemaining = (remaining / limit) * 100;
-
-    if (percentRemaining > 50) {
-        groqElement.classList.add('credits-high');
-    } else if (percentRemaining > 20) {
-        groqElement.classList.add('credits-medium');
+    // Update RPD (Requests Per Day) display
+    if (!rateLimits || !rateLimits.remainingRequests || !rateLimits.limitRequests) {
+        groqRPDElement.textContent = 'N/A';
     } else {
-        groqElement.classList.add('credits-low');
+        const remainingRequests = parseInt(rateLimits.remainingRequests);
+        const limitRequests = parseInt(rateLimits.limitRequests);
+
+        // Format with comma separators for readability
+        const remainingFormatted = remainingRequests.toLocaleString();
+        const limitFormatted = limitRequests.toLocaleString();
+
+        groqRPDElement.textContent = `${remainingFormatted}/${limitFormatted}`;
+
+        // Apply color coding based on percentage remaining
+        groqRPDElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+
+        const percentRemaining = (remainingRequests / limitRequests) * 100;
+
+        if (percentRemaining > 50) {
+            groqRPDElement.classList.add('credits-high');
+        } else if (percentRemaining > 20) {
+            groqRPDElement.classList.add('credits-medium');
+        } else {
+            groqRPDElement.classList.add('credits-low');
+        }
     }
 }
 
