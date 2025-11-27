@@ -399,15 +399,19 @@ async function loadGroqUsage() {
 function updateGroqRateLimits(rateLimits) {
     const groqElement = document.getElementById('groq-remaining');
 
-    if (!rateLimits || !rateLimits.remainingRequests || !rateLimits.limitRequests) {
+    if (!rateLimits || !rateLimits.remainingTokens || !rateLimits.limitTokens) {
         groqElement.textContent = 'N/A';
         return;
     }
 
-    const remaining = parseInt(rateLimits.remainingRequests);
-    const limit = parseInt(rateLimits.limitRequests);
+    const remaining = parseInt(rateLimits.remainingTokens);
+    const limit = parseInt(rateLimits.limitTokens);
 
-    groqElement.textContent = `${remaining}/${limit} today`;
+    // Format with comma separators for readability
+    const remainingFormatted = remaining.toLocaleString();
+    const limitFormatted = limit.toLocaleString();
+
+    groqElement.textContent = `${remainingFormatted}/${limitFormatted} TPM`;
 
     // Apply color coding based on percentage remaining
     groqElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
