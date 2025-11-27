@@ -169,7 +169,7 @@ exports.handler = async function(event, context) {
                 query: searchQuery,
                 search_depth: 'advanced',
                 max_results: 5,
-                include_raw_content: 'text',
+                include_raw_content: 'markdown',
                 chunks_per_source: 5,
                 include_domains: [
                     '.daitron.co.jp',
