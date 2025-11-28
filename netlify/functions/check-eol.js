@@ -384,7 +384,7 @@ ANALYSIS RULES:
    - The term "discontinued" appearing somewhere on the page alone is not proof of discontinuation, it must be connected to "${model}" or relate to it specifically
 
 THIS PART IS EXTREMELY IMPORTANT:
-If you are provided with no search results, or irrelevant results: return the status UNKNOWN and write the reason in the explanation sections.
+If you are provided with insufficient information: return the status UNKNOWN and write the reason in the explanation sections.
 Respond ONLY with valid JSON. Do not include any other text before or after the JSON.
 
 RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
