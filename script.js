@@ -312,15 +312,20 @@ function loadExcel(e) {
 
             // Find column index for SAP Number
             const headers = importedData[0];
+            console.log('Excel headers found:', headers);
+
             const idIndex = headers.findIndex(h => {
                 const headerText = h && h.toString().toLowerCase().trim();
                 return headerText === 'id' || headerText === 'sap number';
             });
 
             if (idIndex === -1) {
-                showStatus('Error: Excel file must contain "SAP Number" or "ID" column', 'error');
+                console.error('SAP Number/ID column not found. Headers:', headers);
+                showStatus('Error: Excel file must contain "SAP Number" or "ID" column. Found headers: ' + headers.join(', '), 'error');
                 return;
             }
+
+            console.log('SAP Number column found at index:', idIndex);
 
             // Track statistics
             let newEntries = 0;
@@ -338,6 +343,7 @@ function loadExcel(e) {
 
                 // Skip rows without SAP Number
                 if (!idInput) {
+                    console.log(`Row ${i}: Skipped - no SAP Number`);
                     skippedEntries++;
                     continue;
                 }
@@ -345,9 +351,12 @@ function loadExcel(e) {
                 // Format the SAP Number
                 const formattedID = formatID(idInput);
                 if (!formattedID) {
+                    console.warn(`Row ${i}: Invalid SAP Number format: "${idInput}" (must be exactly 12 digits)`);
                     skippedEntries++;
                     continue; // Skip invalid SAP Numbers
                 }
+
+                console.log(`Row ${i}: Processing SAP Number ${formattedID}`);
 
                 // Build a complete row with all columns
                 const newRow = [];
@@ -391,12 +400,17 @@ function loadExcel(e) {
             }
 
             render();
-            let statusMsg = `Imported: ${newEntries} new entries, ${updatedEntries} updated entries`;
+
+            // Save to server first
+            await saveToServer();
+
+            // Then show import summary (so it doesn't get overwritten)
+            let statusMsg = `✓ Imported: ${newEntries} new entries, ${updatedEntries} updated entries`;
             if (skippedEntries > 0) {
                 statusMsg += `, ${skippedEntries} skipped (invalid/missing SAP Number)`;
             }
+            console.log('Import completed:', { newEntries, updatedEntries, skippedEntries });
             showStatus(statusMsg);
-            await saveToServer();
 
         } catch (error) {
             console.error('Excel import failed:', error);
