@@ -69,7 +69,7 @@ th, td {
 }
 
 th {
-    background: #4CAF50;
+    background: #01be83;
     color: white;
 }
 
@@ -78,7 +78,7 @@ tr:hover {
 }
 
 button {
-    background: #4CAF50;
+    background: #01be83;
     color: white;
     border: none;
     padding: 8px 16px;
