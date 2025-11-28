@@ -413,8 +413,13 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
                             content: prompt
                         }
                     ],
-                    temperature: 0,  // Completely deterministic - same input = same output
-                    max_tokens: 500
+                    temperature: 0,
+                    max_completion_tokens: 8192,
+                    top_p: 1,
+                    stream: false,
+                    reasoning_effort: 'low',
+                    stop: null,
+                    tools: []
                 })
             }
         );
