@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EOL Database Manager</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
@@ -34,9 +35,11 @@
         <input id="c9" placeholder="Last Check Date">
         <button onclick="addRow()">Add Entry</button>
     </div>
-    
-    <table id="table"></table>
-    
+
+    <div class="table-wrapper">
+        <table id="table"></table>
+    </div>
+
     <div>
         <button onclick="downloadExcel()">Download Database (Excel)</button>
         <label for="upload" style="margin-left: 10px;">
