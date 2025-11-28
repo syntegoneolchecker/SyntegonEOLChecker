@@ -1,4 +1,4 @@
-let data = [['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment']];
+let data = [['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date']];
 
 // Initialize the app
 async function init() {
@@ -35,6 +35,9 @@ async function addRow() {
         row.push(v);
         document.getElementById('c' + i).value = '';
     }
+
+    // Add empty Last Check Date for new entries
+    row.push('');
 
     // Check if entry with same Model (index 0) and Maker (index 1) already exists
     const model = row[0].trim();
@@ -114,7 +117,7 @@ async function checkEOL(rowIndex) {
         }
 
         // Update the row with results
-        // Columns: Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment
+        // Columns: Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
 
         // Column 2: EOL Status (DISCONTINUED, ACTIVE, or UNKNOWN)
         row[2] = result.status || 'UNKNOWN';
@@ -134,6 +137,9 @@ async function checkEOL(rowIndex) {
 
         // Column 6: Successor Comment
         row[6] = result.successor?.explanation || '';
+
+        // Column 7: Last Check Date
+        row[7] = new Date().toLocaleString();
 
         // Re-render the table
         render();
@@ -245,7 +251,7 @@ function loadExcel(e) {
                 // Skip rows without Model or Maker
                 if (!model || !maker) continue;
 
-                // Build a complete row with all 7 columns
+                // Build a complete row with all columns
                 const newRow = [];
                 const ourHeaders = data[0]; // Our standard headers
 
@@ -327,6 +333,22 @@ async function loadFromServer() {
 
         if (result.data && Array.isArray(result.data)) {
             data = result.data;
+
+            // Backward compatibility: Add "Last Check Date" column to old data
+            const expectedColumns = 8; // Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
+
+            // Update header if needed
+            if (data[0] && data[0].length < expectedColumns) {
+                data[0] = ['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date'];
+            }
+
+            // Add missing columns to data rows
+            for (let i = 1; i < data.length; i++) {
+                while (data[i].length < expectedColumns) {
+                    data[i].push(''); // Add empty string for missing columns
+                }
+            }
+
             render();
             showStatus('✓ Database loaded successfully from cloud storage');
             return;
