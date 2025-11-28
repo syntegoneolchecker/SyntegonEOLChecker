@@ -11,14 +11,20 @@ exports.handler = async function(event, context) {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
+                    model: 'openai/gpt-oss-120b',
                     messages: [
                         {
                             role: 'user',
                             content: 'Hi'
                         }
                     ],
-                    max_tokens: 1  // Minimal token usage
+                    temperature: 0,
+                    max_completion_tokens: 1,  // Minimal token usage
+                    top_p: 1,
+                    stream: false,
+                    reasoning_effort: 'low',
+                    stop: null,
+                    tools: []
                 })
             }
         );
@@ -35,15 +41,26 @@ exports.handler = async function(event, context) {
             };
         }
 
-        // Extract token rate limit information from headers (TPM = Tokens Per Minute)
-        const remainingTokens = response.headers.get('x-ratelimit-remaining-tokens');
-        const limitTokens = response.headers.get('x-ratelimit-limit-tokens');
+        // Extract token rate limit information from headers
+        // TPM = Tokens Per Minute, TPD = Tokens Per Day
+        const remainingTokensMinute = response.headers.get('x-ratelimit-remaining-tokens');
+        const limitTokensMinute = response.headers.get('x-ratelimit-limit-tokens');
+
+        // Daily limits (check various possible header names)
+        const remainingTokensDay = response.headers.get('x-ratelimit-remaining-tokens-day') ||
+                                   response.headers.get('x-daily-ratelimit-remaining-tokens');
+        const limitTokensDay = response.headers.get('x-ratelimit-limit-tokens-day') ||
+                              response.headers.get('x-daily-ratelimit-limit-tokens');
 
         return {
             statusCode: 200,
             body: JSON.stringify({
-                remainingTokens: remainingTokens || '0',
-                limitTokens: limitTokens || '6000'
+                // Per-minute limits
+                remainingTokens: remainingTokensMinute || '0',
+                limitTokens: limitTokensMinute || '8000',
+                // Per-day limits
+                remainingTokensDay: remainingTokensDay || 'N/A',
+                limitTokensDay: limitTokensDay || 'N/A'
             })
         };
 

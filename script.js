@@ -550,39 +550,73 @@ async function loadGroqUsage() {
     } catch (error) {
         console.error('Failed to load Groq usage:', error);
         const groqElement = document.getElementById('groq-remaining');
+        const groqDayElement = document.getElementById('groq-remaining-day');
         groqElement.textContent = 'Error loading';
+        groqDayElement.textContent = 'Error loading';
         groqElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+        groqDayElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
     }
 }
 
 function updateGroqRateLimits(rateLimits) {
+    // Update per-minute limits
     const groqElement = document.getElementById('groq-remaining');
 
     if (!rateLimits || !rateLimits.remainingTokens || !rateLimits.limitTokens) {
         groqElement.textContent = 'N/A';
-        return;
+    } else {
+        const remaining = parseInt(rateLimits.remainingTokens);
+        const limit = parseInt(rateLimits.limitTokens);
+
+        // Format with comma separators for readability
+        const remainingFormatted = remaining.toLocaleString();
+        const limitFormatted = limit.toLocaleString();
+
+        groqElement.textContent = `${remainingFormatted}/${limitFormatted} TPM`;
+
+        // Apply color coding based on percentage remaining
+        groqElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+
+        const percentRemaining = (remaining / limit) * 100;
+
+        if (percentRemaining > 50) {
+            groqElement.classList.add('credits-high');
+        } else if (percentRemaining > 20) {
+            groqElement.classList.add('credits-medium');
+        } else {
+            groqElement.classList.add('credits-low');
+        }
     }
 
-    const remaining = parseInt(rateLimits.remainingTokens);
-    const limit = parseInt(rateLimits.limitTokens);
+    // Update per-day limits
+    const groqDayElement = document.getElementById('groq-remaining-day');
 
-    // Format with comma separators for readability
-    const remainingFormatted = remaining.toLocaleString();
-    const limitFormatted = limit.toLocaleString();
-
-    groqElement.textContent = `${remainingFormatted}/${limitFormatted} TPM`;
-
-    // Apply color coding based on percentage remaining
-    groqElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
-
-    const percentRemaining = (remaining / limit) * 100;
-
-    if (percentRemaining > 50) {
-        groqElement.classList.add('credits-high');
-    } else if (percentRemaining > 20) {
-        groqElement.classList.add('credits-medium');
+    if (!rateLimits || !rateLimits.remainingTokensDay || !rateLimits.limitTokensDay ||
+        rateLimits.remainingTokensDay === 'N/A' || rateLimits.limitTokensDay === 'N/A') {
+        groqDayElement.textContent = 'N/A';
+        groqDayElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
     } else {
-        groqElement.classList.add('credits-low');
+        const remainingDay = parseInt(rateLimits.remainingTokensDay);
+        const limitDay = parseInt(rateLimits.limitTokensDay);
+
+        // Format with comma separators for readability
+        const remainingDayFormatted = remainingDay.toLocaleString();
+        const limitDayFormatted = limitDay.toLocaleString();
+
+        groqDayElement.textContent = `${remainingDayFormatted}/${limitDayFormatted} TPD`;
+
+        // Apply color coding based on percentage remaining
+        groqDayElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+
+        const percentRemainingDay = (remainingDay / limitDay) * 100;
+
+        if (percentRemainingDay > 50) {
+            groqDayElement.classList.add('credits-high');
+        } else if (percentRemainingDay > 20) {
+            groqDayElement.classList.add('credits-medium');
+        } else {
+            groqDayElement.classList.add('credits-low');
+        }
     }
 }
 
