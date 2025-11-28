@@ -1,4 +1,4 @@
-let data = [['ID', 'Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date']];
+let data = [['SAP Number', 'Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date']];
 
 // Auto-refresh interval for Groq rate limits
 let groqRefreshInterval = null;
@@ -53,14 +53,14 @@ function showStatus(message, type = 'success', permanent = true) {
     }
 }
 
-// Format ID to XXX-XXX-XXX-XXX format
+// Format SAP Number to XXX-XXX-XXX-XXX format
 function formatID(input) {
     // Remove all non-digit characters
     const digits = input.replace(/\D/g, '');
 
     // Check if we have exactly 12 digits
     if (digits.length !== 12) {
-        return null; // Invalid ID
+        return null; // Invalid SAP Number
     }
 
     // Format as XXX-XXX-XXX-XXX
@@ -80,16 +80,16 @@ async function addRow() {
     // Get ID from first field
     const idInput = document.getElementById('c1').value.trim();
 
-    // Validate ID is provided
+    // Validate SAP Number is provided
     if (!idInput) {
-        showStatus('Error: ID is required', 'error');
+        showStatus('Error: SAP Number is required', 'error');
         return;
     }
 
-    // Format the ID
+    // Format the SAP Number
     const formattedID = formatID(idInput);
     if (!formattedID) {
-        showStatus('Error: ID must be exactly 12 digits (e.g., 8-114-463-187 or 8114463187)', 'error');
+        showStatus('Error: SAP Number must be exactly 12 digits (e.g., 8-114-463-187 or 8114463187)', 'error');
         return;
     }
 
@@ -112,8 +112,8 @@ async function addRow() {
     if (existingIndex !== -1) {
         // Entry exists - ask for confirmation
         const existingRow = data[existingIndex];
-        const confirmMessage = `An entry with ID ${formattedID} already exists:\n\n` +
-            `ID: ${existingRow[0]}\n` +
+        const confirmMessage = `An entry with SAP Number ${formattedID} already exists:\n\n` +
+            `SAP Number: ${existingRow[0]}\n` +
             `Model: ${existingRow[1]}\n` +
             `Maker: ${existingRow[2]}\n` +
             `EOL Status: ${existingRow[3]}\n` +
@@ -203,7 +203,7 @@ async function checkEOL(rowIndex) {
         }
 
         // Update the row with results
-        // Columns: ID, Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
+        // Columns: SAP Number, Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
 
         // Column 3: EOL Status (DISCONTINUED, ACTIVE, or UNKNOWN)
         row[3] = result.status || 'UNKNOWN';
@@ -310,12 +310,15 @@ function loadExcel(e) {
                 return;
             }
 
-            // Find column index for ID
+            // Find column index for SAP Number
             const headers = importedData[0];
-            const idIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === 'id');
+            const idIndex = headers.findIndex(h => {
+                const headerText = h && h.toString().toLowerCase().trim();
+                return headerText === 'id' || headerText === 'sap number';
+            });
 
             if (idIndex === -1) {
-                showStatus('Error: Excel file must contain "ID" column', 'error');
+                showStatus('Error: Excel file must contain "SAP Number" or "ID" column', 'error');
                 return;
             }
 
@@ -333,17 +336,17 @@ function loadExcel(e) {
 
                 const idInput = (importedRow[idIndex] || '').toString().trim();
 
-                // Skip rows without ID
+                // Skip rows without SAP Number
                 if (!idInput) {
                     skippedEntries++;
                     continue;
                 }
 
-                // Format the ID
+                // Format the SAP Number
                 const formattedID = formatID(idInput);
                 if (!formattedID) {
                     skippedEntries++;
-                    continue; // Skip invalid IDs
+                    continue; // Skip invalid SAP Numbers
                 }
 
                 // Build a complete row with all columns
@@ -353,8 +356,8 @@ function loadExcel(e) {
                 for (let j = 0; j < ourHeaders.length; j++) {
                     const headerName = ourHeaders[j].toLowerCase().trim();
 
-                    if (headerName === 'id') {
-                        // Use formatted ID
+                    if (headerName === 'sap number' || headerName === 'id') {
+                        // Use formatted SAP Number
                         newRow.push(formattedID);
                     } else {
                         const importColIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === headerName);
@@ -390,7 +393,7 @@ function loadExcel(e) {
             render();
             let statusMsg = `Imported: ${newEntries} new entries, ${updatedEntries} updated entries`;
             if (skippedEntries > 0) {
-                statusMsg += `, ${skippedEntries} skipped (invalid/missing ID)`;
+                statusMsg += `, ${skippedEntries} skipped (invalid/missing SAP Number)`;
             }
             showStatus(statusMsg);
             await saveToServer();
@@ -439,19 +442,26 @@ async function loadFromServer() {
         if (result.data && Array.isArray(result.data)) {
             data = result.data;
 
-            // Backward compatibility: Add "ID" column and update structure
-            const expectedColumns = 9; // ID, Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
+            // Backward compatibility: Add "SAP Number" column and update structure
+            const expectedColumns = 9; // SAP Number, Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
 
-            // Check if we need to add ID column (old data won't have it)
-            const hasIDColumn = data[0] && data[0][0] && data[0][0].toLowerCase() === 'id';
+            // Check if we need to add SAP Number column (old data won't have it or may have "ID")
+            const firstColumn = data[0] && data[0][0] && data[0][0].toLowerCase().trim();
+            const hasSAPColumn = firstColumn === 'sap number';
+            const hasIDColumn = firstColumn === 'id';
 
-            if (!hasIDColumn) {
-                // Old data format - add ID column as first column
-                data[0] = ['ID', 'Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date'];
+            if (!hasSAPColumn) {
+                if (hasIDColumn) {
+                    // Rename "ID" to "SAP Number"
+                    data[0][0] = 'SAP Number';
+                } else {
+                    // Old data format - add SAP Number column as first column
+                    data[0] = ['SAP Number', 'Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date'];
 
-                // Add empty ID to all existing data rows
-                for (let i = 1; i < data.length; i++) {
-                    data[i].unshift(''); // Add empty ID at the beginning
+                    // Add empty SAP Number to all existing data rows
+                    for (let i = 1; i < data.length; i++) {
+                        data[i].unshift(''); // Add empty SAP Number at the beginning
+                    }
                 }
             }
 
