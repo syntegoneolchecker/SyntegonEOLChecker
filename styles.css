@@ -90,19 +90,19 @@ th, td {
 /* SAP Number column - no wrapping */
 th:nth-child(1), td:nth-child(1) {
     width: 9%;
-    min-width: 110px;
+    min-width: 80px;
     white-space: nowrap;
 }
 
 /* Model column */
 th:nth-child(2), td:nth-child(2) {
-    width: 9%;
-    min-width: 90px;
+    width: 8%;
+    min-width: 70px;
 }
 
 /* Maker column */
 th:nth-child(3), td:nth-child(3) {
-    width: 7%;
+    width: 8%;
     min-width: 70px;
 }
 
@@ -114,7 +114,7 @@ th:nth-child(4), td:nth-child(4) {
 
 /* EOL Comment column */
 th:nth-child(5), td:nth-child(5) {
-    width: 13%;
+    width: 17%;
     min-width: 130px;
 }
 
@@ -144,7 +144,7 @@ th:nth-child(9), td:nth-child(9) {
 
 /* Actions column - wider to fit both buttons */
 th:nth-child(10), td:nth-child(10) {
-    width: 17%;
+    width: 11%;
     min-width: 200px;
     white-space: nowrap;
 }
