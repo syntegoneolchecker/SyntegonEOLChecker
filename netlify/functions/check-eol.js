@@ -419,8 +419,11 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
                     top_p: 1,
                     stream: false,
                     reasoning_effort: 'low',
+                    response_format: {
+                        type: 'json_object'
+                    },
                     stop: null,
-                    tools: []
+                    seed: 1
                 })
             }
         );
