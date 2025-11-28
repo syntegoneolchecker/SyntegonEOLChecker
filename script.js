@@ -30,14 +30,11 @@ function render() {
 
 async function addRow() {
     let row = [];
-    for (let i = 1; i <= 7; i++) {
+    for (let i = 1; i <= 8; i++) {
         let v = document.getElementById('c' + i).value;
         row.push(v);
         document.getElementById('c' + i).value = '';
     }
-
-    // Add empty Last Check Date for new entries
-    row.push('');
 
     // Check if entry with same Model (index 0) and Maker (index 1) already exists
     const model = row[0].trim();
