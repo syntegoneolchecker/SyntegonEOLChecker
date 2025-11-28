@@ -1,7 +1,6 @@
 let data = [['SAP Number', 'Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date']];
 
-// Auto-refresh interval for Groq rate limits
-let groqRefreshInterval = null;
+// Countdown interval for Groq rate limit reset
 let groqCountdownInterval = null;
 let groqResetTimestamp = null;
 
@@ -10,38 +9,7 @@ async function init() {
     await loadFromServer();
     await loadTavilyCredits();
     await loadGroqUsage();
-
-    // Start auto-refresh for Groq rate limits (every 60 seconds)
-    startGroqAutoRefresh();
 }
-
-// Start automatic refresh of Groq rate limits
-function startGroqAutoRefresh() {
-    // Clear any existing interval
-    if (groqRefreshInterval) {
-        clearInterval(groqRefreshInterval);
-    }
-
-    // Refresh every 60 seconds
-    groqRefreshInterval = setInterval(async () => {
-        // Only refresh if page is visible
-        if (!document.hidden) {
-            await loadGroqUsage();
-        }
-    }, 60000); // 60000ms = 60 seconds
-}
-
-// Stop automatic refresh when page is hidden (optional, for efficiency)
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-        // Page is hidden, interval will skip updates
-        console.log('Page hidden - pausing Groq auto-refresh');
-    } else {
-        // Page is visible again, refresh immediately
-        console.log('Page visible - resuming Groq auto-refresh');
-        loadGroqUsage();
-    }
-});
 
 function showStatus(message, type = 'success', permanent = true) {
     const status = document.getElementById('status');
