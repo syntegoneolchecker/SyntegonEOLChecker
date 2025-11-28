@@ -642,5 +642,15 @@ function updateCountdownDisplay() {
     countdownElement.textContent = `${secondsLeft}s`;
 }
 
+// Toggle delete buttons visibility
+function toggleDeleteButtons() {
+    const toggle = document.getElementById('delete-toggle');
+    if (toggle.checked) {
+        document.body.classList.add('show-delete-buttons');
+    } else {
+        document.body.classList.remove('show-delete-buttons');
+    }
+}
+
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', init);

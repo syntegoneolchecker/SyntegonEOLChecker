@@ -40,6 +40,14 @@
         <button onclick="addRow()">Add Entry</button>
     </div>
 
+    <div class="delete-toggle-container">
+        <label class="toggle-switch">
+            <input type="checkbox" id="delete-toggle" onchange="toggleDeleteButtons()">
+            <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-label">Show Delete Buttons</span>
+    </div>
+
     <div class="table-wrapper">
         <table id="table"></table>
     </div>
