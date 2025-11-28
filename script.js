@@ -53,18 +53,18 @@ function showStatus(message, type = 'success', permanent = true) {
     }
 }
 
-// Format SAP Number to XXX-XXX-XXX-XXX format
+// Format SAP Number to X-XXX-XXX-XXX format (10 digits)
 function formatID(input) {
     // Remove all non-digit characters
     const digits = input.replace(/\D/g, '');
 
-    // Check if we have exactly 12 digits
-    if (digits.length !== 12) {
+    // Check if we have exactly 10 digits
+    if (digits.length !== 10) {
         return null; // Invalid SAP Number
     }
 
-    // Format as XXX-XXX-XXX-XXX
-    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}-${digits.slice(9, 12)}`;
+    // Format as X-XXX-XXX-XXX
+    return `${digits.slice(0, 1)}-${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7, 10)}`;
 }
 
 function render() {
@@ -89,7 +89,7 @@ async function addRow() {
     // Format the SAP Number
     const formattedID = formatID(idInput);
     if (!formattedID) {
-        showStatus('Error: SAP Number must be exactly 12 digits (e.g., 8-114-463-187 or 8114463187)', 'error');
+        showStatus('Error: SAP Number must be exactly 10 digits (e.g., 8-114-463-187 or 8114463187)', 'error');
         return;
     }
 
@@ -351,7 +351,7 @@ function loadExcel(e) {
                 // Format the SAP Number
                 const formattedID = formatID(idInput);
                 if (!formattedID) {
-                    console.warn(`Row ${i}: Invalid SAP Number format: "${idInput}" (must be exactly 12 digits)`);
+                    console.warn(`Row ${i}: Invalid SAP Number format: "${idInput}" (must be exactly 10 digits)`);
                     skippedEntries++;
                     continue; // Skip invalid SAP Numbers
                 }
