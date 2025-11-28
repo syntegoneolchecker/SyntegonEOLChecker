@@ -352,7 +352,7 @@ ANALYSIS RULES:
    - Available for purchase (not auction/secondhand sites)
    - Listed as a replacement/successor for other products
    - Has recent documentation, pricing, or specifications listed
-   - **CRITICAL: If "${model}" is listed as the REPLACEMENT for a discontinued product, then "${model}" is ACTIVE**
+   - **CRITICAL: If "${model}" is listed as the REPLACEMENT/SUCCESSOR for a discontinued product, then "${model}" is ACTIVE**
 
 3. EVIDENCE OF DISCONTINUED STATUS (ONLY mark discontinued with concrete proof):
    - Explicitly listed in official discontinuation/EOL tables or announcements
@@ -378,7 +378,7 @@ ANALYSIS RULES:
 6. USE COMMON SENSE
    - Prioritize official manufacturer information
    - When uncertain, lean toward UNKNOWN rather than guessing
-   - If there is conflicting information, lean towrd UNKNOWN rather than guessing
+   - If there is conflicting information, lean toward UNKNOWN rather than guessing
    - Active sales = strong evidence of ACTIVE status
    - The information is provided in the form of scraped websites. Websites have links, footers, headers etc. Because of this circumstance, not all content is relevant to the task!
    - The term "discontinued" appearing somewhere on the page alone is not proof of discontinuation, it must be connected to "${model}" or relate to it specifically
