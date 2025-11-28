@@ -297,8 +297,8 @@ exports.handler = async function(event, context) {
         console.log(`Sending ${relevantResults.length} results to LLM for analysis`);
 
         // Step 2: Prepare search context for LLM with table processing and smart truncation
-        const MAX_CONTENT_LENGTH = 6000; // Maximum characters per result (reduced from 12000)
-        // With 2 results × 6000 chars = 12000 chars ≈ 4000-5000 tokens + prompt overhead ≈ 5500-6000 tokens total (under 6000 limit)
+        const MAX_CONTENT_LENGTH = 8000; // Maximum characters per result
+        // With 2 results × 8000 chars = 16000 chars ≈ 5300-6600 tokens + prompt overhead ≈ 7000-8000 tokens total (under 8000 limit)
 
         const searchContext = relevantResults
             .map((result, index) => {
@@ -406,7 +406,7 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
+                    model: 'openai/gpt-oss-120b',
                     messages: [
                         {
                             role: 'user',
