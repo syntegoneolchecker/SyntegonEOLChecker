@@ -41,26 +41,24 @@ exports.handler = async function(event, context) {
             };
         }
 
-        // Extract token rate limit information from headers
-        // TPM = Tokens Per Minute, TPD = Tokens Per Day
-        const remainingTokensMinute = response.headers.get('x-ratelimit-remaining-tokens');
-        const limitTokensMinute = response.headers.get('x-ratelimit-limit-tokens');
+        // Extract rate limit information from headers
+        // TPM = Tokens Per Minute, RPD = Requests Per Day
+        const remainingTokens = response.headers.get('x-ratelimit-remaining-tokens');
+        const limitTokens = response.headers.get('x-ratelimit-limit-tokens');
 
-        // Daily limits (check various possible header names)
-        const remainingTokensDay = response.headers.get('x-ratelimit-remaining-tokens-day') ||
-                                   response.headers.get('x-daily-ratelimit-remaining-tokens');
-        const limitTokensDay = response.headers.get('x-ratelimit-limit-tokens-day') ||
-                              response.headers.get('x-daily-ratelimit-limit-tokens');
+        // Requests per day
+        const remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
+        const limitRequests = response.headers.get('x-ratelimit-limit-requests');
 
         return {
             statusCode: 200,
             body: JSON.stringify({
-                // Per-minute limits
-                remainingTokens: remainingTokensMinute || '0',
-                limitTokens: limitTokensMinute || '8000',
-                // Per-day limits
-                remainingTokensDay: remainingTokensDay || 'N/A',
-                limitTokensDay: limitTokensDay || 'N/A'
+                // Tokens per minute
+                remainingTokens: remainingTokens || '0',
+                limitTokens: limitTokens || '8000',
+                // Requests per day
+                remainingRequests: remainingRequests || 'N/A',
+                limitRequests: limitRequests || 'N/A'
             })
         };
 
