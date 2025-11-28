@@ -42,23 +42,15 @@ exports.handler = async function(event, context) {
         }
 
         // Extract rate limit information from headers
-        // TPM = Tokens Per Minute, RPD = Requests Per Day
+        // TPM = Tokens Per Minute
         const remainingTokens = response.headers.get('x-ratelimit-remaining-tokens');
         const limitTokens = response.headers.get('x-ratelimit-limit-tokens');
-
-        // Requests per day
-        const remainingRequests = response.headers.get('x-ratelimit-remaining-requests');
-        const limitRequests = response.headers.get('x-ratelimit-limit-requests');
 
         return {
             statusCode: 200,
             body: JSON.stringify({
-                // Tokens per minute
                 remainingTokens: remainingTokens || '0',
-                limitTokens: limitTokens || '8000',
-                // Requests per day
-                remainingRequests: remainingRequests || 'N/A',
-                limitRequests: limitRequests || 'N/A'
+                limitTokens: limitTokens || '8000'
             })
         };
 

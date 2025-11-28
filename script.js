@@ -550,11 +550,8 @@ async function loadGroqUsage() {
     } catch (error) {
         console.error('Failed to load Groq usage:', error);
         const groqElement = document.getElementById('groq-remaining');
-        const groqDayElement = document.getElementById('groq-remaining-day');
         groqElement.textContent = 'Error loading';
-        groqDayElement.textContent = 'Error loading';
         groqElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
-        groqDayElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
     }
 }
 
@@ -585,37 +582,6 @@ function updateGroqRateLimits(rateLimits) {
             groqElement.classList.add('credits-medium');
         } else {
             groqElement.classList.add('credits-low');
-        }
-    }
-
-    // Update requests per day
-    const groqDayElement = document.getElementById('groq-remaining-day');
-
-    if (!rateLimits || !rateLimits.remainingRequests || !rateLimits.limitRequests ||
-        rateLimits.remainingRequests === 'N/A' || rateLimits.limitRequests === 'N/A') {
-        groqDayElement.textContent = 'N/A';
-        groqDayElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
-    } else {
-        const remainingDay = parseInt(rateLimits.remainingRequests);
-        const limitDay = parseInt(rateLimits.limitRequests);
-
-        // Format with comma separators for readability
-        const remainingDayFormatted = remainingDay.toLocaleString();
-        const limitDayFormatted = limitDay.toLocaleString();
-
-        groqDayElement.textContent = `${remainingDayFormatted}/${limitDayFormatted} RPD`;
-
-        // Apply color coding based on percentage remaining
-        groqDayElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
-
-        const percentRemainingDay = (remainingDay / limitDay) * 100;
-
-        if (percentRemainingDay > 50) {
-            groqDayElement.classList.add('credits-high');
-        } else if (percentRemainingDay > 20) {
-            groqDayElement.classList.add('credits-medium');
-        } else {
-            groqDayElement.classList.add('credits-low');
         }
     }
 }
