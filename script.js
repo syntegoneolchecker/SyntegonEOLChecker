@@ -400,13 +400,17 @@ function loadExcel(e) {
             }
 
             render();
-            let statusMsg = `Imported: ${newEntries} new entries, ${updatedEntries} updated entries`;
+
+            // Save to server first
+            await saveToServer();
+
+            // Then show import summary (so it doesn't get overwritten)
+            let statusMsg = `✓ Imported: ${newEntries} new entries, ${updatedEntries} updated entries`;
             if (skippedEntries > 0) {
                 statusMsg += `, ${skippedEntries} skipped (invalid/missing SAP Number)`;
             }
             console.log('Import completed:', { newEntries, updatedEntries, skippedEntries });
             showStatus(statusMsg);
-            await saveToServer();
 
         } catch (error) {
             console.error('Excel import failed:', error);
