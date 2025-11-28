@@ -588,22 +588,22 @@ function updateGroqRateLimits(rateLimits) {
         }
     }
 
-    // Update per-day limits
+    // Update requests per day
     const groqDayElement = document.getElementById('groq-remaining-day');
 
-    if (!rateLimits || !rateLimits.remainingTokensDay || !rateLimits.limitTokensDay ||
-        rateLimits.remainingTokensDay === 'N/A' || rateLimits.limitTokensDay === 'N/A') {
+    if (!rateLimits || !rateLimits.remainingRequests || !rateLimits.limitRequests ||
+        rateLimits.remainingRequests === 'N/A' || rateLimits.limitRequests === 'N/A') {
         groqDayElement.textContent = 'N/A';
         groqDayElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
     } else {
-        const remainingDay = parseInt(rateLimits.remainingTokensDay);
-        const limitDay = parseInt(rateLimits.limitTokensDay);
+        const remainingDay = parseInt(rateLimits.remainingRequests);
+        const limitDay = parseInt(rateLimits.limitRequests);
 
         // Format with comma separators for readability
         const remainingDayFormatted = remainingDay.toLocaleString();
         const limitDayFormatted = limitDay.toLocaleString();
 
-        groqDayElement.textContent = `${remainingDayFormatted}/${limitDayFormatted} TPD`;
+        groqDayElement.textContent = `${remainingDayFormatted}/${limitDayFormatted} RPD`;
 
         // Apply color coding based on percentage remaining
         groqDayElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
