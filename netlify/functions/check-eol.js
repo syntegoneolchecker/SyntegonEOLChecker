@@ -456,9 +456,21 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
         console.log('Groq response:', JSON.stringify(groqData));
 
         // Extract token rate limit information from headers (TPM = Tokens Per Minute)
+        const resetTokens = groqResponse.headers.get('x-ratelimit-reset-tokens');
+
+        // Parse reset time (format: "7.66s" -> 7.66 seconds)
+        let resetSeconds = null;
+        if (resetTokens) {
+            const match = resetTokens.match(/^([\d.]+)s?$/);
+            if (match) {
+                resetSeconds = parseFloat(match[1]);
+            }
+        }
+
         const rateLimitInfo = {
             remainingTokens: groqResponse.headers.get('x-ratelimit-remaining-tokens'),
-            limitTokens: groqResponse.headers.get('x-ratelimit-limit-tokens')
+            limitTokens: groqResponse.headers.get('x-ratelimit-limit-tokens'),
+            resetSeconds: resetSeconds
         };
 
         // Extract the generated text from OpenAI-compatible format

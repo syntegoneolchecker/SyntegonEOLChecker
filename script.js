@@ -2,6 +2,8 @@ let data = [['SAP Number', 'Model', 'Maker', 'EOL Status', 'EOL Comment', 'Succe
 
 // Auto-refresh interval for Groq rate limits
 let groqRefreshInterval = null;
+let groqCountdownInterval = null;
+let groqResetTimestamp = null;
 
 // Initialize the app
 async function init() {
@@ -584,6 +586,60 @@ function updateGroqRateLimits(rateLimits) {
             groqElement.classList.add('credits-low');
         }
     }
+
+    // Update countdown timer
+    if (rateLimits && rateLimits.resetSeconds !== null && rateLimits.resetSeconds !== undefined) {
+        startGroqCountdown(rateLimits.resetSeconds);
+    } else {
+        const countdownElement = document.getElementById('groq-reset-countdown');
+        countdownElement.textContent = 'N/A';
+    }
+}
+
+function startGroqCountdown(resetSeconds) {
+    // Clear any existing countdown
+    if (groqCountdownInterval) {
+        clearInterval(groqCountdownInterval);
+    }
+
+    // Calculate reset timestamp
+    groqResetTimestamp = Date.now() + (resetSeconds * 1000);
+
+    // Update countdown display immediately
+    updateCountdownDisplay();
+
+    // Start countdown interval (update every second)
+    groqCountdownInterval = setInterval(() => {
+        updateCountdownDisplay();
+    }, 1000);
+}
+
+function updateCountdownDisplay() {
+    const countdownElement = document.getElementById('groq-reset-countdown');
+
+    if (!groqResetTimestamp) {
+        countdownElement.textContent = 'N/A';
+        return;
+    }
+
+    const now = Date.now();
+    const timeLeft = Math.max(0, groqResetTimestamp - now);
+
+    if (timeLeft <= 0) {
+        // Countdown reached 0 - refresh rate limits
+        countdownElement.textContent = 'Refreshing...';
+        if (groqCountdownInterval) {
+            clearInterval(groqCountdownInterval);
+            groqCountdownInterval = null;
+        }
+        // Automatically refresh the rate limits
+        loadGroqUsage();
+        return;
+    }
+
+    // Format time as seconds with 1 decimal place
+    const secondsLeft = (timeLeft / 1000).toFixed(1);
+    countdownElement.textContent = `${secondsLeft}s`;
 }
 
 // Initialize when page loads
