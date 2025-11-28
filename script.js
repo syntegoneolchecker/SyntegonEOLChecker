@@ -1,4 +1,4 @@
-let data = [['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date']];
+let data = [['ID', 'Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date']];
 
 // Auto-refresh interval for Groq rate limits
 let groqRefreshInterval = null;
@@ -53,6 +53,20 @@ function showStatus(message, type = 'success', permanent = true) {
     }
 }
 
+// Format ID to XXX-XXX-XXX-XXX format
+function formatID(input) {
+    // Remove all non-digit characters
+    const digits = input.replace(/\D/g, '');
+
+    // Check if we have exactly 12 digits
+    if (digits.length !== 12) {
+        return null; // Invalid ID
+    }
+
+    // Format as XXX-XXX-XXX-XXX
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}-${digits.slice(9, 12)}`;
+}
+
 function render() {
     let t = document.getElementById('table');
     t.innerHTML = data.map((r, i) =>
@@ -63,38 +77,79 @@ function render() {
 }
 
 async function addRow() {
-    let row = [];
-    for (let i = 1; i <= 8; i++) {
-        let v = document.getElementById('c' + i).value;
-        row.push(v);
-        document.getElementById('c' + i).value = '';
+    // Get ID from first field
+    const idInput = document.getElementById('c1').value.trim();
+
+    // Validate ID is provided
+    if (!idInput) {
+        showStatus('Error: ID is required', 'error');
+        return;
     }
 
-    // Check if entry with same Model (index 0) and Maker (index 1) already exists
-    const model = row[0].trim();
-    const maker = row[1].trim();
+    // Format the ID
+    const formattedID = formatID(idInput);
+    if (!formattedID) {
+        showStatus('Error: ID must be exactly 12 digits (e.g., 8-114-463-187 or 8114463187)', 'error');
+        return;
+    }
 
-    // Find existing entry (skip header row at index 0)
+    // Read all fields
+    let row = [formattedID]; // Start with formatted ID
+    for (let i = 2; i <= 9; i++) {
+        let v = document.getElementById('c' + i).value;
+        row.push(v);
+    }
+
+    // Find existing entry by ID (skip header row at index 0)
     let existingIndex = -1;
     for (let i = 1; i < data.length; i++) {
-        if (data[i][0].trim() === model && data[i][1].trim() === maker) {
+        if (data[i][0] === formattedID) {
             existingIndex = i;
             break;
         }
     }
 
     if (existingIndex !== -1) {
-        // Update existing entry
-        data[existingIndex] = row;
-        render();
-        showStatus(`Updated existing entry for "${model}" (${maker})`);
-        await saveToServer();
+        // Entry exists - ask for confirmation
+        const existingRow = data[existingIndex];
+        const confirmMessage = `An entry with ID ${formattedID} already exists:\n\n` +
+            `ID: ${existingRow[0]}\n` +
+            `Model: ${existingRow[1]}\n` +
+            `Maker: ${existingRow[2]}\n` +
+            `EOL Status: ${existingRow[3]}\n` +
+            `EOL Comment: ${existingRow[4]}\n` +
+            `Successor Status: ${existingRow[5]}\n` +
+            `Successor Name: ${existingRow[6]}\n` +
+            `Successor Comment: ${existingRow[7]}\n` +
+            `Last Check Date: ${existingRow[8]}\n\n` +
+            `Do you want to replace this entry with the new data?`;
+
+        if (confirm(confirmMessage)) {
+            // User confirmed - replace the entry
+            data[existingIndex] = row;
+            render();
+            showStatus(`✓ Entry ${formattedID} replaced successfully`);
+            await saveToServer();
+
+            // Clear input fields
+            for (let i = 1; i <= 9; i++) {
+                document.getElementById('c' + i).value = '';
+            }
+        } else {
+            // User cancelled
+            showStatus(`Entry replacement cancelled`, 'info');
+        }
     } else {
-        // Add new entry
+        // New entry - add it
         data.push(row);
         render();
-        showStatus(`Added new entry for "${model}" (${maker})`);
+        showStatus(`✓ New entry ${formattedID} added successfully`);
         await saveToServer();
+
+        // Clear input fields
+        for (let i = 1; i <= 9; i++) {
+            document.getElementById('c' + i).value = '';
+        }
     }
 }
 
@@ -106,8 +161,8 @@ async function delRow(i) {
 
 async function checkEOL(rowIndex) {
     const row = data[rowIndex];
-    const model = row[0]; // Model is column 0
-    const maker = row[1]; // Maker is column 1
+    const model = row[1]; // Model is column 1 (after ID)
+    const maker = row[2]; // Maker is column 2 (after ID)
 
     if (!model || !maker) {
         showStatus('Error: Model and Maker are required for EOL check', 'error');
@@ -148,29 +203,29 @@ async function checkEOL(rowIndex) {
         }
 
         // Update the row with results
-        // Columns: Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
+        // Columns: ID, Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
 
-        // Column 2: EOL Status (DISCONTINUED, ACTIVE, or UNKNOWN)
-        row[2] = result.status || 'UNKNOWN';
+        // Column 3: EOL Status (DISCONTINUED, ACTIVE, or UNKNOWN)
+        row[3] = result.status || 'UNKNOWN';
 
-        // Column 3: EOL Comment
-        row[3] = result.explanation || '';
+        // Column 4: EOL Comment
+        row[4] = result.explanation || '';
 
-        // Column 4: Successor Status
+        // Column 5: Successor Status
         if (result.successor?.status === 'FOUND') {
-            row[4] = 'YES';
+            row[5] = 'YES';
         } else {
-            row[4] = 'UNKNOWN';
+            row[5] = 'UNKNOWN';
         }
 
-        // Column 5: Successor Name
-        row[5] = result.successor?.model || '';
+        // Column 6: Successor Name
+        row[6] = result.successor?.model || '';
 
-        // Column 6: Successor Comment
-        row[6] = result.successor?.explanation || '';
+        // Column 7: Successor Comment
+        row[7] = result.successor?.explanation || '';
 
-        // Column 7: Last Check Date
-        row[7] = new Date().toLocaleString();
+        // Column 8: Last Check Date
+        row[8] = new Date().toLocaleString();
 
         // Re-render the table
         render();
@@ -255,19 +310,19 @@ function loadExcel(e) {
                 return;
             }
 
-            // Find column indices for Model and Maker
+            // Find column index for ID
             const headers = importedData[0];
-            const modelIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === 'model');
-            const makerIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === 'maker');
+            const idIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === 'id');
 
-            if (modelIndex === -1 || makerIndex === -1) {
-                showStatus('Error: Excel file must contain "Model" and "Maker" columns', 'error');
+            if (idIndex === -1) {
+                showStatus('Error: Excel file must contain "ID" column', 'error');
                 return;
             }
 
             // Track statistics
             let newEntries = 0;
             let updatedEntries = 0;
+            let skippedEntries = 0;
 
             // Process each row from the imported file (skip header)
             for (let i = 1; i < importedData.length; i++) {
@@ -276,11 +331,20 @@ function loadExcel(e) {
                 // Skip empty rows
                 if (!importedRow || importedRow.length === 0) continue;
 
-                const model = (importedRow[modelIndex] || '').toString().trim();
-                const maker = (importedRow[makerIndex] || '').toString().trim();
+                const idInput = (importedRow[idIndex] || '').toString().trim();
 
-                // Skip rows without Model or Maker
-                if (!model || !maker) continue;
+                // Skip rows without ID
+                if (!idInput) {
+                    skippedEntries++;
+                    continue;
+                }
+
+                // Format the ID
+                const formattedID = formatID(idInput);
+                if (!formattedID) {
+                    skippedEntries++;
+                    continue; // Skip invalid IDs
+                }
 
                 // Build a complete row with all columns
                 const newRow = [];
@@ -288,19 +352,25 @@ function loadExcel(e) {
 
                 for (let j = 0; j < ourHeaders.length; j++) {
                     const headerName = ourHeaders[j].toLowerCase().trim();
-                    const importColIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === headerName);
 
-                    if (importColIndex !== -1 && importedRow[importColIndex] !== undefined) {
-                        newRow.push(importedRow[importColIndex].toString());
+                    if (headerName === 'id') {
+                        // Use formatted ID
+                        newRow.push(formattedID);
                     } else {
-                        newRow.push(''); // Fill missing columns with empty string
+                        const importColIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === headerName);
+
+                        if (importColIndex !== -1 && importedRow[importColIndex] !== undefined) {
+                            newRow.push(importedRow[importColIndex].toString());
+                        } else {
+                            newRow.push(''); // Fill missing columns with empty string
+                        }
                     }
                 }
 
-                // Find existing entry with same Model and Maker
+                // Find existing entry with same ID
                 let existingIndex = -1;
                 for (let k = 1; k < data.length; k++) {
-                    if (data[k][0].trim() === model && data[k][1].trim() === maker) {
+                    if (data[k][0] === formattedID) {
                         existingIndex = k;
                         break;
                     }
@@ -318,7 +388,11 @@ function loadExcel(e) {
             }
 
             render();
-            showStatus(`Imported: ${newEntries} new entries, ${updatedEntries} updated entries`);
+            let statusMsg = `Imported: ${newEntries} new entries, ${updatedEntries} updated entries`;
+            if (skippedEntries > 0) {
+                statusMsg += `, ${skippedEntries} skipped (invalid/missing ID)`;
+            }
+            showStatus(statusMsg);
             await saveToServer();
 
         } catch (error) {
@@ -365,16 +439,24 @@ async function loadFromServer() {
         if (result.data && Array.isArray(result.data)) {
             data = result.data;
 
-            // Backward compatibility: Add "Last Check Date" column to old data
-            const expectedColumns = 8; // Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
+            // Backward compatibility: Add "ID" column and update structure
+            const expectedColumns = 9; // ID, Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
 
-            // Update header if needed
-            if (data[0] && data[0].length < expectedColumns) {
-                data[0] = ['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date'];
+            // Check if we need to add ID column (old data won't have it)
+            const hasIDColumn = data[0] && data[0][0] && data[0][0].toLowerCase() === 'id';
+
+            if (!hasIDColumn) {
+                // Old data format - add ID column as first column
+                data[0] = ['ID', 'Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date'];
+
+                // Add empty ID to all existing data rows
+                for (let i = 1; i < data.length; i++) {
+                    data[i].unshift(''); // Add empty ID at the beginning
+                }
             }
 
-            // Add missing columns to data rows
-            for (let i = 1; i < data.length; i++) {
+            // Ensure all rows have the expected number of columns
+            for (let i = 0; i < data.length; i++) {
                 while (data[i].length < expectedColumns) {
                     data[i].push(''); // Add empty string for missing columns
                 }
