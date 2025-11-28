@@ -45,12 +45,23 @@ exports.handler = async function(event, context) {
         // TPM = Tokens Per Minute
         const remainingTokens = response.headers.get('x-ratelimit-remaining-tokens');
         const limitTokens = response.headers.get('x-ratelimit-limit-tokens');
+        const resetTokens = response.headers.get('x-ratelimit-reset-tokens');
+
+        // Parse reset time (format: "7.66s" -> 7.66 seconds)
+        let resetSeconds = null;
+        if (resetTokens) {
+            const match = resetTokens.match(/^([\d.]+)s?$/);
+            if (match) {
+                resetSeconds = parseFloat(match[1]);
+            }
+        }
 
         return {
             statusCode: 200,
             body: JSON.stringify({
                 remainingTokens: remainingTokens || '0',
-                limitTokens: limitTokens || '8000'
+                limitTokens: limitTokens || '8000',
+                resetSeconds: resetSeconds
             })
         };
 
