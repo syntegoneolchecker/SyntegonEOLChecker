@@ -315,13 +315,30 @@ app.post('/scrape', async (req, res) => {
 
         await page.setViewport({ width: 1920, height: 1080 });
 
-        await page.goto(url, {
-            waitUntil: 'networkidle2', // Wait until ≤2 network connections remain
-            timeout: 120000 // 2 minutes for heavy dynamic sites
-        });
+        // Try networkidle2 with 60s timeout, extract content even if it times out
+        let navigationTimedOut = false;
+        try {
+            await page.goto(url, {
+                waitUntil: 'networkidle2', // Wait until ≤2 network connections remain
+                timeout: 60000 // 1 minute timeout
+            });
+            console.log('Navigation completed with networkidle2');
+        } catch (navError) {
+            // Check if it's a timeout error
+            if (navError.message.includes('timeout') || navError.message.includes('Navigation timeout')) {
+                console.log(`Navigation timed out after 60s, but page may have partial content - continuing with extraction`);
+                navigationTimedOut = true;
+                // Don't throw - continue to extract whatever content is available
+            } else {
+                // Other navigation errors (not timeout) - rethrow
+                throw navError;
+            }
+        }
 
         // Additional wait for JavaScript rendering (replaced deprecated waitForTimeout)
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Shorter wait if navigation timed out (content probably won't load more)
+        const postLoadWait = navigationTimedOut ? 1000 : 5000;
+        await new Promise(resolve => setTimeout(resolve, postLoadWait));
 
         const content = await page.evaluate(() => {
             const scripts = document.querySelectorAll('script, style, noscript');
@@ -331,8 +348,13 @@ app.post('/scrape', async (req, res) => {
 
         const pageTitle = await page.title();
 
-        console.log(`[${new Date().toISOString()}] Successfully scraped with Puppeteer: ${url}`);
-        console.log(`Content length: ${content.length} characters`);
+        if (navigationTimedOut) {
+            console.log(`[${new Date().toISOString()}] Scraped with Puppeteer (partial - timeout): ${url}`);
+            console.log(`Content length: ${content.length} characters (extracted after 60s timeout)`);
+        } else {
+            console.log(`[${new Date().toISOString()}] Successfully scraped with Puppeteer: ${url}`);
+            console.log(`Content length: ${content.length} characters`);
+        }
 
         await browser.close();
 
