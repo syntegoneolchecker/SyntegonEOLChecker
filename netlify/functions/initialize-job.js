@@ -53,7 +53,7 @@ exports.handler = async function(event, context) {
                 api_key: process.env.TAVILY_API_KEY,
                 query: searchQuery,
                 search_depth: 'advanced',
-                max_results: 3,  // Get 3 URLs for scraping
+                max_results: 2,  // 2 URLs to stay within token limits
                 // NOTE: Removed include_raw_content - we'll scrape with Render instead
                 include_domains: [
                     'daitron.co.jp',
