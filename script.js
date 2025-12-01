@@ -144,13 +144,13 @@ async function checkEOL(rowIndex) {
         const rowElement = document.getElementById(`row-${rowIndex}`);
         const checkButton = rowElement.querySelector('.check-eol');
         const originalButtonText = checkButton.textContent;
-        checkButton.textContent = 'Checking...';
+        checkButton.textContent = 'Initializing...';
         checkButton.disabled = true;
 
-        showStatus(`Checking EOL status for ${maker} ${model}...`, 'info', false);
+        showStatus(`Initializing EOL check for ${maker} ${model}...`, 'info', false);
 
-        // Call the Netlify function
-        const response = await fetch('/.netlify/functions/check-eol', {
+        // Step 1: Initialize job (search and queue URLs)
+        const initResponse = await fetch('/.netlify/functions/initialize-job', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -158,19 +158,25 @@ async function checkEOL(rowIndex) {
             body: JSON.stringify({ model, maker })
         });
 
-        const result = await response.json();
-
-        // Handle rate limiting (429)
-        if (response.status === 429 && result.rateLimited) {
-            showStatus('Rate limit exceeded. Please wait a moment and try again.', 'error');
-            checkButton.textContent = originalButtonText;
-            checkButton.disabled = false;
-            return;
+        if (!initResponse.ok) {
+            const errorData = await initResponse.json();
+            throw new Error(errorData.error || `HTTP error! status: ${initResponse.status}`);
         }
 
-        if (!response.ok) {
-            throw new Error(result.error || `Server error: ${response.status}`);
+        const initData = await initResponse.json();
+        console.log('Job initialized:', initData);
+
+        const jobId = initData.jobId;
+
+        if (!jobId) {
+            throw new Error('No job ID received');
         }
+
+        // Update button to show processing state
+        checkButton.textContent = 'Processing...';
+
+        // Step 2: Poll for job status
+        const result = await pollJobStatus(jobId, maker, model, checkButton);
 
         // Update the row with results
         // Columns: SAP Number, Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
@@ -213,6 +219,10 @@ async function checkEOL(rowIndex) {
 
         showStatus(`✓ EOL check completed for ${maker} ${model}`, 'success');
 
+        // Re-enable button
+        checkButton.textContent = originalButtonText;
+        checkButton.disabled = false;
+
     } catch (error) {
         console.error('EOL check failed:', error);
         showStatus(`Error checking EOL: ${error.message}`, 'error');
@@ -223,6 +233,57 @@ async function checkEOL(rowIndex) {
         checkButton.textContent = 'Check EOL';
         checkButton.disabled = false;
     }
+}
+
+// Poll job status until complete
+async function pollJobStatus(jobId, maker, model, checkButton) {
+    const maxAttempts = 90; // 90 attempts * 2s = 3 min max
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+        attempts++;
+
+        try {
+            console.log(`Polling job status (attempt ${attempts})...`);
+
+            const statusResponse = await fetch(`/.netlify/functions/job-status/${jobId}`);
+
+            if (!statusResponse.ok) {
+                throw new Error(`Status check failed: ${statusResponse.status}`);
+            }
+
+            const statusData = await statusResponse.json();
+            console.log('Job status:', statusData);
+
+            // Update button text with progress
+            if (checkButton) {
+                const progress = `${statusData.completedUrls || 0}/${statusData.urlCount || 0}`;
+                checkButton.textContent = `Processing (${progress})`;
+            }
+
+            // Update status message with progress
+            showStatus(`Checking ${maker} ${model}... (${statusData.completedUrls || 0}/${statusData.urlCount || 0} pages)`, 'info', false);
+
+            if (statusData.status === 'complete') {
+                // Job complete!
+                console.log('Job complete:', statusData);
+                return statusData.result;
+            }
+
+            if (statusData.status === 'error') {
+                throw new Error(statusData.error || 'Job failed');
+            }
+
+            // Still processing - wait 2 seconds before next poll
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+        } catch (error) {
+            console.error('Polling error:', error);
+            throw error;
+        }
+    }
+
+    throw new Error('Job timeout - processing took too long');
 }
 
 async function downloadExcel() {
