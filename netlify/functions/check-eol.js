@@ -230,7 +230,8 @@ exports.handler = async function(event, context) {
 
         // Step 1: Search with Tavily API
         console.log('Step 1: Searching with Tavily...');
-        const searchQuery = `${maker} ${model} discontinued OR 販売終了 OR 終息製品`;
+        // const searchQuery = `${maker} ${model} discontinued OR 販売終了 OR 終息製品`;
+        const searchQuery = `${maker} ${model}`;
 
         const tavilyResponse = await fetch('https://api.tavily.com/search', {
             method: 'POST',
