@@ -1,6 +1,15 @@
 // Job storage using Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 
+// Helper to get configured store
+function getJobStore() {
+    return getStore({
+        name: 'eol-jobs',
+        siteID: process.env.SITE_ID,
+        token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+    });
+}
+
 // Create a new job
 async function createJob(maker, model, context) {
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -17,7 +26,7 @@ async function createJob(maker, model, context) {
         createdAt: new Date().toISOString()
     };
 
-    const store = getStore('eol-jobs');
+    const store = getJobStore();
     await store.setJSON(jobId, job);
 
     console.log(`Created job ${jobId} for ${maker} ${model}`);
@@ -26,7 +35,7 @@ async function createJob(maker, model, context) {
 
 // Save URLs to job
 async function saveJobUrls(jobId, urls, context) {
-    const store = getStore('eol-jobs');
+    const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
     if (!job) {
@@ -48,14 +57,14 @@ async function saveJobUrls(jobId, urls, context) {
 
 // Get job
 async function getJob(jobId, context) {
-    const store = getStore('eol-jobs');
+    const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
     return job;
 }
 
 // Update job status
 async function updateJobStatus(jobId, status, error, context) {
-    const store = getStore('eol-jobs');
+    const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
     if (!job) {
@@ -73,7 +82,7 @@ async function updateJobStatus(jobId, status, error, context) {
 
 // Mark URL as fetching
 async function markUrlFetching(jobId, urlIndex, context) {
-    const store = getStore('eol-jobs');
+    const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
     if (!job) {
@@ -90,7 +99,7 @@ async function markUrlFetching(jobId, urlIndex, context) {
 
 // Save URL result and return whether all URLs are complete
 async function saveUrlResult(jobId, urlIndex, result, context) {
-    const store = getStore('eol-jobs');
+    const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
     if (!job) {
@@ -116,7 +125,7 @@ async function saveUrlResult(jobId, urlIndex, result, context) {
 
 // Save final analysis result
 async function saveFinalResult(jobId, result, context) {
-    const store = getStore('eol-jobs');
+    const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
     if (!job) {
