@@ -1,5 +1,5 @@
 // Receive results from Render scraping service and save them
-const { saveUrlResult } = require('./lib/job-storage');
+const { saveUrlResult, getJob } = require('./lib/job-storage');
 
 exports.handler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
@@ -30,6 +30,22 @@ exports.handler = async function(event, context) {
             // All URLs fetched - trigger LLM analysis
             console.log(`All URLs complete for job ${jobId}, triggering analysis`);
             await triggerAnalysis(jobId, baseUrl);
+        } else {
+            // SEQUENTIAL EXECUTION: Trigger next pending URL (Render free tier = 1 concurrent request)
+            console.log(`URL ${urlIndex} complete, checking for next pending URL...`);
+            const job = await getJob(jobId, context);
+
+            if (job) {
+                // Find next pending URL
+                const nextUrl = job.urls.find(u => u.status === 'pending');
+
+                if (nextUrl) {
+                    console.log(`Triggering next URL ${nextUrl.index}: ${nextUrl.url}`);
+                    await triggerFetch(jobId, nextUrl, baseUrl);
+                } else {
+                    console.log(`No more pending URLs found (all may be fetching or complete)`);
+                }
+            }
         }
 
         return {
@@ -45,6 +61,25 @@ exports.handler = async function(event, context) {
         };
     }
 };
+
+// Trigger next URL fetch
+async function triggerFetch(jobId, urlInfo, baseUrl) {
+    try {
+        await fetch(`${baseUrl}/.netlify/functions/fetch-url`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jobId,
+                urlIndex: urlInfo.index,
+                url: urlInfo.url,
+                title: urlInfo.title,
+                snippet: urlInfo.snippet
+            })
+        });
+    } catch (error) {
+        console.error('Failed to trigger next fetch:', error);
+    }
+}
 
 // Trigger LLM analysis
 async function triggerAnalysis(jobId, baseUrl) {

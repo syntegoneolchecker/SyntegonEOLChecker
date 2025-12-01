@@ -38,7 +38,6 @@ exports.handler = async function(event, context) {
             await updateJobStatus(jobId, 'fetching', null, context);
             job.status = 'fetching';
 
-            // Trigger fetch for each URL (fire-and-forget - don't wait for completion)
             // Construct base URL from request headers
             const protocol = event.headers['x-forwarded-proto'] || 'https';
             const host = event.headers['host'];
@@ -46,32 +45,28 @@ exports.handler = async function(event, context) {
             const fetchUrl = `${baseUrl}/.netlify/functions/fetch-url`;
             console.log(`Fetch endpoint: ${fetchUrl}`);
 
-            // Fire-and-forget: trigger all fetch-url functions without waiting
-            // They will update job state themselves when complete
-            let triggeredCount = 0;
-            job.urls.forEach((urlInfo) => {
-                console.log(`Triggering fetch for URL ${urlInfo.index}: ${urlInfo.url}`);
+            // SEQUENTIAL EXECUTION: Only trigger first URL (Render free tier = 1 concurrent request)
+            // scraping-callback will trigger next URL after this one completes
+            const firstUrl = job.urls[0];
+            if (firstUrl) {
+                console.log(`Triggering first URL (sequential): ${firstUrl.url}`);
 
                 fetch(fetchUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         jobId,
-                        urlIndex: urlInfo.index,
-                        url: urlInfo.url,
-                        title: urlInfo.title,
-                        snippet: urlInfo.snippet
+                        urlIndex: firstUrl.index,
+                        url: firstUrl.url,
+                        title: firstUrl.title,
+                        snippet: firstUrl.snippet
                     })
                 }).then(() => {
-                    console.log(`Fetch trigger sent for URL ${urlInfo.index}`);
+                    console.log(`First fetch-url triggered (subsequent URLs will be triggered by callback)`);
                 }).catch(error => {
-                    console.error(`Failed to trigger fetch for URL ${urlInfo.index}:`, error.message);
+                    console.error(`Failed to trigger first fetch-url:`, error.message);
                 });
-
-                triggeredCount++;
-            });
-
-            console.log(`All ${triggeredCount} fetch-url calls triggered (fire-and-forget)`);
+            }
         }
 
         // Return current job status
