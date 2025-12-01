@@ -252,7 +252,7 @@ app.post('/scrape', async (req, res) => {
                 '--no-zygote',
                 '--disable-gpu'
             ],
-            timeout: 60000
+            timeout: 120000 // 2 minutes
         });
 
         const page = await browser.newPage();
@@ -264,12 +264,12 @@ app.post('/scrape', async (req, res) => {
         await page.setViewport({ width: 1920, height: 1080 });
 
         await page.goto(url, {
-            waitUntil: 'domcontentloaded', // Less strict than networkidle2, works better with dynamic sites
-            timeout: 60000
+            waitUntil: 'networkidle2', // Wait until ≤2 network connections remain
+            timeout: 120000 // 2 minutes for heavy dynamic sites
         });
 
-        // Wait for content to load (replaced deprecated waitForTimeout)
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Additional wait for JavaScript rendering (replaced deprecated waitForTimeout)
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
         const content = await page.evaluate(() => {
             const scripts = document.querySelectorAll('script, style, noscript');
@@ -367,7 +367,7 @@ app.post('/scrape-batch', async (req, res) => {
                             '--no-zygote',
                             '--disable-gpu'
                         ],
-                        timeout: 60000
+                        timeout: 120000 // 2 minutes
                     });
                 }
 
@@ -380,12 +380,12 @@ app.post('/scrape-batch', async (req, res) => {
                 await page.setViewport({ width: 1920, height: 1080 });
 
                 await page.goto(url, {
-                    waitUntil: 'domcontentloaded',
-                    timeout: 60000
+                    waitUntil: 'networkidle2', // Wait until ≤2 network connections remain
+                    timeout: 120000 // 2 minutes for heavy dynamic sites
                 });
 
-                // Wait for content to load
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                // Additional wait for JavaScript rendering
+                await new Promise(resolve => setTimeout(resolve, 5000));
 
                 const content = await page.evaluate(() => {
                     const scripts = document.querySelectorAll('script, style, noscript');
