@@ -9,6 +9,7 @@ async function init() {
     await loadFromServer();
     await loadTavilyCredits();
     await loadGroqUsage();
+    await checkRenderHealth();
 }
 
 function showStatus(message, type = 'success', permanent = true) {
@@ -144,9 +145,14 @@ async function checkEOL(rowIndex) {
         const rowElement = document.getElementById(`row-${rowIndex}`);
         const checkButton = rowElement.querySelector('.check-eol');
         const originalButtonText = checkButton.textContent;
-        checkButton.textContent = 'Initializing...';
+        checkButton.textContent = 'Waking Render...';
         checkButton.disabled = true;
 
+        // Wake up Render scraping service (handles cold starts)
+        showStatus(`Waking up scraping service...`, 'info', false);
+        await checkRenderHealth();
+
+        checkButton.textContent = 'Initializing...';
         showStatus(`Initializing EOL check for ${maker} ${model}...`, 'info', false);
 
         // Step 1: Initialize job (search and queue URLs)
@@ -669,6 +675,61 @@ function updateCountdownDisplay() {
     // Format time as seconds with 1 decimal place
     const secondsLeft = (timeLeft / 1000).toFixed(1);
     countdownElement.textContent = `${secondsLeft}s`;
+}
+
+// Check Render scraping service health
+async function checkRenderHealth() {
+    const renderStatusElement = document.getElementById('render-status');
+    const renderServiceUrl = 'https://eolscrapingservice.onrender.com';
+
+    try {
+        renderStatusElement.textContent = 'Checking...';
+        renderStatusElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
+
+        const startTime = Date.now();
+
+        // Call health endpoint with timeout
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout for cold start
+
+        const response = await fetch(`${renderServiceUrl}/health`, {
+            signal: controller.signal
+        });
+
+        clearTimeout(timeout);
+
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+        if (response.ok) {
+            const data = await response.json();
+
+            if (elapsed > 10) {
+                // Cold start detected (took >10s)
+                renderStatusElement.textContent = `Ready (cold start: ${elapsed}s)`;
+                renderStatusElement.classList.add('credits-medium');
+            } else {
+                // Already warm
+                renderStatusElement.textContent = `Ready (${elapsed}s)`;
+                renderStatusElement.classList.add('credits-high');
+            }
+
+            console.log(`Render health check: OK in ${elapsed}s`, data);
+        } else {
+            renderStatusElement.textContent = `Error (HTTP ${response.status})`;
+            renderStatusElement.classList.add('credits-low');
+        }
+
+    } catch (error) {
+        console.error('Render health check failed:', error);
+
+        if (error.name === 'AbortError') {
+            renderStatusElement.textContent = 'Timeout (>60s)';
+        } else {
+            renderStatusElement.textContent = `Offline (${error.message})`;
+        }
+
+        renderStatusElement.classList.add('credits-low');
+    }
 }
 
 // Toggle delete buttons visibility
