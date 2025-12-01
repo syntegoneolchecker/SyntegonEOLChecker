@@ -199,13 +199,16 @@ app.get('/health', (req, res) => {
 
 // Main scraping endpoint
 app.post('/scrape', async (req, res) => {
-    const { url } = req.body;
+    const { url, callbackUrl, jobId, urlIndex, title, snippet } = req.body;
 
     if (!url) {
         return res.status(400).json({ error: 'URL is required' });
     }
 
     console.log(`[${new Date().toISOString()}] Scraping URL: ${url}`);
+    if (callbackUrl) {
+        console.log(`Callback URL provided: ${callbackUrl}`);
+    }
 
     try {
         // Try fast fetch first (handles PDFs, text files, and simple HTML)
@@ -216,7 +219,7 @@ app.post('/scrape', async (req, res) => {
             console.log(`[${new Date().toISOString()}] Fast fetch successful: ${url}`);
             console.log(`Content length: ${fastResult.length} characters`);
 
-            return res.json({
+            const result = {
                 success: true,
                 url: url,
                 title: null,
@@ -224,17 +227,66 @@ app.post('/scrape', async (req, res) => {
                 contentLength: fastResult.length,
                 method: 'fast_fetch',
                 timestamp: new Date().toISOString()
-            });
+            };
+
+            // If callback URL provided, POST result to callback
+            if (callbackUrl) {
+                console.log(`Posting fast fetch result to callback: ${callbackUrl}`);
+                try {
+                    await fetch(callbackUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            jobId,
+                            urlIndex,
+                            content: fastResult,
+                            title: null,
+                            snippet,
+                            url
+                        })
+                    });
+                    console.log('Callback successful');
+                } catch (callbackError) {
+                    console.error('Callback failed:', callbackError.message);
+                }
+            }
+
+            return res.json(result);
         }
 
         // Fast fetch failed - check if it's a PDF or text file
         if (isPDFUrl(url) || isTextFileUrl(url)) {
             console.log(`[${new Date().toISOString()}] PDF/text file fetch failed, not attempting Puppeteer`);
-            return res.status(500).json({
+
+            const errorResult = {
                 success: false,
                 error: 'PDF or text file could not be fetched',
                 url: url
-            });
+            };
+
+            // If callback URL provided, POST error to callback
+            if (callbackUrl) {
+                console.log(`Posting PDF/text error to callback: ${callbackUrl}`);
+                try {
+                    await fetch(callbackUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            jobId,
+                            urlIndex,
+                            content: '[PDF or text file could not be fetched]',
+                            title: null,
+                            snippet,
+                            url
+                        })
+                    });
+                    console.log('Error callback successful');
+                } catch (callbackError) {
+                    console.error('Error callback failed:', callbackError.message);
+                }
+            }
+
+            return res.status(500).json(errorResult);
         }
 
         // Use Puppeteer for dynamic HTML pages only
@@ -277,25 +329,71 @@ app.post('/scrape', async (req, res) => {
             return document.body.innerText;
         });
 
-        const title = await page.title();
+        const pageTitle = await page.title();
 
         console.log(`[${new Date().toISOString()}] Successfully scraped with Puppeteer: ${url}`);
         console.log(`Content length: ${content.length} characters`);
 
         await browser.close();
 
-        res.json({
+        const result = {
             success: true,
             url: url,
-            title: title,
+            title: pageTitle,
             content: content,
             contentLength: content.length,
             method: 'puppeteer',
             timestamp: new Date().toISOString()
-        });
+        };
+
+        // If callback URL provided, POST result to callback
+        if (callbackUrl) {
+            console.log(`Posting Puppeteer result to callback: ${callbackUrl}`);
+            try {
+                await fetch(callbackUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jobId,
+                        urlIndex,
+                        content: content,
+                        title: pageTitle,
+                        snippet,
+                        url
+                    })
+                });
+                console.log('Callback successful');
+            } catch (callbackError) {
+                console.error('Callback failed:', callbackError.message);
+            }
+        }
+
+        res.json(result);
 
     } catch (error) {
         console.error(`[${new Date().toISOString()}] Scraping error:`, error.message);
+
+        // If callback URL provided, POST error to callback
+        if (callbackUrl) {
+            console.log(`Posting error to callback: ${callbackUrl}`);
+            try {
+                await fetch(callbackUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jobId,
+                        urlIndex,
+                        content: `[Scraping error: ${error.message}]`,
+                        title: null,
+                        snippet,
+                        url
+                    })
+                });
+                console.log('Error callback successful');
+            } catch (callbackError) {
+                console.error('Error callback failed:', callbackError.message);
+            }
+        }
 
         res.status(500).json({
             success: false,
