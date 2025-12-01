@@ -264,11 +264,12 @@ app.post('/scrape', async (req, res) => {
         await page.setViewport({ width: 1920, height: 1080 });
 
         await page.goto(url, {
-            waitUntil: 'networkidle2',
+            waitUntil: 'domcontentloaded', // Less strict than networkidle2, works better with dynamic sites
             timeout: 60000
         });
 
-        await page.waitForTimeout(2000);
+        // Wait for content to load (replaced deprecated waitForTimeout)
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
         const content = await page.evaluate(() => {
             const scripts = document.querySelectorAll('script, style, noscript');
@@ -379,11 +380,12 @@ app.post('/scrape-batch', async (req, res) => {
                 await page.setViewport({ width: 1920, height: 1080 });
 
                 await page.goto(url, {
-                    waitUntil: 'networkidle2',
+                    waitUntil: 'domcontentloaded',
                     timeout: 60000
                 });
 
-                await page.waitForTimeout(2000);
+                // Wait for content to load
+                await new Promise(resolve => setTimeout(resolve, 3000));
 
                 const content = await page.evaluate(() => {
                     const scripts = document.querySelectorAll('script, style, noscript');
