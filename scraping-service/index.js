@@ -315,6 +315,24 @@ app.post('/scrape', async (req, res) => {
 
         await page.setViewport({ width: 1920, height: 1080 });
 
+        // Network monitoring to diagnose timeout causes
+        const pendingRequests = new Map(); // Map<url, {startTime, resourceType}>
+
+        page.on('request', request => {
+            pendingRequests.set(request.url(), {
+                startTime: Date.now(),
+                resourceType: request.resourceType()
+            });
+        });
+
+        page.on('requestfinished', request => {
+            pendingRequests.delete(request.url());
+        });
+
+        page.on('requestfailed', request => {
+            pendingRequests.delete(request.url());
+        });
+
         // Try networkidle2 with 60s timeout, extract content even if it times out
         let navigationTimedOut = false;
         try {
@@ -328,6 +346,48 @@ app.post('/scrape', async (req, res) => {
             if (navError.message.includes('timeout') || navError.message.includes('Navigation timeout')) {
                 console.log(`Navigation timed out after 60s, but page may have partial content - continuing with extraction`);
                 navigationTimedOut = true;
+
+                // NETWORK DIAGNOSTICS: Log pending requests to identify timeout cause
+                console.log(`\n=== NETWORK TIMEOUT DIAGNOSTICS ===`);
+                console.log(`Total pending requests: ${pendingRequests.size}`);
+
+                if (pendingRequests.size > 0) {
+                    // Group by resource type
+                    const byType = new Map();
+                    for (const [url, info] of pendingRequests) {
+                        if (!byType.has(info.resourceType)) {
+                            byType.set(info.resourceType, []);
+                        }
+                        byType.get(info.resourceType).push({
+                            url,
+                            duration: Date.now() - info.startTime
+                        });
+                    }
+
+                    // Log summary by type
+                    console.log(`\nPending requests by type:`);
+                    for (const [type, requests] of byType) {
+                        console.log(`  ${type}: ${requests.length}`);
+                    }
+
+                    // Log top 10 longest pending requests
+                    const sortedRequests = Array.from(pendingRequests.entries())
+                        .map(([url, info]) => ({
+                            url,
+                            duration: Date.now() - info.startTime,
+                            type: info.resourceType
+                        }))
+                        .sort((a, b) => b.duration - a.duration)
+                        .slice(0, 10);
+
+                    console.log(`\nTop 10 longest pending requests:`);
+                    sortedRequests.forEach((req, i) => {
+                        const seconds = (req.duration / 1000).toFixed(1);
+                        console.log(`  ${i + 1}. [${req.type}] ${seconds}s - ${req.url.substring(0, 100)}${req.url.length > 100 ? '...' : ''}`);
+                    });
+                }
+                console.log(`===================================\n`);
+
                 // Don't throw - continue to extract whatever content is available
             } else {
                 // Other navigation errors (not timeout) - rethrow
