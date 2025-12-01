@@ -52,6 +52,44 @@ function processTablesInContent(content) {
     return processedLines.join('\n');
 }
 
+// Remove tables that don't contain the product model name
+function filterIrrelevantTables(content, productModel) {
+    if (!content || !productModel) return content;
+
+    // Find all table sections
+    const tableRegex = /=== TABLE START ===[\s\S]*?=== TABLE END ===/g;
+    let match;
+    const tablesToRemove = [];
+
+    // Identify tables that don't contain the product model
+    while ((match = tableRegex.exec(content)) !== null) {
+        const tableContent = match[0];
+
+        // Check if table contains the product model name (case-insensitive)
+        if (!tableContent.toLowerCase().includes(productModel.toLowerCase())) {
+            tablesToRemove.push({
+                content: tableContent,
+                start: match.index,
+                end: match.index + tableContent.length
+            });
+        }
+    }
+
+    // Remove irrelevant tables from the content
+    let filteredContent = content;
+    // Process in reverse order to maintain correct indices
+    for (let i = tablesToRemove.length - 1; i >= 0; i--) {
+        const table = tablesToRemove[i];
+        filteredContent = filteredContent.substring(0, table.start) +
+                         filteredContent.substring(table.end);
+    }
+
+    // Clean up any double newlines left from table removal
+    filteredContent = filteredContent.replace(/\n{3,}/g, '\n\n');
+
+    return filteredContent;
+}
+
 // Smart truncation that preserves complete tables but limits total content
 function smartTruncate(content, maxLength, productModel) {
     if (content.length <= maxLength) return content;
@@ -313,6 +351,9 @@ exports.handler = async function(event, context) {
 
                 // Process tables in the content for better LLM comprehension
                 let processedContent = processTablesInContent(rawContent);
+
+                // Filter out tables that don't contain the product model name
+                processedContent = filterIrrelevantTables(processedContent, model);
 
                 // Smart truncation: preserve prioritized tables, truncate other content
                 if (processedContent.length > MAX_CONTENT_LENGTH) {
