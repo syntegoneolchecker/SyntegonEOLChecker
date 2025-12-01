@@ -340,20 +340,74 @@ app.post('/scrape', async (req, res) => {
         const postLoadWait = navigationTimedOut ? 1000 : 5000;
         await new Promise(resolve => setTimeout(resolve, postLoadWait));
 
-        const content = await page.evaluate(() => {
-            const scripts = document.querySelectorAll('script, style, noscript');
-            scripts.forEach(script => script.remove());
-            return document.body.innerText;
-        });
+        // Extract content with timeout protection (page might be in bad state after nav timeout)
+        let content = '';
+        let pageTitle = '';
 
-        const pageTitle = await page.title();
+        try {
+            // Wrap extraction in Promise.race with 30s timeout
+            const extractionPromise = (async () => {
+                const extractedContent = await page.evaluate(() => {
+                    const scripts = document.querySelectorAll('script, style, noscript');
+                    scripts.forEach(script => script.remove());
+                    return document.body.innerText;
+                });
+                const extractedTitle = await page.title();
+                return { content: extractedContent, title: extractedTitle };
+            })();
 
-        if (navigationTimedOut) {
-            console.log(`[${new Date().toISOString()}] Scraped with Puppeteer (partial - timeout): ${url}`);
-            console.log(`Content length: ${content.length} characters (extracted after 60s timeout)`);
-        } else {
-            console.log(`[${new Date().toISOString()}] Successfully scraped with Puppeteer: ${url}`);
-            console.log(`Content length: ${content.length} characters`);
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Content extraction timeout')), 30000)
+            );
+
+            const result = await Promise.race([extractionPromise, timeoutPromise]);
+            content = result.content;
+            pageTitle = result.title;
+
+            if (navigationTimedOut) {
+                console.log(`[${new Date().toISOString()}] Scraped with Puppeteer (partial - timeout): ${url}`);
+                console.log(`Content length: ${content.length} characters (extracted after 60s timeout)`);
+            } else {
+                console.log(`[${new Date().toISOString()}] Successfully scraped with Puppeteer: ${url}`);
+                console.log(`Content length: ${content.length} characters`);
+            }
+        } catch (extractError) {
+            console.error(`Content extraction failed after navigation timeout: ${extractError.message}`);
+
+            // Close browser before sending error callback
+            try {
+                await browser.close();
+            } catch (closeErr) {
+                console.error('Failed to close browser:', closeErr.message);
+            }
+
+            // Send error callback
+            if (callbackUrl) {
+                console.log(`Posting extraction error to callback: ${callbackUrl}`);
+                try {
+                    await fetch(callbackUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            jobId,
+                            urlIndex,
+                            content: `[Page loaded but content extraction failed after timeout]`,
+                            title: null,
+                            snippet,
+                            url
+                        })
+                    });
+                    console.log('Error callback successful');
+                } catch (callbackError) {
+                    console.error('Error callback failed:', callbackError.message);
+                }
+            }
+
+            return res.status(500).json({
+                success: false,
+                error: `Content extraction failed: ${extractError.message}`,
+                url: url
+            });
         }
 
         await browser.close();
