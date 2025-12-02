@@ -699,10 +699,55 @@ async function checkRenderHealth() {
 // Toggle delete buttons visibility
 function toggleDeleteButtons() {
     const toggle = document.getElementById('delete-toggle');
+    const clearDbButton = document.getElementById('clear-database-btn');
+
     if (toggle.checked) {
         document.body.classList.add('show-delete-buttons');
+        clearDbButton.style.display = 'block';
     } else {
         document.body.classList.remove('show-delete-buttons');
+        clearDbButton.style.display = 'none';
+    }
+}
+
+// Clear entire database with confirmation
+async function clearDatabase() {
+    // Show confirmation dialog
+    const confirmed = confirm(
+        '⚠️ WARNING: Clear Entire Database?\n\n' +
+        'This will permanently delete ALL entries from the database.\n' +
+        'This action CANNOT be undone.\n\n' +
+        'Are you sure you want to continue?'
+    );
+
+    if (!confirmed) {
+        showStatus('Database clear cancelled', 'info');
+        return;
+    }
+
+    try {
+        showStatus('Clearing database...', 'info');
+
+        const response = await fetch('/.netlify/functions/reset-database', {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to clear database: ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log('Database cleared:', result);
+
+        // Reset data to empty state with headers only
+        data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
+
+        render();
+        showStatus('✓ Database cleared successfully', 'success');
+
+    } catch (error) {
+        console.error('Clear database error:', error);
+        showStatus('Error clearing database: ' + error.message, 'error');
     }
 }
 
