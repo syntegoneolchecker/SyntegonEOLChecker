@@ -50,25 +50,27 @@
             <button onclick="addRow()">Add Entry</button>
         </div>
 
-        <div class="delete-toggle-container">
-            <label class="toggle-switch">
-                <input type="checkbox" id="delete-toggle" onchange="toggleDeleteButtons()">
-                <span class="toggle-slider"></span>
-            </label>
-            <span class="toggle-label">Show Delete Buttons</span>
+        <div class="controls-row">
+            <div class="delete-toggle-container">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="delete-toggle" onchange="toggleDeleteButtons()">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span class="toggle-label">Show Delete Buttons</span>
+            </div>
+
+            <div class="file-actions">
+                <button onclick="downloadExcel()">Download Database (Excel)</button>
+                <label for="upload">
+                    <input type="file" id="upload" accept=".xlsx,.xls" onchange="loadExcel(event)" style="display: none;">
+                    <button onclick="document.getElementById('upload').click(); return false;">Import Excel File</button>
+                </label>
+            </div>
         </div>
     </div>
 
     <div class="table-wrapper">
         <table id="table"></table>
-    </div>
-
-    <div class="bottom-actions">
-        <button onclick="downloadExcel()">Download Database (Excel)</button>
-        <label for="upload" style="margin-left: 10px;">
-            <input type="file" id="upload" accept=".xlsx,.xls" onchange="loadExcel(event)" style="display: none;">
-            <button onclick="document.getElementById('upload').click(); return false;">Import Excel File</button>
-        </label>
     </div>
 
     <script src="script.js"></script>
