@@ -472,7 +472,7 @@ THIS PART IS EXTREMELY IMPORTANT:
 If you are provided with insufficient information: return the status UNKNOWN and write the reason in the explanation sections.
 Respond ONLY with valid JSON. Do not include any other text before or after the JSON.
 
-RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
+RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY one of the options mentioned):
 {
     "status": "ACTIVE" | "DISCONTINUED" | "UNKNOWN",
     "explanation": "ONE brief sentence citing the most definitive source (Result #N: URL(ALWAYS provide the URL), key evidence)",
