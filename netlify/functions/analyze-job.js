@@ -370,7 +370,7 @@ function finalTruncate(content, productModel, maxLength) {
 
 // Format job results for LLM with token limiting
 function formatResults(job) {
-    const MAX_CONTENT_LENGTH = 6500; // Increased from 6000 to 6500 characters per result
+    const MAX_CONTENT_LENGTH = 6500; // Maximum characters per result
     const MAX_TOTAL_CHARS = 13000; // 2 URLs × 6500 chars = 13,000 chars
 
     let formatted = '';
