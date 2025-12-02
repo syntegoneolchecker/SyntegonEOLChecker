@@ -57,6 +57,7 @@ exports.handler = async function(event, context) {
                 country="japan",
                 // NOTE: Removed include_raw_content - we'll scrape with Render instead
                 include_domains: [
+                    'jp.misumi-ec.com',
                     'mitsubishielectric.com',
                     'kvm-switches-online.com',
                     'daitron.co.jp',
@@ -82,7 +83,6 @@ exports.handler = async function(event, context) {
                     'rs-components.com',
                     'fa-ubon.jp',
                     'monotaro.com',
-                    'misumi.co.jp',
                     'fujitsu.com',
                     'hubbell.com',
                     'adlinktech.com',
