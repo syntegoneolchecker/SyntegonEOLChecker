@@ -342,20 +342,18 @@ function loadExcel(e) {
                 return;
             }
 
-            // Find column index for SAP Part Number (accept old names for backward compatibility)
+            // Find column index for SAP Part Number
             const headers = importedData[0];
             console.log('Excel headers found:', headers);
 
             const idIndex = headers.findIndex(h => {
                 const headerText = h && h.toString().toLowerCase().trim();
-                return headerText === 'id' ||
-                       headerText === 'sap number' ||
-                       headerText === 'sap part number';
+                return headerText === 'sap part number';
             });
 
             if (idIndex === -1) {
                 console.error('SAP Part Number column not found. Headers:', headers);
-                showStatus('Error: Excel file must contain "SAP Part Number", "SAP Number", or "ID" column. Found headers: ' + headers.join(', '), 'error');
+                showStatus('Error: Excel file must contain "SAP Part Number" column. Found headers: ' + headers.join(', '), 'error');
                 return;
             }
 
@@ -399,7 +397,7 @@ function loadExcel(e) {
                 for (let j = 0; j < ourHeaders.length; j++) {
                     const headerName = ourHeaders[j].toLowerCase().trim();
 
-                    if (headerName === 'sap part number' || headerName === 'sap number' || headerName === 'id') {
+                    if (headerName === 'sap part number') {
                         // Use formatted SAP Part Number
                         newRow.push(formattedID);
                     } else {
@@ -489,69 +487,6 @@ async function loadFromServer() {
 
         if (result.data && Array.isArray(result.data)) {
             data = result.data;
-
-            // Backward compatibility: Migrate old data structure to new 13-column structure
-            const expectedColumns = 13; // New structure has 13 columns
-            const firstColumn = data[0] && data[0][0] && data[0][0].toLowerCase().trim();
-
-            // Check if this is old data that needs migration
-            if (firstColumn === 'sap number' && data[0].length === 9) {
-                // Old 9-column structure needs migration
-                console.log('Migrating old 9-column structure to new 13-column structure');
-
-                // Update header row
-                const newHeader = [
-                    'SAP Part Number',    // 0 - was 'SAP Number'
-                    'Legacy Part Number', // 1 - NEW
-                    'Designation',        // 2 - NEW
-                    'Model',             // 3 - was index 1
-                    'Manufacturer',      // 4 - was 'Maker' at index 2
-                    'Status',            // 5 - was 'EOL Status' at index 3
-                    'Status Comment',    // 6 - was 'EOL Comment' at index 4
-                    'Successor Model',   // 7 - was 'Successor Name' at index 6
-                    'Successor Comment', // 8 - was index 7
-                    'Successor SAP Number', // 9 - NEW
-                    'Stock',            // 10 - NEW
-                    'Information Date', // 11 - was 'Last Check Date' at index 8
-                    'Auto Check'        // 12 - NEW
-                ];
-
-                const migratedData = [newHeader];
-
-                // Migrate each data row
-                for (let i = 1; i < data.length; i++) {
-                    const oldRow = data[i];
-                    const newRow = [
-                        oldRow[0] || '', // SAP Part Number (was SAP Number)
-                        '',              // Legacy Part Number - NEW
-                        '',              // Designation - NEW
-                        oldRow[1] || '', // Model
-                        oldRow[2] || '', // Manufacturer (was Maker)
-                        oldRow[3] || '', // Status (was EOL Status)
-                        oldRow[4] || '', // Status Comment (was EOL Comment)
-                        oldRow[6] || '', // Successor Model (was Successor Name) - skip old index 5 (Successor Status)
-                        oldRow[7] || '', // Successor Comment
-                        '',              // Successor SAP Number - NEW
-                        '',              // Stock - NEW
-                        oldRow[8] || '', // Information Date (was Last Check Date)
-                        ''               // Auto Check - NEW
-                    ];
-                    migratedData.push(newRow);
-                }
-
-                data = migratedData;
-            } else if (firstColumn === 'id') {
-                // Very old data with "ID" column
-                data[0][0] = 'SAP Part Number';
-            }
-
-            // Ensure all rows have the expected number of columns
-            for (let i = 0; i < data.length; i++) {
-                while (data[i].length < expectedColumns) {
-                    data[i].push(''); // Add empty string for missing columns
-                }
-            }
-
             render();
             showStatus('✓ Database loaded successfully from cloud storage');
             return;
