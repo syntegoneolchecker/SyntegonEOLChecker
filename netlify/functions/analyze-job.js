@@ -133,111 +133,245 @@ function filterIrrelevantTables(content, productModel) {
     return filteredContent;
 }
 
-// Smart truncation that preserves complete tables
+// Advanced smart truncation that preserves product mentions
 function smartTruncate(content, maxLength, productModel) {
     if (content.length <= maxLength) return content;
+    if (!productModel) {
+        // No product model - simple truncation from end
+        return simpleTruncate(content, maxLength);
+    }
 
+    const productLower = productModel.toLowerCase();
+    const contentLower = content.toLowerCase();
+
+    // Check if product name is present in content
+    if (!contentLower.includes(productLower)) {
+        // Product not mentioned - simple truncation from end
+        console.log(`Product "${productModel}" not found in content, using simple truncation`);
+        return simpleTruncate(content, maxLength);
+    }
+
+    console.log(`Product "${productModel}" found in content, using advanced truncation`);
+
+    // Product IS mentioned - use advanced truncation
+    // Step 1: Process tables (remove non-product tables, truncate product tables)
+    let processedContent = truncateTablesWithProduct(content, productModel, maxLength);
+
+    // Step 2: If still too long, extract product mention sections
+    if (processedContent.length > maxLength) {
+        processedContent = extractProductSections(processedContent, productModel, maxLength);
+    }
+
+    // Step 3: Final check - if STILL too long, hard truncate but preserve first product mention
+    if (processedContent.length > maxLength) {
+        console.log(`Content still too long after section extraction, applying final truncation`);
+        processedContent = finalTruncate(processedContent, productModel, maxLength);
+    }
+
+    return processedContent + '\n\n[Content truncated to preserve product mentions]';
+}
+
+// Helper: Simple truncation from end at sentence boundary
+function simpleTruncate(content, maxLength) {
+    let truncated = content.substring(0, maxLength);
+
+    // Try to cut at sentence boundary
+    const lastPeriod = truncated.lastIndexOf('.');
+    const lastNewline = truncated.lastIndexOf('\n');
+    const cutPoint = Math.max(lastPeriod, lastNewline);
+
+    if (cutPoint > maxLength * 0.7) {
+        truncated = truncated.substring(0, cutPoint + 1);
+    }
+
+    return truncated + '\n\n[Content truncated due to length]';
+}
+
+// Helper: Truncate tables intelligently (keep product mentions, remove others)
+function truncateTablesWithProduct(content, productModel, maxLength) {
     const tableRegex = /=== TABLE START ===[\s\S]*?=== TABLE END ===/g;
-    const tables = [];
+    let result = content;
     let match;
+    const tables = [];
 
+    // Find all tables
     while ((match = tableRegex.exec(content)) !== null) {
         tables.push({
             content: match[0],
             start: match.index,
-            end: match.index + match[0].length,
-            containsProduct: productModel ? match[0].includes(productModel) : false
+            end: match.index + match[0].length
         });
     }
 
-    if (tables.length === 0) {
-        let truncated = content.substring(0, maxLength);
-        const lastPeriod = truncated.lastIndexOf('.');
-        const lastNewline = truncated.lastIndexOf('\n');
-        const cutPoint = Math.max(lastPeriod, lastNewline);
-        if (cutPoint > maxLength * 0.7) {
-            truncated = truncated.substring(0, cutPoint + 1);
+    // Process tables in reverse order (to preserve indices)
+    for (let i = tables.length - 1; i >= 0; i--) {
+        const table = tables[i];
+        const tableContent = table.content;
+
+        if (!tableContent.toLowerCase().includes(productModel.toLowerCase())) {
+            // Table doesn't contain product - already removed by filterIrrelevantTables
+            continue;
         }
-        return truncated + '\n\n[Content truncated due to length]';
+
+        // Table contains product - truncate to keep only relevant rows
+        const truncatedTable = truncateTableRows(tableContent, productModel);
+
+        // Replace original table with truncated version
+        result = result.substring(0, table.start) + truncatedTable + result.substring(table.end);
     }
 
-    tables.sort((a, b) => {
-        if (a.containsProduct && !b.containsProduct) return -1;
-        if (!a.containsProduct && b.containsProduct) return 1;
-        return a.start - b.start;
-    });
+    return result;
+}
 
-    const totalTableSize = tables.reduce((sum, table) => sum + table.content.length, 0);
+// Helper: Truncate table to keep only rows around product mentions
+function truncateTableRows(tableContent, productModel) {
+    const lines = tableContent.split('\n');
+    const productLower = productModel.toLowerCase();
+    const ROWS_BEFORE = 3;
+    const ROWS_AFTER = 3;
 
-    if (totalTableSize >= maxLength) {
-        let keptTables = [];
-        let currentSize = 0;
+    // Find table boundaries
+    let tableStart = -1;
+    let tableEnd = -1;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes('=== TABLE START ===')) tableStart = i;
+        if (lines[i].includes('=== TABLE END ===')) tableEnd = i;
+    }
 
-        for (let table of tables) {
-            if (currentSize + table.content.length <= maxLength) {
-                keptTables.push(table.content);
-                currentSize += table.content.length;
+    if (tableStart === -1 || tableEnd === -1) return tableContent;
+
+    // Find rows containing product
+    const productRows = [];
+    for (let i = tableStart + 1; i < tableEnd; i++) {
+        if (lines[i].toLowerCase().includes(productLower)) {
+            productRows.push(i);
+        }
+    }
+
+    if (productRows.length === 0) return tableContent;
+
+    // Build set of rows to keep (including context)
+    const rowsToKeep = new Set();
+
+    // Always keep header row (first row after TABLE START)
+    if (tableStart + 1 < tableEnd) {
+        rowsToKeep.add(tableStart + 1);
+    }
+
+    // Keep rows around each product mention
+    for (const productRow of productRows) {
+        // Keep ROWS_BEFORE before, the product row, and ROWS_AFTER after
+        for (let i = Math.max(tableStart + 1, productRow - ROWS_BEFORE);
+             i <= Math.min(tableEnd - 1, productRow + ROWS_AFTER);
+             i++) {
+            rowsToKeep.add(i);
+        }
+    }
+
+    // Build truncated table
+    const keptLines = [];
+    keptLines.push(lines[tableStart]); // TABLE START marker
+
+    let lastKeptRow = tableStart;
+    for (let i = tableStart + 1; i < tableEnd; i++) {
+        if (rowsToKeep.has(i)) {
+            // Add ellipsis if we skipped rows
+            if (i - lastKeptRow > 1) {
+                keptLines.push('| ... | ... |');
+            }
+            keptLines.push(lines[i]);
+            lastKeptRow = i;
+        }
+    }
+
+    keptLines.push(lines[tableEnd]); // TABLE END marker
+
+    const result = keptLines.join('\n');
+    console.log(`Truncated table from ${lines.length} rows to ${keptLines.length} rows`);
+    return result;
+}
+
+// Helper: Extract sections containing product mentions with context
+function extractProductSections(content, productModel, maxLength) {
+    const CONTEXT_CHARS = 250; // Characters before and after product mention
+    const productLower = productModel.toLowerCase();
+    const contentLower = content.toLowerCase();
+
+    // Find all product mentions
+    const mentions = [];
+    let index = contentLower.indexOf(productLower);
+    while (index !== -1) {
+        mentions.push(index);
+        index = contentLower.indexOf(productLower, index + 1);
+    }
+
+    if (mentions.length === 0) {
+        return simpleTruncate(content, maxLength);
+    }
+
+    console.log(`Found ${mentions.length} product mentions, extracting sections`);
+
+    // Extract sections around each mention
+    const sections = [];
+    for (const mentionIndex of mentions) {
+        const start = Math.max(0, mentionIndex - CONTEXT_CHARS);
+        const end = Math.min(content.length, mentionIndex + productModel.length + CONTEXT_CHARS);
+
+        let section = content.substring(start, end);
+
+        // Add ellipsis if we cut mid-text
+        if (start > 0) section = '...' + section;
+        if (end < content.length) section = section + '...';
+
+        sections.push(section);
+    }
+
+    // Combine sections
+    let combined = sections.join('\n\n[...]\n\n');
+
+    // If combined sections still too long, prioritize first mentions
+    if (combined.length > maxLength) {
+        combined = '';
+        for (const section of sections) {
+            if (combined.length + section.length + 20 <= maxLength) {
+                if (combined.length > 0) combined += '\n\n[...]\n\n';
+                combined += section;
             } else {
-                if (keptTables.length === 0) {
-                    const partialTable = table.content.substring(0, maxLength - 100) + '\n\n[Table truncated due to size constraints]';
-                    keptTables.push(partialTable);
-                }
                 break;
             }
         }
-
-        return keptTables.join('\n\n') + '\n\n[Non-table content removed due to length constraints]';
     }
 
-    const remainingSpace = maxLength - totalTableSize;
+    return combined;
+}
 
-    let nonTableContent = content;
-    tables.sort((a, b) => b.start - a.start).forEach(table => {
-        nonTableContent = nonTableContent.substring(0, table.start) +
-                         '###TABLE_PLACEHOLDER###' +
-                         nonTableContent.substring(table.end);
-    });
+// Helper: Final hard truncation while preserving first product mention
+function finalTruncate(content, productModel, maxLength) {
+    const productLower = productModel.toLowerCase();
+    const contentLower = content.toLowerCase();
+    const firstMention = contentLower.indexOf(productLower);
 
-    if (nonTableContent.length > remainingSpace) {
-        const parts = nonTableContent.split('###TABLE_PLACEHOLDER###');
-        let truncatedParts = [];
-        let currentLength = 0;
-
-        for (let part of parts) {
-            if (currentLength + part.length <= remainingSpace) {
-                truncatedParts.push(part);
-                currentLength += part.length;
-            } else {
-                const spaceLeft = remainingSpace - currentLength;
-                if (spaceLeft > 50) {
-                    let partial = part.substring(0, spaceLeft);
-                    const lastPeriod = partial.lastIndexOf('.');
-                    const lastNewline = partial.lastIndexOf('\n');
-                    const cutPoint = Math.max(lastPeriod, lastNewline);
-                    if (cutPoint > spaceLeft * 0.5) {
-                        partial = partial.substring(0, cutPoint + 1);
-                    }
-                    truncatedParts.push(partial + '...');
-                }
-                break;
-            }
-        }
-
-        nonTableContent = truncatedParts.join('###TABLE_PLACEHOLDER###');
+    if (firstMention === -1 || firstMention > maxLength) {
+        // Product mention not in first maxLength chars, just truncate from start
+        return simpleTruncate(content, maxLength);
     }
 
-    let result = nonTableContent;
-    tables.forEach(table => {
-        result = result.replace('###TABLE_PLACEHOLDER###', table.content);
-    });
+    // Try to keep content centered around first mention
+    const CONTEXT = 200;
+    const start = Math.max(0, firstMention - CONTEXT);
+    const end = Math.min(content.length, start + maxLength);
+
+    let result = content.substring(start, end);
+    if (start > 0) result = '...' + result;
+    if (end < content.length) result = result + '...';
 
     return result;
 }
 
 // Format job results for LLM with token limiting
 function formatResults(job) {
-    const MAX_CONTENT_LENGTH = 6000; // Maximum characters per result
-    const MAX_TOTAL_CHARS = 12000; // 2 URLs × 6000 chars = 12,000 chars
+    const MAX_CONTENT_LENGTH = 6500; // Increased from 6000 to 6500 characters per result
+    const MAX_TOTAL_CHARS = 13000; // 2 URLs × 6500 chars = 13,000 chars
 
     let formatted = '';
     let totalChars = 0;
