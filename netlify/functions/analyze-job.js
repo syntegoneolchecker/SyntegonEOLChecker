@@ -483,6 +483,8 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
     }
 }`;
 
+    console.log('This is the entire prompt:\n' + prompt);
+    
     const groqResponse = await fetch(
         'https://api.groq.com/openai/v1/chat/completions',
         {
