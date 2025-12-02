@@ -8,55 +8,58 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
-    <div class="header">
-        <h2>EOL Database Manager</h2>
-        <div class="credits-container">
-            <div id="tavily-credits" class="credits-display">
-                <span class="credits-label">Tavily Credits/Month (2 used per EOL Check):</span>
-                <span id="credits-remaining" class="credits-value">Loading...</span>
-            </div>
-            <div id="groq-limits" class="credits-display">
-                <span class="credits-label">Groq Tokens/Min:</span>
-                <span id="groq-remaining" class="credits-value">Loading...</span>
-            </div>
-            <div id="groq-reset" class="credits-display">
-                <span class="credits-label">Limit Resets In:</span>
-                <span id="groq-reset-countdown" class="credits-value">Loading...</span>
-            </div>
-            <div id="render-health" class="credits-display">
-                <span class="credits-label">Render Scraping Service:</span>
-                <span id="render-status" class="credits-value">Checking...</span>
+    <!-- Sticky header section - stays visible when scrolling -->
+    <div class="sticky-header">
+        <div class="header">
+            <h2>EOL Database Manager</h2>
+            <div class="credits-container">
+                <div id="tavily-credits" class="credits-display">
+                    <span class="credits-label">Tavily Credits/Month (2 used per EOL Check):</span>
+                    <span id="credits-remaining" class="credits-value">Loading...</span>
+                </div>
+                <div id="groq-limits" class="credits-display">
+                    <span class="credits-label">Groq Tokens/Min:</span>
+                    <span id="groq-remaining" class="credits-value">Loading...</span>
+                </div>
+                <div id="groq-reset" class="credits-display">
+                    <span class="credits-label">Limit Resets In:</span>
+                    <span id="groq-reset-countdown" class="credits-value">Loading...</span>
+                </div>
+                <div id="render-health" class="credits-display">
+                    <span class="credits-label">Render Scraping Service:</span>
+                    <span id="render-status" class="credits-value">Checking...</span>
+                </div>
             </div>
         </div>
-    </div>
-    <div id="status"></div>
-    
-    <div>
-        <input id="c1" placeholder="SAP Number">
-        <input id="c2" placeholder="Model">
-        <input id="c3" placeholder="Maker">
-        <input id="c4" placeholder="EOL Status">
-        <input id="c5" placeholder="EOL Comment">
-        <input id="c6" placeholder="Successor Status">
-        <input id="c7" placeholder="Successor Name">
-        <input id="c8" placeholder="Successor Comment">
-        <input id="c9" placeholder="Last Check Date">
-        <button onclick="addRow()">Add Entry</button>
-    </div>
+        <div id="status"></div>
 
-    <div class="delete-toggle-container">
-        <label class="toggle-switch">
-            <input type="checkbox" id="delete-toggle" onchange="toggleDeleteButtons()">
-            <span class="toggle-slider"></span>
-        </label>
-        <span class="toggle-label">Show Delete Buttons</span>
+        <div>
+            <input id="c1" placeholder="SAP Number">
+            <input id="c2" placeholder="Model">
+            <input id="c3" placeholder="Maker">
+            <input id="c4" placeholder="EOL Status">
+            <input id="c5" placeholder="EOL Comment">
+            <input id="c6" placeholder="Successor Status">
+            <input id="c7" placeholder="Successor Name">
+            <input id="c8" placeholder="Successor Comment">
+            <input id="c9" placeholder="Last Check Date">
+            <button onclick="addRow()">Add Entry</button>
+        </div>
+
+        <div class="delete-toggle-container">
+            <label class="toggle-switch">
+                <input type="checkbox" id="delete-toggle" onchange="toggleDeleteButtons()">
+                <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label">Show Delete Buttons</span>
+        </div>
     </div>
 
     <div class="table-wrapper">
         <table id="table"></table>
     </div>
 
-    <div>
+    <div class="bottom-actions">
         <button onclick="downloadExcel()">Download Database (Excel)</button>
         <label for="upload" style="margin-left: 10px;">
             <input type="file" id="upload" accept=".xlsx,.xls" onchange="loadExcel(event)" style="display: none;">
