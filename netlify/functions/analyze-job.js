@@ -475,7 +475,7 @@ Respond ONLY with valid JSON. Do not include any other text before or after the 
 RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT):
 {
     "status": "ACTIVE" | "DISCONTINUED" | "UNKNOWN",
-    "explanation": "ONE brief sentence citing the most definitive source (Result #N: URL, key evidence)",
+    "explanation": "ONE brief sentence citing the most definitive source (Result #N: URL(ALWAYS provide the URL), key evidence)",
     "successor": {
         "status": "FOUND" | "UNKNOWN",
         "model": "model name or null",
