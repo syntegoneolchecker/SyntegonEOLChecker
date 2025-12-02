@@ -54,7 +54,7 @@ exports.handler = async function(event, context) {
                 query: searchQuery,
                 search_depth: 'advanced',
                 max_results: 2,  // 2 URLs to stay within token limits
-                country="japan",
+                country: "japan",
                 // NOTE: Removed include_raw_content - we'll scrape with Render instead
                 include_domains: [
                     'jp.misumi-ec.com',
