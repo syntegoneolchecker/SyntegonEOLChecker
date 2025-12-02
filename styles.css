@@ -78,12 +78,15 @@ body {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     padding: 0 20px;
+    max-height: calc(100vh - 300px); /* Allow vertical scroll */
+    overflow-y: auto;
 }
 
 table {
     width: 100%;
-    min-width: 1200px;
-    border-collapse: collapse;
+    min-width: 1800px; /* Increased for 14 columns */
+    border-collapse: separate; /* Changed from collapse for sticky headers */
+    border-spacing: 0;
     background: white;
     margin: 0 0 20px 0;
     table-layout: fixed;
@@ -98,63 +101,88 @@ th, td {
     font-size: 14px;
 }
 
-/* SAP Number column - no wrapping */
+/* Column widths for 14-column layout */
+/* 1. SAP Part Number - no wrapping */
 th:nth-child(1), td:nth-child(1) {
-    width: 9%;
-    min-width: 80px;
+    width: 8%;
+    min-width: 90px;
     white-space: nowrap;
 }
 
-/* Model column */
+/* 2. Legacy Part Number */
 th:nth-child(2), td:nth-child(2) {
-    width: 8%;
-    min-width: 70px;
+    width: 7%;
+    min-width: 80px;
 }
 
-/* Maker column */
+/* 3. Designation */
 th:nth-child(3), td:nth-child(3) {
-    width: 8%;
-    min-width: 70px;
+    width: 7%;
+    min-width: 80px;
 }
 
-/* EOL Status column */
+/* 4. Model */
 th:nth-child(4), td:nth-child(4) {
-    width: 7%;
+    width: 6%;
     min-width: 70px;
 }
 
-/* EOL Comment column */
+/* 5. Manufacturer */
 th:nth-child(5), td:nth-child(5) {
-    width: 17%;
-    min-width: 130px;
+    width: 7%;
+    min-width: 80px;
 }
 
-/* Successor Status column */
+/* 6. Status */
 th:nth-child(6), td:nth-child(6) {
-    width: 7%;
+    width: 6%;
     min-width: 70px;
 }
 
-/* Successor Name column */
+/* 7. Status Comment */
 th:nth-child(7), td:nth-child(7) {
-    width: 9%;
+    width: 12%;
+    min-width: 120px;
+}
+
+/* 8. Successor Model */
+th:nth-child(8), td:nth-child(8) {
+    width: 7%;
+    min-width: 80px;
+}
+
+/* 9. Successor Comment */
+th:nth-child(9), td:nth-child(9) {
+    width: 10%;
+    min-width: 100px;
+}
+
+/* 10. Successor SAP Number */
+th:nth-child(10), td:nth-child(10) {
+    width: 7%;
+    min-width: 80px;
+}
+
+/* 11. Stock */
+th:nth-child(11), td:nth-child(11) {
+    width: 5%;
+    min-width: 60px;
+}
+
+/* 12. Information Date */
+th:nth-child(12), td:nth-child(12) {
+    width: 8%;
     min-width: 90px;
 }
 
-/* Successor Comment column */
-th:nth-child(8), td:nth-child(8) {
-    width: 13%;
-    min-width: 130px;
+/* 13. Auto Check */
+th:nth-child(13), td:nth-child(13) {
+    width: 5%;
+    min-width: 60px;
 }
 
-/* Last Check Date column */
-th:nth-child(9), td:nth-child(9) {
-    width: 9%;
-    min-width: 110px;
-}
-
-/* Actions column - wider to fit both buttons */
-th:nth-child(10), td:nth-child(10) {
+/* 14. Actions column - wider to fit both buttons */
+th:nth-child(14), td:nth-child(14) {
     width: 11%;
     min-width: 200px;
     white-space: nowrap;
@@ -165,7 +193,8 @@ th {
     color: white;
     position: sticky;
     top: 0;
-    z-index: 10;
+    z-index: 50; /* Higher z-index to stay above content */
+    box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1); /* Subtle shadow when scrolling */
 }
 
 tr:hover {
@@ -409,6 +438,6 @@ input {
     }
 
     table {
-        min-width: 1000px;
+        min-width: 1600px; /* Updated for 14 columns */
     }
 }

@@ -1,4 +1,4 @@
-let data = [['SAP Number', 'Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date']];
+let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
 
 // Countdown interval for Groq rate limit reset
 let groqCountdownInterval = null;
@@ -47,22 +47,22 @@ async function addRow() {
     // Get ID from first field
     const idInput = document.getElementById('c1').value.trim();
 
-    // Validate SAP Number is provided
+    // Validate SAP Part Number is provided
     if (!idInput) {
-        showStatus('Error: SAP Number is required', 'error');
+        showStatus('Error: SAP Part Number is required', 'error');
         return;
     }
 
-    // Format the SAP Number
+    // Format the SAP Part Number
     const formattedID = formatID(idInput);
     if (!formattedID) {
-        showStatus('Error: SAP Number must be exactly 10 digits (e.g., 8-114-463-187 or 8114463187)', 'error');
+        showStatus('Error: SAP Part Number must be exactly 10 digits (e.g., 8-114-463-187 or 8114463187)', 'error');
         return;
     }
 
-    // Read all fields
-    let row = [formattedID]; // Start with formatted ID
-    for (let i = 2; i <= 9; i++) {
+    // Read all 13 fields (13 columns total)
+    let row = [formattedID]; // Start with formatted SAP Part Number
+    for (let i = 2; i <= 13; i++) {
         let v = document.getElementById('c' + i).value;
         row.push(v);
     }
@@ -79,16 +79,20 @@ async function addRow() {
     if (existingIndex !== -1) {
         // Entry exists - ask for confirmation
         const existingRow = data[existingIndex];
-        const confirmMessage = `An entry with SAP Number ${formattedID} already exists:\n\n` +
-            `SAP Number: ${existingRow[0]}\n` +
-            `Model: ${existingRow[1]}\n` +
-            `Maker: ${existingRow[2]}\n` +
-            `EOL Status: ${existingRow[3]}\n` +
-            `EOL Comment: ${existingRow[4]}\n` +
-            `Successor Status: ${existingRow[5]}\n` +
-            `Successor Name: ${existingRow[6]}\n` +
-            `Successor Comment: ${existingRow[7]}\n` +
-            `Last Check Date: ${existingRow[8]}\n\n` +
+        const confirmMessage = `An entry with SAP Part Number ${formattedID} already exists:\n\n` +
+            `SAP Part Number: ${existingRow[0]}\n` +
+            `Legacy Part Number: ${existingRow[1]}\n` +
+            `Designation: ${existingRow[2]}\n` +
+            `Model: ${existingRow[3]}\n` +
+            `Manufacturer: ${existingRow[4]}\n` +
+            `Status: ${existingRow[5]}\n` +
+            `Status Comment: ${existingRow[6]}\n` +
+            `Successor Model: ${existingRow[7]}\n` +
+            `Successor Comment: ${existingRow[8]}\n` +
+            `Successor SAP Number: ${existingRow[9]}\n` +
+            `Stock: ${existingRow[10]}\n` +
+            `Information Date: ${existingRow[11]}\n` +
+            `Auto Check: ${existingRow[12]}\n\n` +
             `Do you want to replace this entry with the new data?`;
 
         if (confirm(confirmMessage)) {
@@ -99,7 +103,7 @@ async function addRow() {
             await saveToServer();
 
             // Clear input fields
-            for (let i = 1; i <= 9; i++) {
+            for (let i = 1; i <= 13; i++) {
                 document.getElementById('c' + i).value = '';
             }
         } else {
@@ -114,7 +118,7 @@ async function addRow() {
         await saveToServer();
 
         // Clear input fields
-        for (let i = 1; i <= 9; i++) {
+        for (let i = 1; i <= 13; i++) {
             document.getElementById('c' + i).value = '';
         }
     }
@@ -128,11 +132,11 @@ async function delRow(i) {
 
 async function checkEOL(rowIndex) {
     const row = data[rowIndex];
-    const model = row[1]; // Model is column 1 (after ID)
-    const maker = row[2]; // Maker is column 2 (after ID)
+    const model = row[3]; // Model is column 3
+    const manufacturer = row[4]; // Manufacturer is column 4
 
-    if (!model || !maker) {
-        showStatus('Error: Model and Maker are required for EOL check', 'error');
+    if (!model || !manufacturer) {
+        showStatus('Error: Model and Manufacturer are required for EOL check', 'error');
         return;
     }
 
@@ -149,7 +153,7 @@ async function checkEOL(rowIndex) {
         await checkRenderHealth();
 
         checkButton.textContent = 'Initializing...';
-        showStatus(`Initializing EOL check for ${maker} ${model}...`, 'info', false);
+        showStatus(`Initializing EOL check for ${manufacturer} ${model}...`, 'info', false);
 
         // Step 1: Initialize job (search and queue URLs)
         const initResponse = await fetch('/.netlify/functions/initialize-job', {
@@ -157,7 +161,7 @@ async function checkEOL(rowIndex) {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ model, maker })
+            body: JSON.stringify({ model, maker: manufacturer })
         });
 
         if (!initResponse.ok) {
@@ -178,32 +182,27 @@ async function checkEOL(rowIndex) {
         checkButton.textContent = 'Processing...';
 
         // Step 2: Poll for job status
-        const result = await pollJobStatus(jobId, maker, model, checkButton);
+        const result = await pollJobStatus(jobId, manufacturer, model, checkButton);
 
         // Update the row with results
-        // Columns: SAP Number, Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
+        // New columns: SAP Part Number, Legacy Part Number, Designation, Model, Manufacturer,
+        //              Status, Status Comment, Successor Model, Successor Comment,
+        //              Successor SAP Number, Stock, Information Date, Auto Check
 
-        // Column 3: EOL Status (DISCONTINUED, ACTIVE, or UNKNOWN)
-        row[3] = result.status || 'UNKNOWN';
+        // Column 5: Status (DISCONTINUED, ACTIVE, or UNKNOWN)
+        row[5] = result.status || 'UNKNOWN';
 
-        // Column 4: EOL Comment
-        row[4] = result.explanation || '';
+        // Column 6: Status Comment
+        row[6] = result.explanation || '';
 
-        // Column 5: Successor Status
-        if (result.successor?.status === 'FOUND') {
-            row[5] = 'YES';
-        } else {
-            row[5] = 'UNKNOWN';
-        }
+        // Column 7: Successor Model
+        row[7] = result.successor?.model || '';
 
-        // Column 6: Successor Name
-        row[6] = result.successor?.model || '';
+        // Column 8: Successor Comment
+        row[8] = result.successor?.explanation || '';
 
-        // Column 7: Successor Comment
-        row[7] = result.successor?.explanation || '';
-
-        // Column 8: Last Check Date
-        row[8] = new Date().toLocaleString();
+        // Column 11: Information Date
+        row[11] = new Date().toLocaleString();
 
         // Re-render the table
         render();
@@ -219,7 +218,7 @@ async function checkEOL(rowIndex) {
             updateGroqRateLimits(result.rateLimits);
         }
 
-        showStatus(`✓ EOL check completed for ${maker} ${model}`, 'success');
+        showStatus(`✓ EOL check completed for ${manufacturer} ${model}`, 'success');
 
         // Re-enable button
         checkButton.textContent = originalButtonText;
@@ -238,7 +237,7 @@ async function checkEOL(rowIndex) {
 }
 
 // Poll job status until complete
-async function pollJobStatus(jobId, maker, model, checkButton) {
+async function pollJobStatus(jobId, manufacturer, model, checkButton) {
     const maxAttempts = 90; // 90 attempts * 2s = 3 min max
     let attempts = 0;
 
@@ -264,7 +263,7 @@ async function pollJobStatus(jobId, maker, model, checkButton) {
             }
 
             // Update status message with progress
-            showStatus(`Checking ${maker} ${model}... (${statusData.completedUrls || 0}/${statusData.urlCount || 0} pages)`, 'info', false);
+            showStatus(`Checking ${manufacturer} ${model}... (${statusData.completedUrls || 0}/${statusData.urlCount || 0} pages)`, 'info', false);
 
             if (statusData.status === 'complete') {
                 // Job complete!
@@ -343,22 +342,24 @@ function loadExcel(e) {
                 return;
             }
 
-            // Find column index for SAP Number
+            // Find column index for SAP Part Number (accept old names for backward compatibility)
             const headers = importedData[0];
             console.log('Excel headers found:', headers);
 
             const idIndex = headers.findIndex(h => {
                 const headerText = h && h.toString().toLowerCase().trim();
-                return headerText === 'id' || headerText === 'sap number';
+                return headerText === 'id' ||
+                       headerText === 'sap number' ||
+                       headerText === 'sap part number';
             });
 
             if (idIndex === -1) {
-                console.error('SAP Number/ID column not found. Headers:', headers);
-                showStatus('Error: Excel file must contain "SAP Number" or "ID" column. Found headers: ' + headers.join(', '), 'error');
+                console.error('SAP Part Number column not found. Headers:', headers);
+                showStatus('Error: Excel file must contain "SAP Part Number", "SAP Number", or "ID" column. Found headers: ' + headers.join(', '), 'error');
                 return;
             }
 
-            console.log('SAP Number column found at index:', idIndex);
+            console.log('SAP Part Number column found at index:', idIndex);
 
             // Track statistics
             let newEntries = 0;
@@ -398,8 +399,8 @@ function loadExcel(e) {
                 for (let j = 0; j < ourHeaders.length; j++) {
                     const headerName = ourHeaders[j].toLowerCase().trim();
 
-                    if (headerName === 'sap number' || headerName === 'id') {
-                        // Use formatted SAP Number
+                    if (headerName === 'sap part number' || headerName === 'sap number' || headerName === 'id') {
+                        // Use formatted SAP Part Number
                         newRow.push(formattedID);
                     } else {
                         const importColIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === headerName);
@@ -489,27 +490,59 @@ async function loadFromServer() {
         if (result.data && Array.isArray(result.data)) {
             data = result.data;
 
-            // Backward compatibility: Add "SAP Number" column and update structure
-            const expectedColumns = 9; // SAP Number, Model, Maker, EOL Status, EOL Comment, Successor Status, Successor Name, Successor Comment, Last Check Date
-
-            // Check if we need to add SAP Number column (old data won't have it or may have "ID")
+            // Backward compatibility: Migrate old data structure to new 13-column structure
+            const expectedColumns = 13; // New structure has 13 columns
             const firstColumn = data[0] && data[0][0] && data[0][0].toLowerCase().trim();
-            const hasSAPColumn = firstColumn === 'sap number';
-            const hasIDColumn = firstColumn === 'id';
 
-            if (!hasSAPColumn) {
-                if (hasIDColumn) {
-                    // Rename "ID" to "SAP Number"
-                    data[0][0] = 'SAP Number';
-                } else {
-                    // Old data format - add SAP Number column as first column
-                    data[0] = ['SAP Number', 'Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment', 'Last Check Date'];
+            // Check if this is old data that needs migration
+            if (firstColumn === 'sap number' && data[0].length === 9) {
+                // Old 9-column structure needs migration
+                console.log('Migrating old 9-column structure to new 13-column structure');
 
-                    // Add empty SAP Number to all existing data rows
-                    for (let i = 1; i < data.length; i++) {
-                        data[i].unshift(''); // Add empty SAP Number at the beginning
-                    }
+                // Update header row
+                const newHeader = [
+                    'SAP Part Number',    // 0 - was 'SAP Number'
+                    'Legacy Part Number', // 1 - NEW
+                    'Designation',        // 2 - NEW
+                    'Model',             // 3 - was index 1
+                    'Manufacturer',      // 4 - was 'Maker' at index 2
+                    'Status',            // 5 - was 'EOL Status' at index 3
+                    'Status Comment',    // 6 - was 'EOL Comment' at index 4
+                    'Successor Model',   // 7 - was 'Successor Name' at index 6
+                    'Successor Comment', // 8 - was index 7
+                    'Successor SAP Number', // 9 - NEW
+                    'Stock',            // 10 - NEW
+                    'Information Date', // 11 - was 'Last Check Date' at index 8
+                    'Auto Check'        // 12 - NEW
+                ];
+
+                const migratedData = [newHeader];
+
+                // Migrate each data row
+                for (let i = 1; i < data.length; i++) {
+                    const oldRow = data[i];
+                    const newRow = [
+                        oldRow[0] || '', // SAP Part Number (was SAP Number)
+                        '',              // Legacy Part Number - NEW
+                        '',              // Designation - NEW
+                        oldRow[1] || '', // Model
+                        oldRow[2] || '', // Manufacturer (was Maker)
+                        oldRow[3] || '', // Status (was EOL Status)
+                        oldRow[4] || '', // Status Comment (was EOL Comment)
+                        oldRow[6] || '', // Successor Model (was Successor Name) - skip old index 5 (Successor Status)
+                        oldRow[7] || '', // Successor Comment
+                        '',              // Successor SAP Number - NEW
+                        '',              // Stock - NEW
+                        oldRow[8] || '', // Information Date (was Last Check Date)
+                        ''               // Auto Check - NEW
+                    ];
+                    migratedData.push(newRow);
                 }
+
+                data = migratedData;
+            } else if (firstColumn === 'id') {
+                // Very old data with "ID" column
+                data[0][0] = 'SAP Part Number';
             }
 
             // Ensure all rows have the expected number of columns
