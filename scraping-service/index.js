@@ -6,6 +6,11 @@ const pdfParse = require('pdf-parse');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Memory management: Track request count and restart after N requests
+// This prevents hitting Render's 512MB memory limit
+let requestCount = 0;
+const MAX_REQUESTS_BEFORE_RESTART = 10;
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -23,7 +28,8 @@ function isTextFileUrl(url) {
 }
 
 // Helper: Extract text from HTML with enhanced table preservation
-function extractHTMLText(html, maxLength = 10000) {
+// NOTE: No truncation here - let the website handle all truncation logic
+function extractHTMLText(html) {
     // First preserve table structure by adding markers
     let processedHtml = html
         .replace(/<tr[^>]*>/gi, '\n[ROW] ')
@@ -57,7 +63,7 @@ function extractHTMLText(html, maxLength = 10000) {
         .replace(/\[\/HEADER\]/g, '')
         .trim();
 
-    return text.substring(0, maxLength);
+    return text;
 }
 
 // Helper: Detect error pages
@@ -83,7 +89,8 @@ function isErrorPage(text) {
 }
 
 // Helper: Extract text from PDF
-async function extractPDFText(pdfBuffer, url, maxLength = 10000) {
+// NOTE: No truncation here - let the website handle all truncation logic
+async function extractPDFText(pdfBuffer, url) {
     try {
         console.log(`Parsing PDF from ${url} (${pdfBuffer.length} bytes)`);
 
@@ -113,10 +120,9 @@ async function extractPDFText(pdfBuffer, url, maxLength = 10000) {
             return `[PDF contains no extractable text - may be image-based PDF]`;
         }
 
-        const truncated = fullText.substring(0, maxLength);
-        console.log(`✓ Successfully extracted ${fullText.length} chars from PDF (truncated to ${truncated.length}, ${Math.min(5, data.numpages)} pages)`);
+        console.log(`✓ Successfully extracted ${fullText.length} chars from PDF (${Math.min(5, data.numpages)} pages)`);
 
-        return truncated;
+        return fullText;
 
     } catch (error) {
         console.error(`PDF extraction error from ${url}:`, error.message);
@@ -159,19 +165,19 @@ async function tryFastFetch(url, timeout = 5000) {
         if (contentType.includes('application/pdf') || isPDF) {
             console.log(`Detected PDF (Content-Type: ${contentType}), extracting text: ${url}`);
             const pdfBuffer = Buffer.from(await response.arrayBuffer());
-            return await extractPDFText(pdfBuffer, url, 10000);
+            return await extractPDFText(pdfBuffer, url);
         }
 
         // Handle text files
         if (contentType.includes('text/plain') || isTextFile) {
             console.log(`Detected text file (Content-Type: ${contentType}): ${url}`);
             const text = await response.text();
-            return text.substring(0, 10000);
+            return text; // No truncation - let website handle it
         }
 
         // Handle HTML
         const html = await response.text();
-        const text = extractHTMLText(html, 10000);
+        const text = extractHTMLText(html);
 
         if (isErrorPage(text)) {
             console.log(`Detected error page for ${url}`);
@@ -192,6 +198,49 @@ async function tryFastFetch(url, timeout = 5000) {
     }
 }
 
+// Helper: Send callback unconditionally (with retry logic)
+async function sendCallback(callbackUrl, payload, maxRetries = 3) {
+    if (!callbackUrl) return;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`Sending callback (attempt ${attempt}/${maxRetries}): ${callbackUrl}`);
+            await fetch(callbackUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            console.log('Callback successful');
+            return; // Success - exit
+        } catch (callbackError) {
+            console.error(`Callback attempt ${attempt} failed:`, callbackError.message);
+            if (attempt === maxRetries) {
+                console.error('All callback attempts failed - callback lost');
+            } else {
+                // Wait before retry (exponential backoff)
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            }
+        }
+    }
+}
+
+// Helper: Schedule process restart if request limit reached
+function scheduleRestartIfNeeded() {
+    if (requestCount >= MAX_REQUESTS_BEFORE_RESTART) {
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`🔄 REQUEST LIMIT REACHED (${requestCount}/${MAX_REQUESTS_BEFORE_RESTART})`);
+        console.log(`Scheduling graceful restart in 2 seconds to free memory...`);
+        console.log(`${'='.repeat(60)}\n`);
+
+        // Give time for response to be sent, then exit
+        // Render will automatically restart the service
+        setTimeout(() => {
+            console.log('Exiting process for restart...');
+            process.exit(0);
+        }, 2000);
+    }
+}
+
 // Health check endpoint
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -200,6 +249,10 @@ app.get('/health', (req, res) => {
 // Main scraping endpoint
 app.post('/scrape', async (req, res) => {
     const { url, callbackUrl, jobId, urlIndex, title, snippet } = req.body;
+
+    // Memory management: Increment request counter
+    requestCount++;
+    console.log(`[${new Date().toISOString()}] Request #${requestCount}/${MAX_REQUESTS_BEFORE_RESTART}`);
 
     if (!url) {
         return res.status(400).json({ error: 'URL is required' });
@@ -229,27 +282,18 @@ app.post('/scrape', async (req, res) => {
                 timestamp: new Date().toISOString()
             };
 
-            // If callback URL provided, POST result to callback
-            if (callbackUrl) {
-                console.log(`Posting fast fetch result to callback: ${callbackUrl}`);
-                try {
-                    await fetch(callbackUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            jobId,
-                            urlIndex,
-                            content: fastResult,
-                            title: null,
-                            snippet,
-                            url
-                        })
-                    });
-                    console.log('Callback successful');
-                } catch (callbackError) {
-                    console.error('Callback failed:', callbackError.message);
-                }
-            }
+            // Send callback unconditionally
+            await sendCallback(callbackUrl, {
+                jobId,
+                urlIndex,
+                content: fastResult,
+                title: null,
+                snippet,
+                url
+            });
+
+            // Schedule restart if memory limit approaching
+            scheduleRestartIfNeeded();
 
             return res.json(result);
         }
@@ -264,27 +308,18 @@ app.post('/scrape', async (req, res) => {
                 url: url
             };
 
-            // If callback URL provided, POST error to callback
-            if (callbackUrl) {
-                console.log(`Posting PDF/text error to callback: ${callbackUrl}`);
-                try {
-                    await fetch(callbackUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            jobId,
-                            urlIndex,
-                            content: '[PDF or text file could not be fetched]',
-                            title: null,
-                            snippet,
-                            url
-                        })
-                    });
-                    console.log('Error callback successful');
-                } catch (callbackError) {
-                    console.error('Error callback failed:', callbackError.message);
-                }
-            }
+            // Send error callback unconditionally
+            await sendCallback(callbackUrl, {
+                jobId,
+                urlIndex,
+                content: '[PDF or text file could not be fetched]',
+                title: null,
+                snippet,
+                url
+            });
+
+            // Schedule restart if memory limit approaching
+            scheduleRestartIfNeeded();
 
             return res.status(500).json(errorResult);
         }
@@ -292,8 +327,10 @@ app.post('/scrape', async (req, res) => {
         // Use Puppeteer for dynamic HTML pages only
         console.log(`Fast fetch failed, using Puppeteer for ${url}...`);
         let browser = null;
+        let callbackSent = false; // Track if we've sent callback to avoid duplicates
 
-        browser = await puppeteer.launch({
+        try {
+            browser = await puppeteer.launch({
             headless: 'new',
             args: [
                 '--no-sandbox',
@@ -434,34 +471,26 @@ app.post('/scrape', async (req, res) => {
         } catch (extractError) {
             console.error(`Content extraction failed after navigation timeout: ${extractError.message}`);
 
-            // Close browser before sending error callback
+            // Extraction failed - send error callback unconditionally
+            await sendCallback(callbackUrl, {
+                jobId,
+                urlIndex,
+                content: `[Content extraction failed: ${extractError.message}]`,
+                title: null,
+                snippet,
+                url
+            });
+            callbackSent = true;
+
+            // Close browser before returning
             try {
                 await browser.close();
             } catch (closeErr) {
                 console.error('Failed to close browser:', closeErr.message);
             }
 
-            // Send error callback
-            if (callbackUrl) {
-                console.log(`Posting extraction error to callback: ${callbackUrl}`);
-                try {
-                    await fetch(callbackUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            jobId,
-                            urlIndex,
-                            content: `[Page loaded but content extraction failed after timeout]`,
-                            title: null,
-                            snippet,
-                            url
-                        })
-                    });
-                    console.log('Error callback successful');
-                } catch (callbackError) {
-                    console.error('Error callback failed:', callbackError.message);
-                }
-            }
+            // Schedule restart if memory limit approaching
+            scheduleRestartIfNeeded();
 
             return res.status(500).json({
                 success: false,
@@ -482,54 +511,72 @@ app.post('/scrape', async (req, res) => {
             timestamp: new Date().toISOString()
         };
 
-        // If callback URL provided, POST result to callback
-        if (callbackUrl) {
-            console.log(`Posting Puppeteer result to callback: ${callbackUrl}`);
-            try {
-                await fetch(callbackUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jobId,
-                        urlIndex,
-                        content: content,
-                        title: pageTitle,
-                        snippet,
-                        url
-                    })
-                });
-                console.log('Callback successful');
-            } catch (callbackError) {
-                console.error('Callback failed:', callbackError.message);
-            }
-        }
+        // Send success callback unconditionally
+        await sendCallback(callbackUrl, {
+            jobId,
+            urlIndex,
+            content: content,
+            title: pageTitle,
+            snippet,
+            url
+        });
+        callbackSent = true;
+
+        // Schedule restart if memory limit approaching
+        scheduleRestartIfNeeded();
 
         res.json(result);
+
+        } catch (puppeteerError) {
+            // Catastrophic Puppeteer error (browser crash, launch failure, etc.)
+            console.error(`[${new Date().toISOString()}] Puppeteer catastrophic error:`, puppeteerError.message);
+
+            // Send error callback unconditionally (if not already sent)
+            if (!callbackSent) {
+                await sendCallback(callbackUrl, {
+                    jobId,
+                    urlIndex,
+                    content: `[Scraping failed completely: ${puppeteerError.message}]`,
+                    title: null,
+                    snippet,
+                    url
+                });
+            }
+
+            // Close browser if it's open
+            if (browser) {
+                try {
+                    await browser.close();
+                } catch (closeErr) {
+                    console.error('Failed to close browser:', closeErr.message);
+                }
+            }
+
+            // Schedule restart if memory limit approaching
+            scheduleRestartIfNeeded();
+
+            return res.status(500).json({
+                success: false,
+                error: `Puppeteer error: ${puppeteerError.message}`,
+                url: url
+            });
+        }
 
     } catch (error) {
         console.error(`[${new Date().toISOString()}] Scraping error:`, error.message);
 
-        // If callback URL provided, POST error to callback
-        if (callbackUrl) {
-            console.log(`Posting error to callback: ${callbackUrl}`);
-            try {
-                await fetch(callbackUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jobId,
-                        urlIndex,
-                        content: `[Scraping error: ${error.message}]`,
-                        title: null,
-                        snippet,
-                        url
-                    })
-                });
-                console.log('Error callback successful');
-            } catch (callbackError) {
-                console.error('Error callback failed:', callbackError.message);
-            }
-        }
+        // Send error callback unconditionally (outer catch - should rarely reach here)
+        await sendCallback(callbackUrl, {
+            jobId,
+            urlIndex,
+            content: `[Scraping error: ${error.message}]`,
+            title: null,
+            snippet,
+            url
+        });
+
+        // Schedule restart if memory limit approaching
+        scheduleRestartIfNeeded();
 
         res.status(500).json({
             success: false,

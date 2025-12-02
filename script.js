@@ -16,12 +16,8 @@ function showStatus(message, type = 'success', permanent = true) {
     const status = document.getElementById('status');
     status.textContent = message;
     status.className = type;
-    if (!permanent) {
-        setTimeout(() => {
-            status.textContent = '';
-            status.className = '';
-        }, 99999999999);
-    }
+    // NEVER clear status automatically - always show latest information
+    // Status will be updated by next call to showStatus()
 }
 
 // Format SAP Number to X-XXX-XXX-XXX format (10 digits)
