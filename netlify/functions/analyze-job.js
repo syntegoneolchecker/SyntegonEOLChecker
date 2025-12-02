@@ -447,6 +447,7 @@ ANALYSIS RULES:
    - Make sure that the discontinuation is specifically mentioned for "${model}"
    - **CRITICAL: Do NOT mark "${model}" as discontinued just because it appears in a document about OTHER discontinued products**
    - **CRITICAL: If "${model}" is the REPLACEMENT/SUCCESSOR for discontinued products, "${model}" is ACTIVE, not discontinued**
+   - **CRITICAL: If "${model}" is being actively sold, has a delivery date, or current price information then it is ACTIVE and not discontinued**
 
 4. REPLACEMENT LOGIC - READ CAREFULLY:
    - "Product X → Product Y" means: X is discontinued, Y is the active replacement
