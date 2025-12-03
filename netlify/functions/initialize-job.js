@@ -109,7 +109,8 @@ exports.handler = async function(event, context) {
                     'mitsubishielectric.co.jp',
                     'orientalmotor.co.jp',
                     'keyence.co.jp',
-                    'omron.co.jp'
+                    'omron.co.jp',
+                    'ntn.co.jp'
                 ]
             })
         });
