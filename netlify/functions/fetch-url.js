@@ -16,14 +16,18 @@ async function scrapeWithBrowserQL(url) {
 
     // BrowserQL GraphQL mutation
     // Note: waitUntil is an enum (not quoted), url is a string (quoted)
+    // Using separate 'text' mutation to extract all page text (like Puppeteer's innerText)
     const query = `
         mutation ScrapeUrl {
             goto(
                 url: "${url}"
                 waitUntil: networkidle
             ) {
-                content
-                title
+                status
+            }
+
+            pageContent: text {
+                text
             }
         }
     `;
@@ -50,11 +54,12 @@ async function scrapeWithBrowserQL(url) {
         throw new Error(`BrowserQL GraphQL errors: ${JSON.stringify(result.errors)}`);
     }
 
-    if (!result.data || !result.data.goto) {
+    if (!result.data || !result.data.pageContent) {
         throw new Error('BrowserQL returned no data');
     }
 
-    const { content, title } = result.data.goto;
+    const content = result.data.pageContent.text;
+    const title = null; // Can extract title separately if needed
 
     console.log(`BrowserQL scraped successfully: ${content.length} characters`);
 
