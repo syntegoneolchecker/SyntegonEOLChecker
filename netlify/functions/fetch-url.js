@@ -14,9 +14,9 @@ async function scrapeWithBrowserQL(url) {
 
     console.log(`Scraping with BrowserQL: ${url}`);
 
-    // BrowserQL GraphQL mutation
+    // BrowserQL GraphQL mutation using evaluate() to match Render's extraction
+    // This uses the exact same JavaScript code as the Render scraping service
     // Note: waitUntil is an enum (not quoted), url is a string (quoted)
-    // Using separate 'text' mutation to extract all page text (like Puppeteer's innerText)
     const query = `
         mutation ScrapeUrl {
             goto(
@@ -26,8 +26,18 @@ async function scrapeWithBrowserQL(url) {
                 status
             }
 
-            pageContent: text {
-                text
+            pageContent: evaluate(content: """
+                (() => {
+                    try {
+                        const scripts = document.querySelectorAll('script, style, noscript');
+                        scripts.forEach(el => el.remove());
+                        return JSON.stringify({ text: document.body.innerText, error: null });
+                    } catch (e) {
+                        return JSON.stringify({ text: null, error: e?.message ?? String(e) });
+                    }
+                })()
+            """) {
+                value
             }
         }
     `;
@@ -58,8 +68,19 @@ async function scrapeWithBrowserQL(url) {
         throw new Error('BrowserQL returned no data');
     }
 
-    const content = result.data.pageContent.text;
+    // Parse the JSON-wrapped response from evaluate()
+    const evaluateResult = JSON.parse(result.data.pageContent.value);
+
+    if (evaluateResult.error) {
+        throw new Error(`BrowserQL evaluation error: ${evaluateResult.error}`);
+    }
+
+    const content = evaluateResult.text;
     const title = null; // Can extract title separately if needed
+
+    if (!content) {
+        throw new Error('BrowserQL returned empty content');
+    }
 
     console.log(`BrowserQL scraped successfully: ${content.length} characters`);
 
