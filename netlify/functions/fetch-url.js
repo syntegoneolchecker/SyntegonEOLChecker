@@ -14,11 +14,13 @@ async function scrapeWithBrowserQL(url) {
 
     console.log(`Scraping with BrowserQL: ${url}`);
 
+    // BrowserQL GraphQL mutation
+    // Note: waitUntil is an enum (not quoted), url is a string (quoted)
     const query = `
-        mutation ScrapeUrl($url: String!) {
+        mutation ScrapeUrl {
             goto(
-                url: $url
-                waitUntil: "networkidle"
+                url: "${url}"
+                waitUntil: networkidle
             ) {
                 content
                 title
@@ -33,10 +35,7 @@ async function scrapeWithBrowserQL(url) {
             'Authorization': `Bearer ${browserqlApiKey}`
         },
         body: JSON.stringify({
-            query,
-            variables: {
-                url
-            }
+            query
         })
     });
 
