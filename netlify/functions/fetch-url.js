@@ -14,14 +14,30 @@ async function scrapeWithBrowserQL(url) {
 
     console.log(`Scraping with BrowserQL: ${url}`);
 
+    // BrowserQL GraphQL mutation using evaluate() to match Render's extraction
+    // This uses the exact same JavaScript code as the Render scraping service
+    // Note: waitUntil is an enum (not quoted), url is a string (quoted)
     const query = `
-        mutation ScrapeUrl($url: String!) {
+        mutation ScrapeUrl {
             goto(
-                url: $url
+                url: "${url}"
                 waitUntil: networkidle
             ) {
-                content
-                title
+                status
+            }
+
+            pageContent: evaluate(content: """
+                (() => {
+                    try {
+                        const scripts = document.querySelectorAll('script, style, noscript');
+                        scripts.forEach(el => el.remove());
+                        return JSON.stringify({ text: document.body.innerText, error: null });
+                    } catch (e) {
+                        return JSON.stringify({ text: null, error: e?.message ?? String(e) });
+                    }
+                })()
+            """) {
+                value
             }
         }
     `;
@@ -33,10 +49,7 @@ async function scrapeWithBrowserQL(url) {
             'Authorization': `Bearer ${browserqlApiKey}`
         },
         body: JSON.stringify({
-            query,
-            variables: {
-                url
-            }
+            query
         })
     });
 
@@ -51,11 +64,23 @@ async function scrapeWithBrowserQL(url) {
         throw new Error(`BrowserQL GraphQL errors: ${JSON.stringify(result.errors)}`);
     }
 
-    if (!result.data || !result.data.goto) {
+    if (!result.data || !result.data.pageContent) {
         throw new Error('BrowserQL returned no data');
     }
 
-    const { content, title } = result.data.goto;
+    // Parse the JSON-wrapped response from evaluate()
+    const evaluateResult = JSON.parse(result.data.pageContent.value);
+
+    if (evaluateResult.error) {
+        throw new Error(`BrowserQL evaluation error: ${evaluateResult.error}`);
+    }
+
+    const content = evaluateResult.text;
+    const title = null; // Can extract title separately if needed
+
+    if (!content) {
+        throw new Error('BrowserQL returned empty content');
+    }
 
     console.log(`BrowserQL scraped successfully: ${content.length} characters`);
 
