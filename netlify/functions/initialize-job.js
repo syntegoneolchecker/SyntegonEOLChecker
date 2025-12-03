@@ -4,6 +4,8 @@ const { createJob, saveJobUrls, saveFinalResult } = require('./lib/job-storage')
 /**
  * Get manufacturer-specific direct URL if available
  * Returns null if manufacturer requires Tavily search
+ * Returns object with { url, scrapingMethod } if direct URL available
+ * scrapingMethod: 'render' (default Puppeteer) or 'browserql' (for Cloudflare-protected sites)
  */
 function getManufacturerUrl(maker, model) {
     const normalizedMaker = maker.trim();
@@ -11,13 +13,22 @@ function getManufacturerUrl(maker, model) {
 
     switch(normalizedMaker) {
         case 'SMC':
-            return `https://www.smcworld.com/webcatalog/s3s/ja-jp/detail/?partNumber=${encodedModel}`;
+            return {
+                url: `https://www.smcworld.com/webcatalog/s3s/ja-jp/detail/?partNumber=${encodedModel}`,
+                scrapingMethod: 'render'
+            };
 
         case 'オリエンタルモーター':
-            return `https://www.orientalmotor.co.jp/ja/products/products-search/replacement?hinmei=${encodedModel}`;
+            return {
+                url: `https://www.orientalmotor.co.jp/ja/products/products-search/replacement?hinmei=${encodedModel}`,
+                scrapingMethod: 'browserql' // Use BrowserQL for Cloudflare-protected site
+            };
 
         case 'ミスミ':
-            return `https://jp.misumi-ec.com/vona2/result/?Keyword=${encodedModel}`;
+            return {
+                url: `https://jp.misumi-ec.com/vona2/result/?Keyword=${encodedModel}`,
+                scrapingMethod: 'render'
+            };
 
         default:
             return null; // No direct URL strategy - use Tavily search
@@ -65,22 +76,23 @@ exports.handler = async function(event, context) {
         const jobId = await createJob(maker, model, context);
 
         // Check if manufacturer has a direct URL strategy
-        const directUrl = getManufacturerUrl(maker, model);
+        const manufacturerStrategy = getManufacturerUrl(maker, model);
 
-        if (directUrl) {
+        if (manufacturerStrategy) {
             // Use manufacturer-specific direct URL (no Tavily search needed)
-            console.log(`Using direct URL strategy for ${maker}: ${directUrl}`);
+            console.log(`Using direct URL strategy for ${maker}: ${manufacturerStrategy.url} (scraping: ${manufacturerStrategy.scrapingMethod})`);
 
             const urls = [{
                 index: 0,
-                url: directUrl,
+                url: manufacturerStrategy.url,
                 title: `${maker} ${model} Product Page`,
-                snippet: `Direct product page for ${maker} ${model}`
+                snippet: `Direct product page for ${maker} ${model}`,
+                scrapingMethod: manufacturerStrategy.scrapingMethod // Add scraping method to metadata
             }];
 
             await saveJobUrls(jobId, urls, context);
 
-            console.log(`Job ${jobId} initialized with direct URL strategy (1 URL)`);
+            console.log(`Job ${jobId} initialized with direct URL strategy (1 URL, method: ${manufacturerStrategy.scrapingMethod})`);
 
             return {
                 statusCode: 200,
@@ -89,7 +101,8 @@ exports.handler = async function(event, context) {
                     jobId,
                     status: 'urls_ready',
                     urlCount: urls.length,
-                    strategy: 'direct_url'
+                    strategy: 'direct_url',
+                    scrapingMethod: manufacturerStrategy.scrapingMethod
                 })
             };
         }

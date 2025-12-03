@@ -1,5 +1,70 @@
-// Fetch a single URL - trigger Render scraping with callback
+// Fetch a single URL - trigger Render scraping with callback OR use BrowserQL for Cloudflare-protected sites
 const { markUrlFetching, saveUrlResult } = require('./lib/job-storage');
+
+/**
+ * Scrape URL using BrowserQL (for Cloudflare-protected sites)
+ * This is a synchronous scraping method that returns content directly
+ */
+async function scrapeWithBrowserQL(url) {
+    const browserqlApiKey = process.env.BROWSERQL_API_KEY;
+
+    if (!browserqlApiKey) {
+        throw new Error('BROWSERQL_API_KEY environment variable not set');
+    }
+
+    console.log(`Scraping with BrowserQL: ${url}`);
+
+    const query = `
+        mutation ScrapeUrl($url: String!) {
+            goto(
+                url: $url
+                waitUntil: networkidle
+            ) {
+                content
+                title
+            }
+        }
+    `;
+
+    const response = await fetch('https://production-sfo.browserless.io/graphql', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${browserqlApiKey}`
+        },
+        body: JSON.stringify({
+            query,
+            variables: {
+                url
+            }
+        })
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`BrowserQL API error: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+
+    if (result.errors) {
+        throw new Error(`BrowserQL GraphQL errors: ${JSON.stringify(result.errors)}`);
+    }
+
+    if (!result.data || !result.data.goto) {
+        throw new Error('BrowserQL returned no data');
+    }
+
+    const { content, title } = result.data.goto;
+
+    console.log(`BrowserQL scraped successfully: ${content.length} characters`);
+
+    return {
+        content,
+        title,
+        success: true
+    };
+}
 
 exports.handler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
@@ -7,9 +72,9 @@ exports.handler = async function(event, context) {
     }
 
     try {
-        const { jobId, urlIndex, url, title, snippet } = JSON.parse(event.body);
+        const { jobId, urlIndex, url, title, snippet, scrapingMethod } = JSON.parse(event.body);
 
-        console.log(`Fetching URL ${urlIndex} for job ${jobId}: ${url}`);
+        console.log(`Fetching URL ${urlIndex} for job ${jobId}: ${url} (method: ${scrapingMethod || 'render'})`);
 
         // Construct base URL from request headers
         const protocol = event.headers['x-forwarded-proto'] || 'https';
@@ -19,7 +84,54 @@ exports.handler = async function(event, context) {
         // Mark as fetching
         await markUrlFetching(jobId, urlIndex, context);
 
-        // Call Render scraping service with callback URL
+        // Branch based on scraping method
+        if (scrapingMethod === 'browserql') {
+            // Use BrowserQL for Cloudflare-protected sites (synchronous)
+            console.log(`Using BrowserQL for URL ${urlIndex}`);
+
+            try {
+                const result = await scrapeWithBrowserQL(url);
+
+                // Save result directly (no callback needed)
+                await saveUrlResult(jobId, urlIndex, result.content, result.title, snippet, url, context);
+
+                console.log(`BrowserQL scraping complete for URL ${urlIndex}`);
+
+                return {
+                    statusCode: 200,
+                    body: JSON.stringify({
+                        success: true,
+                        method: 'browserql',
+                        contentLength: result.content.length
+                    })
+                };
+
+            } catch (error) {
+                console.error(`BrowserQL scraping failed for URL ${urlIndex}:`, error);
+
+                // Save error result
+                await saveUrlResult(
+                    jobId,
+                    urlIndex,
+                    `[BrowserQL scraping failed: ${error.message}]`,
+                    null,
+                    snippet,
+                    url,
+                    context
+                );
+
+                return {
+                    statusCode: 500,
+                    body: JSON.stringify({
+                        success: false,
+                        error: error.message,
+                        method: 'browserql_failed'
+                    })
+                };
+            }
+        }
+
+        // Default: Call Render scraping service with callback URL (asynchronous)
         const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
         const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
 
