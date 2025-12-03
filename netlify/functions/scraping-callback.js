@@ -73,7 +73,8 @@ async function triggerFetch(jobId, urlInfo, baseUrl) {
                 urlIndex: urlInfo.index,
                 url: urlInfo.url,
                 title: urlInfo.title,
-                snippet: urlInfo.snippet
+                snippet: urlInfo.snippet,
+                scrapingMethod: urlInfo.scrapingMethod // Pass scraping method (render/browserql)
             })
         });
     } catch (error) {
