@@ -7,16 +7,17 @@ const { createJob, saveJobUrls, saveFinalResult } = require('./lib/job-storage')
  */
 function getManufacturerUrl(maker, model) {
     const normalizedMaker = maker.trim();
+    const encodedModel = encodeURIComponent(model.trim());
 
     switch(normalizedMaker) {
         case 'SMC':
-            return `https://www.smcworld.com/webcatalog/s3s/ja-jp/detail/?partNumber=${model}`;
+            return `https://www.smcworld.com/webcatalog/s3s/ja-jp/detail/?partNumber=${encodedModel}`;
 
         case 'オリエンタルモーター':
-            return `https://www.orientalmotor.co.jp/ja/products/products-search/replacement?hinmei=${model}`;
+            return `https://www.orientalmotor.co.jp/ja/products/products-search/replacement?hinmei=${encodedModel}`;
 
         case 'ミスミ':
-            return `https://jp.misumi-ec.com/vona2/result/?Keyword=${model}`;
+            return `https://jp.misumi-ec.com/vona2/result/?Keyword=${encodedModel}`;
 
         default:
             return null; // No direct URL strategy - use Tavily search
