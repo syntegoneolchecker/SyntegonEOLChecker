@@ -21,7 +21,7 @@ async function scrapeWithBrowserQL(url) {
         mutation ScrapeUrl {
             goto(
                 url: "${url}"
-                waitUntil: networkidle
+                waitUntil: networkIdle
             ) {
                 status
             }
