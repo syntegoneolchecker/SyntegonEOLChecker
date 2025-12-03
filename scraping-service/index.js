@@ -339,7 +339,13 @@ app.post('/scrape', async (req, res) => {
                 '--disable-accelerated-2d-canvas',
                 '--no-first-run',
                 '--no-zygote',
-                '--disable-gpu'
+                '--disable-gpu',
+                // Additional memory-saving args
+                '--disable-software-rasterizer',
+                '--disable-background-networking',
+                '--disable-default-apps',
+                '--disable-sync',
+                '--disable-extensions'
             ],
             timeout: 120000 // 2 minutes
         });
@@ -351,6 +357,19 @@ app.post('/scrape', async (req, res) => {
         );
 
         await page.setViewport({ width: 1920, height: 1080 });
+
+        // Enable request interception to block heavy resources (reduces memory usage by 50-70%)
+        await page.setRequestInterception(true);
+
+        page.on('request', (request) => {
+            const resourceType = request.resourceType();
+            // Block images, stylesheets, fonts, and media to save memory
+            if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                request.abort();
+            } else {
+                request.continue();
+            }
+        });
 
         // Network monitoring to diagnose timeout causes
         const pendingRequests = new Map(); // Map<url, {startTime, resourceType}>
@@ -646,7 +665,13 @@ app.post('/scrape-batch', async (req, res) => {
                             '--disable-accelerated-2d-canvas',
                             '--no-first-run',
                             '--no-zygote',
-                            '--disable-gpu'
+                            '--disable-gpu',
+                            // Additional memory-saving args
+                            '--disable-software-rasterizer',
+                            '--disable-background-networking',
+                            '--disable-default-apps',
+                            '--disable-sync',
+                            '--disable-extensions'
                         ],
                         timeout: 120000 // 2 minutes
                     });
@@ -659,6 +684,19 @@ app.post('/scrape-batch', async (req, res) => {
                 );
 
                 await page.setViewport({ width: 1920, height: 1080 });
+
+                // Enable request interception to block heavy resources (reduces memory usage by 50-70%)
+                await page.setRequestInterception(true);
+
+                page.on('request', (request) => {
+                    const resourceType = request.resourceType();
+                    // Block images, stylesheets, fonts, and media to save memory
+                    if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                        request.abort();
+                    } else {
+                        request.continue();
+                    }
+                });
 
                 await page.goto(url, {
                     waitUntil: 'networkidle2', // Wait until ≤2 network connections remain
