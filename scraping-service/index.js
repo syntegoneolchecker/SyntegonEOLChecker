@@ -349,7 +349,9 @@ app.post('/scrape', async (req, res) => {
                 '--disable-background-networking',
                 '--disable-default-apps',
                 '--disable-sync',
-                '--disable-extensions'
+                '--disable-extensions',
+                // Explicitly disable automation flag (Cloudflare detection)
+                '--disable-blink-features=AutomationControlled'
             ],
             timeout: 120000 // 2 minutes
         });
@@ -362,18 +364,28 @@ app.post('/scrape', async (req, res) => {
 
         await page.setViewport({ width: 1920, height: 1080 });
 
-        // Enable request interception to block heavy resources (reduces memory usage by 50-70%)
-        await page.setRequestInterception(true);
+        // Conditionally enable resource blocking
+        // Skip resource blocking for Cloudflare-protected sites (Oriental Motor)
+        // as CSS/JS might be needed for the challenge to complete
+        const isCloudflareProtected = url.includes('orientalmotor.co.jp');
 
-        page.on('request', (request) => {
-            const resourceType = request.resourceType();
-            // Block images, stylesheets, fonts, and media to save memory
-            if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
-                request.abort();
-            } else {
-                request.continue();
-            }
-        });
+        if (!isCloudflareProtected) {
+            // Enable request interception to block heavy resources (reduces memory usage by 50-70%)
+            await page.setRequestInterception(true);
+
+            page.on('request', (request) => {
+                const resourceType = request.resourceType();
+                // Block images, stylesheets, fonts, and media to save memory
+                if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                    request.abort();
+                } else {
+                    request.continue();
+                }
+            });
+            console.log('Resource blocking enabled for non-Cloudflare site');
+        } else {
+            console.log('Resource blocking DISABLED for Cloudflare-protected site (Oriental Motor)');
+        }
 
         // Network monitoring to diagnose timeout causes
         const pendingRequests = new Map(); // Map<url, {startTime, resourceType}>
@@ -456,9 +468,14 @@ app.post('/scrape', async (req, res) => {
         }
 
         // Additional wait for JavaScript rendering (replaced deprecated waitForTimeout)
+        // Longer wait for Cloudflare-protected sites (challenge can take 10-20s)
         // Shorter wait if navigation timed out (content probably won't load more)
-        const postLoadWait = navigationTimedOut ? 1000 : 5000;
+        const postLoadWait = navigationTimedOut ? 1000 : (isCloudflareProtected ? 20000 : 5000);
         await new Promise(resolve => setTimeout(resolve, postLoadWait));
+
+        if (isCloudflareProtected) {
+            console.log('Extended 20-second wait for Cloudflare challenge completion');
+        }
 
         // Extract content with timeout protection (page might be in bad state after nav timeout)
         let content = '';
@@ -675,7 +692,9 @@ app.post('/scrape-batch', async (req, res) => {
                             '--disable-background-networking',
                             '--disable-default-apps',
                             '--disable-sync',
-                            '--disable-extensions'
+                            '--disable-extensions',
+                            // Explicitly disable automation flag (Cloudflare detection)
+                            '--disable-blink-features=AutomationControlled'
                         ],
                         timeout: 120000 // 2 minutes
                     });
@@ -689,18 +708,26 @@ app.post('/scrape-batch', async (req, res) => {
 
                 await page.setViewport({ width: 1920, height: 1080 });
 
-                // Enable request interception to block heavy resources (reduces memory usage by 50-70%)
-                await page.setRequestInterception(true);
+                // Conditionally enable resource blocking
+                // Skip resource blocking for Cloudflare-protected sites (Oriental Motor)
+                const isCloudflareProtected = url.includes('orientalmotor.co.jp');
 
-                page.on('request', (request) => {
-                    const resourceType = request.resourceType();
-                    // Block images, stylesheets, fonts, and media to save memory
-                    if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
-                        request.abort();
-                    } else {
-                        request.continue();
-                    }
-                });
+                if (!isCloudflareProtected) {
+                    // Enable request interception to block heavy resources (reduces memory usage by 50-70%)
+                    await page.setRequestInterception(true);
+
+                    page.on('request', (request) => {
+                        const resourceType = request.resourceType();
+                        // Block images, stylesheets, fonts, and media to save memory
+                        if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                            request.abort();
+                        } else {
+                            request.continue();
+                        }
+                    });
+                } else {
+                    console.log('Resource blocking DISABLED for Cloudflare-protected site (Oriental Motor)');
+                }
 
                 await page.goto(url, {
                     waitUntil: 'networkidle2', // Wait until ≤2 network connections remain
@@ -708,7 +735,13 @@ app.post('/scrape-batch', async (req, res) => {
                 });
 
                 // Additional wait for JavaScript rendering
-                await new Promise(resolve => setTimeout(resolve, 5000));
+                // Longer wait for Cloudflare-protected sites (challenge can take 10-20s)
+                const postLoadWait = isCloudflareProtected ? 20000 : 5000;
+                await new Promise(resolve => setTimeout(resolve, postLoadWait));
+
+                if (isCloudflareProtected) {
+                    console.log('Extended 20-second wait for Cloudflare challenge completion');
+                }
 
                 const content = await page.evaluate(() => {
                     const scripts = document.querySelectorAll('script, style, noscript');
