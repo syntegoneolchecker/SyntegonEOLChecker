@@ -56,6 +56,7 @@ exports.handler = async function(event, context) {
                 max_results: 2,  // 2 URLs to stay within token limits
                 // NOTE: Removed include_raw_content - we'll scrape with Render instead
                 include_domains: [
+                    'sanwa.co.jp',
                     'jp.idec.com',
                     'jp.misumi-ec.com',
                     'mitsubishielectric.com',
@@ -70,7 +71,6 @@ exports.handler = async function(event, context) {
                     'tsubakimoto.co.jp',
                     'nbk1560.com',
                     'habasit.com',
-                    'sanwa.co.jp',
                     'nagoya.sc',
                     'ccs-inc.co.jp',
                     'shinkoh-faulhaber.jp',
