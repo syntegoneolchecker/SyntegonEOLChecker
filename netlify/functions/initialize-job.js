@@ -70,6 +70,7 @@ exports.handler = async function(event, context) {
                     'tsubakimoto.co.jp',
                     'nbk1560.com',
                     'habasit.com',
+                    'sanwa.co.jp',
                     'nagoya.sc',
                     'ccs-inc.co.jp',
                     'shinkoh-faulhaber.jp',
