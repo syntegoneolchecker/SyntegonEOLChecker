@@ -1,5 +1,5 @@
 // Fetch a single URL - trigger Render scraping with callback OR use BrowserQL for Cloudflare-protected sites
-const { markUrlFetching, saveUrlResult } = require('./lib/job-storage');
+const { markUrlFetching, saveUrlResult, getJob } = require('./lib/job-storage');
 
 /**
  * Scrape URL using BrowserQL (for Cloudflare-protected sites)
@@ -118,9 +118,36 @@ exports.handler = async function(event, context) {
                 const result = await scrapeWithBrowserQL(url);
 
                 // Save result directly (no callback needed)
-                await saveUrlResult(jobId, urlIndex, result.content, result.title, snippet, url, context);
+                const allDone = await saveUrlResult(jobId, urlIndex, {
+                    url,
+                    title: result.title,
+                    snippet,
+                    fullContent: result.content
+                }, context);
 
-                console.log(`BrowserQL scraping complete for URL ${urlIndex}`);
+                console.log(`BrowserQL scraping complete for URL ${urlIndex}. All done: ${allDone}`);
+
+                // Continue pipeline: trigger analysis or next URL fetch
+                if (allDone) {
+                    // All URLs fetched - trigger LLM analysis
+                    console.log(`All URLs complete for job ${jobId}, triggering analysis`);
+                    await triggerAnalysis(jobId, baseUrl);
+                } else {
+                    // Find and trigger next pending URL
+                    console.log(`Checking for next pending URL...`);
+                    const job = await getJob(jobId, context);
+
+                    if (job) {
+                        const nextUrl = job.urls.find(u => u.status === 'pending');
+
+                        if (nextUrl) {
+                            console.log(`Triggering next URL ${nextUrl.index}: ${nextUrl.url}`);
+                            await triggerFetch(jobId, nextUrl, baseUrl);
+                        } else {
+                            console.log(`No more pending URLs found`);
+                        }
+                    }
+                }
 
                 return {
                     statusCode: 200,
@@ -135,15 +162,29 @@ exports.handler = async function(event, context) {
                 console.error(`BrowserQL scraping failed for URL ${urlIndex}:`, error);
 
                 // Save error result
-                await saveUrlResult(
-                    jobId,
-                    urlIndex,
-                    `[BrowserQL scraping failed: ${error.message}]`,
-                    null,
-                    snippet,
+                const allDone = await saveUrlResult(jobId, urlIndex, {
                     url,
-                    context
-                );
+                    title: null,
+                    snippet,
+                    fullContent: `[BrowserQL scraping failed: ${error.message}]`
+                }, context);
+
+                console.log(`BrowserQL error saved for URL ${urlIndex}. All done: ${allDone}`);
+
+                // Continue pipeline even on error
+                if (allDone) {
+                    console.log(`All URLs complete (with errors) for job ${jobId}, triggering analysis`);
+                    await triggerAnalysis(jobId, baseUrl);
+                } else {
+                    const job = await getJob(jobId, context);
+                    if (job) {
+                        const nextUrl = job.urls.find(u => u.status === 'pending');
+                        if (nextUrl) {
+                            console.log(`Triggering next URL ${nextUrl.index} after error`);
+                            await triggerFetch(jobId, nextUrl, baseUrl);
+                        }
+                    }
+                }
 
                 return {
                     statusCode: 500,
@@ -252,3 +293,36 @@ exports.handler = async function(event, context) {
         };
     }
 };
+
+// Helper function to trigger next URL fetch
+async function triggerFetch(jobId, urlInfo, baseUrl) {
+    try {
+        await fetch(`${baseUrl}/.netlify/functions/fetch-url`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jobId,
+                urlIndex: urlInfo.index,
+                url: urlInfo.url,
+                title: urlInfo.title,
+                snippet: urlInfo.snippet,
+                scrapingMethod: urlInfo.scrapingMethod
+            })
+        });
+    } catch (error) {
+        console.error('Failed to trigger next fetch:', error);
+    }
+}
+
+// Helper function to trigger LLM analysis
+async function triggerAnalysis(jobId, baseUrl) {
+    try {
+        await fetch(`${baseUrl}/.netlify/functions/analyze-job`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobId })
+        });
+    } catch (error) {
+        console.error('Failed to trigger analysis:', error);
+    }
+}
