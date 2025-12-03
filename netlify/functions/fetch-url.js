@@ -18,7 +18,7 @@ async function scrapeWithBrowserQL(url) {
         mutation ScrapeUrl($url: String!) {
             goto(
                 url: $url
-                waitUntil: networkidle
+                waitUntil: "networkidle"
             ) {
                 content
                 title
