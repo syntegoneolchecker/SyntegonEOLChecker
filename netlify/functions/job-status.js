@@ -59,7 +59,8 @@ exports.handler = async function(event, context) {
                         urlIndex: firstUrl.index,
                         url: firstUrl.url,
                         title: firstUrl.title,
-                        snippet: firstUrl.snippet
+                        snippet: firstUrl.snippet,
+                        scrapingMethod: firstUrl.scrapingMethod // Pass scraping method (render/browserql)
                     })
                 }).then(() => {
                     console.log(`First fetch-url triggered (subsequent URLs will be triggered by callback)`);
