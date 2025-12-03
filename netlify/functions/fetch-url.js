@@ -42,11 +42,11 @@ async function scrapeWithBrowserQL(url) {
         }
     `;
 
-    const response = await fetch('https://production-sfo.browserless.io/graphql', {
+    // Use stealth endpoint with token as query parameter (not Authorization header)
+    const response = await fetch(`https://production-sfo.browserless.io/stealth/bql?token=${browserqlApiKey}`, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${browserqlApiKey}`
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify({
             query
