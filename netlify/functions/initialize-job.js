@@ -1,6 +1,28 @@
 // Initialize EOL check job - Search with Tavily and save URLs
 const { createJob, saveJobUrls, saveFinalResult } = require('./lib/job-storage');
 
+/**
+ * Get manufacturer-specific direct URL if available
+ * Returns null if manufacturer requires Tavily search
+ */
+function getManufacturerUrl(maker, model) {
+    const normalizedMaker = maker.trim();
+
+    switch(normalizedMaker) {
+        case 'SMC':
+            return `https://www.smcworld.com/webcatalog/s3s/ja-jp/detail/?partNumber=${model}`;
+
+        case 'オリエンタルモーター':
+            return `https://www.orientalmotor.co.jp/ja/products/products-search/replacement?hinmei=${model}`;
+
+        case 'ミスミ':
+            return `https://jp.misumi-ec.com/vona2/result/?Keyword=${model}`;
+
+        default:
+            return null; // No direct URL strategy - use Tavily search
+    }
+}
+
 exports.handler = async function(event, context) {
     console.log('Initialize job request');
 
@@ -40,6 +62,36 @@ exports.handler = async function(event, context) {
 
         // Create job
         const jobId = await createJob(maker, model, context);
+
+        // Check if manufacturer has a direct URL strategy
+        const directUrl = getManufacturerUrl(maker, model);
+
+        if (directUrl) {
+            // Use manufacturer-specific direct URL (no Tavily search needed)
+            console.log(`Using direct URL strategy for ${maker}: ${directUrl}`);
+
+            const urls = [{
+                index: 0,
+                url: directUrl,
+                title: `${maker} ${model} Product Page`,
+                snippet: `Direct product page for ${maker} ${model}`
+            }];
+
+            await saveJobUrls(jobId, urls, context);
+
+            console.log(`Job ${jobId} initialized with direct URL strategy (1 URL)`);
+
+            return {
+                statusCode: 200,
+                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jobId,
+                    status: 'urls_ready',
+                    urlCount: urls.length,
+                    strategy: 'direct_url'
+                })
+            };
+        }
 
         // Perform Tavily search (URLs only - no raw_content)
         const searchQuery = `${maker} ${model}`;
