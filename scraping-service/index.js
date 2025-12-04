@@ -691,8 +691,8 @@ app.post('/scrape-keyence', async (req, res) => {
 
         console.log('Navigating to KEYENCE homepage...');
         await page.goto('https://www.keyence.co.jp/', {
-            waitUntil: 'networkidle2',
-            timeout: 60000
+            waitUntil: 'domcontentloaded',  // Fast load - just need DOM with search elements
+            timeout: 30000
         });
 
         console.log('KEYENCE homepage loaded, looking for search elements...');
@@ -711,9 +711,9 @@ app.post('/scrape-keyence', async (req, res) => {
 
         console.log('Clicking search button...');
 
-        // Click button and wait for navigation
+        // Click button and wait for navigation to product page
         await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }),
+            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),  // Fast load for search result
             page.click(buttonSelector)
         ]);
 
