@@ -44,9 +44,39 @@ function getManufacturerUrl(maker, model) {
                 model: model // Pass model for interactive search
             };
 
+        case 'タキゲン':
+            return {
+                url: `https://www.takigen.co.jp/search?k=${encodedModel}&d=0`,
+                scrapingMethod: 'render',
+                requiresValidation: true,
+                requiresExtraction: true // Extract product URL from search results
+            };
+
         default:
             return null; // No direct URL strategy - use Tavily search
     }
+}
+
+/**
+ * Fetch HTML directly via HTTP (for simple pages that don't need JavaScript rendering)
+ */
+async function fetchHtml(url) {
+    console.log(`Fetching HTML via HTTP: ${url}`);
+
+    const response = await fetch(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status}`);
+    }
+
+    const html = await response.text();
+    console.log(`Fetched HTML successfully: ${html.length} characters`);
+
+    return html;
 }
 
 /**
@@ -162,6 +192,45 @@ function hasNoSearchResults(content) {
     return false;
 }
 
+/**
+ * Extract first product URL from Takigen search results HTML
+ * Returns the product URL path (e.g., "/products/detail/A-1038/A-1038") or null if not found
+ */
+function extractTakigenProductUrl(html) {
+    if (!html) return null;
+
+    try {
+        // Look for the div containing search results with class="p-4 flex flex-wrap flex-col md:flex-row"
+        // Extract the first <a> tag's href attribute
+        const divPattern = /<div class="p-4 flex flex-wrap flex-col md:flex-row">(.*?)<\/div>/s;
+        const divMatch = html.match(divPattern);
+
+        if (!divMatch) {
+            console.log('Takigen search results div not found in HTML');
+            return null;
+        }
+
+        const divContent = divMatch[1];
+
+        // Extract the first href from an <a> tag
+        const hrefPattern = /href="(\/products\/detail\/[^"]+)"/;
+        const hrefMatch = divContent.match(hrefPattern);
+
+        if (!hrefMatch) {
+            console.log('No product href found in Takigen search results div');
+            return null;
+        }
+
+        const productPath = hrefMatch[1];
+        console.log(`Extracted Takigen product path: ${productPath}`);
+        return productPath;
+
+    } catch (error) {
+        console.error(`Error extracting Takigen product URL: ${error.message}`);
+        return null;
+    }
+}
+
 exports.handler = async function(event, context) {
     console.log('Initialize job request');
 
@@ -206,54 +275,99 @@ exports.handler = async function(event, context) {
         const manufacturerStrategy = getManufacturerUrl(maker, model);
 
         if (manufacturerStrategy) {
-            // Check if this URL requires validation (e.g., NTN on motion.com)
+            // Check if this URL requires validation (e.g., NTN on motion.com, Takigen)
             if (manufacturerStrategy.requiresValidation) {
                 console.log(`URL requires validation for ${maker}: ${manufacturerStrategy.url}`);
 
                 try {
-                    // Scrape the URL with BrowserQL to check if results exist
-                    const scrapeResult = await scrapeWithBrowserQL(manufacturerStrategy.url);
+                    // Special handling for Takigen - extract product URL from search results
+                    if (manufacturerStrategy.requiresExtraction) {
+                        console.log(`Extracting product URL from Takigen search results`);
 
-                    // Check if search returned no results
-                    if (hasNoSearchResults(scrapeResult.content)) {
-                        console.log(`No search results found on ${manufacturerStrategy.url}, falling back to Tavily search`);
-                        // Fall through to Tavily search below (don't return here)
+                        // Fetch the search results HTML
+                        const searchHtml = await fetchHtml(manufacturerStrategy.url);
+
+                        // Extract the first product URL
+                        const productPath = extractTakigenProductUrl(searchHtml);
+
+                        if (!productPath) {
+                            console.log(`No product found in Takigen search results, falling back to Tavily search`);
+                            // Fall through to Tavily search below
+                        } else {
+                            // Build the full product URL
+                            const productUrl = `https://www.takigen.co.jp${productPath}`;
+                            console.log(`Extracted Takigen product URL: ${productUrl}`);
+
+                            // Save this URL for scraping
+                            const urls = [{
+                                index: 0,
+                                url: productUrl,
+                                title: `${maker} ${model} Product Page`,
+                                snippet: `Direct product page for ${maker} ${model}`,
+                                scrapingMethod: manufacturerStrategy.scrapingMethod
+                            }];
+
+                            await saveJobUrls(jobId, urls, context);
+
+                            console.log(`Job ${jobId} initialized with extracted Takigen product URL`);
+
+                            return {
+                                statusCode: 200,
+                                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    jobId,
+                                    status: 'urls_ready',
+                                    urlCount: 1,
+                                    strategy: 'takigen_extracted_url',
+                                    extractedUrl: productUrl
+                                })
+                            };
+                        }
                     } else {
-                        // Results found! Save this URL with the scraped content
-                        console.log(`Search results found on motion.com, using this content for analysis`);
+                        // Standard validation (e.g., NTN) - scrape and check for results
+                        const scrapeResult = await scrapeWithBrowserQL(manufacturerStrategy.url);
 
-                        const urls = [{
-                            index: 0,
-                            url: manufacturerStrategy.url,
-                            title: `${maker} ${model} Search Results`,
-                            snippet: `Search results from motion.com for ${maker} ${model}`,
-                            scrapingMethod: manufacturerStrategy.scrapingMethod
-                        }];
+                        // Check if search returned no results
+                        if (hasNoSearchResults(scrapeResult.content)) {
+                            console.log(`No search results found on ${manufacturerStrategy.url}, falling back to Tavily search`);
+                            // Fall through to Tavily search below (don't return here)
+                        } else {
+                            // Results found! Save this URL with the scraped content
+                            console.log(`Search results found on motion.com, using this content for analysis`);
 
-                        await saveJobUrls(jobId, urls, context);
+                            const urls = [{
+                                index: 0,
+                                url: manufacturerStrategy.url,
+                                title: `${maker} ${model} Search Results`,
+                                snippet: `Search results from motion.com for ${maker} ${model}`,
+                                scrapingMethod: manufacturerStrategy.scrapingMethod
+                            }];
 
-                        // Save the scraped content immediately
-                        await saveUrlResult(jobId, 0, {
-                            url: manufacturerStrategy.url,
-                            title: `${maker} ${model} Search Results`,
-                            snippet: `Search results from motion.com`,
-                            fullContent: scrapeResult.content
-                        }, context);
+                            await saveJobUrls(jobId, urls, context);
 
-                        console.log(`Job ${jobId} initialized with validated direct URL (content already scraped)`);
+                            // Save the scraped content immediately
+                            await saveUrlResult(jobId, 0, {
+                                url: manufacturerStrategy.url,
+                                title: `${maker} ${model} Search Results`,
+                                snippet: `Search results from motion.com`,
+                                fullContent: scrapeResult.content
+                            }, context);
 
-                        // Mark job as ready for analysis (content already fetched)
-                        return {
-                            statusCode: 200,
-                            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                jobId,
-                                status: 'ready_for_analysis',
-                                urlCount: 1,
-                                strategy: 'validated_direct_url',
-                                contentLength: scrapeResult.content.length
-                            })
-                        };
+                            console.log(`Job ${jobId} initialized with validated direct URL (content already scraped)`);
+
+                            // Mark job as ready for analysis (content already fetched)
+                            return {
+                                statusCode: 200,
+                                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    jobId,
+                                    status: 'ready_for_analysis',
+                                    urlCount: 1,
+                                    strategy: 'validated_direct_url',
+                                    contentLength: scrapeResult.content.length
+                                })
+                            };
+                        }
                     }
                 } catch (error) {
                     console.error(`Validation scraping failed for ${maker}: ${error.message}, falling back to Tavily search`);
