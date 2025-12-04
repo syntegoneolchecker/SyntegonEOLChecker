@@ -738,28 +738,30 @@ app.post('/scrape-keyence', async (req, res) => {
         // Find the search input using specific class
         const inputSelector = '.m-form-search__input';
 
-        console.log(`Setting search input value to "${model}"...`);
-        // Use evaluate to set value directly (instant, not slow typing)
+        console.log(`Setting search input value to "${model}" and pressing Enter...`);
+        // Set value directly in the input
         await page.evaluate((selector, value) => {
             const input = document.querySelector(selector);
             if (input) {
                 input.value = value;
                 // Trigger input event so page JavaScript knows value changed
                 input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
             }
         }, inputSelector, model);
 
-        console.log('Pressing Enter to search...');
+        // Click the input to ensure it's focused and ready for keyboard events
+        await page.click(inputSelector);
 
-        // Click and navigate - with error recovery if navigation times out
+        // Press Enter and wait for navigation - with error recovery
         try {
             await Promise.all([
-                page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }),
-                page.click(buttonSelector)
+                page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
+                page.keyboard.press('Enter')
             ]);
         } catch (navError) {
             // Navigation timeout - but page might have loaded anyway
-            console.log(`Navigation timeout, checking if page changed: ${navError.message}`);
+            console.log(`Navigation timeout: ${navError.message}`);
             await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s for page to settle
         }
 
