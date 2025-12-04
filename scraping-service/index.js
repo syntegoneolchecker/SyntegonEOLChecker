@@ -677,17 +677,41 @@ app.post('/scrape-keyence', async (req, res) => {
 
         // Enable request interception to block only heavy resources (images and media)
         // IMPORTANT: Allow stylesheets and scripts - KEYENCE needs them to render properly
+        // Also block third-party analytics/tracking that prevents load event
         await page.setRequestInterception(true);
+
+        const blockedDomains = [
+            'im-apps.net',           // Analytics
+            'nakanohito.jp',         // Japanese analytics
+            'clarity.ms',            // Microsoft Clarity
+            'taboola.com',           // Taboola ads/tracking
+            'facebook.net',          // Facebook Pixel
+            'google-analytics.com',  // Google Analytics
+            'googletagmanager.com',  // Google Tag Manager
+            'doubleclick.net'        // Google ads
+        ];
+
         page.on('request', (request) => {
+            const url = request.url();
             const resourceType = request.resourceType();
-            // Only block images and media - allow CSS, JS, fonts
+
+            // Block images and media
             if (['image', 'media'].includes(resourceType)) {
                 request.abort();
-            } else {
-                request.continue();
+                return;
             }
+
+            // Block third-party analytics/tracking domains
+            const isBlockedDomain = blockedDomains.some(domain => url.includes(domain));
+            if (isBlockedDomain) {
+                request.abort();
+                return;
+            }
+
+            // Allow everything else
+            request.continue();
         });
-        console.log('Resource blocking: images and media blocked, CSS/JS allowed for KEYENCE');
+        console.log('Resource blocking: images, media, and analytics blocked; CSS/JS allowed for KEYENCE');
 
         // DIAGNOSTIC: Track network requests
         const pendingRequests = new Map();
