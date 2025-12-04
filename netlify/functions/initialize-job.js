@@ -134,6 +134,7 @@ function hasNoSearchResults(content) {
 
     // Common "no results" patterns
     const noResultsPatterns = [
+        'no results for:',      // motion.com specific pattern
         'no results found',
         'no products found',
         '0 results',
