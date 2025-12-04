@@ -691,7 +691,7 @@ app.post('/scrape-keyence', async (req, res) => {
 
         console.log('Navigating to KEYENCE homepage...');
         await page.goto('https://www.keyence.co.jp/', {
-            waitUntil: 'domcontentloaded',  // Fast load - just need DOM with search elements
+            waitUntil: 'load',  // Wait for all resources - search bar needs JavaScript to render
             timeout: 30000
         });
 
