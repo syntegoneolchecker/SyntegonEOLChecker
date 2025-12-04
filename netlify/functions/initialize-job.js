@@ -1,5 +1,5 @@
 // Initialize EOL check job - Search with Tavily and save URLs
-const { createJob, saveJobUrls, saveFinalResult } = require('./lib/job-storage');
+const { createJob, saveJobUrls, saveFinalResult, saveUrlResult } = require('./lib/job-storage');
 
 /**
  * Get manufacturer-specific direct URL if available
@@ -30,9 +30,128 @@ function getManufacturerUrl(maker, model) {
                 scrapingMethod: 'render'
             };
 
+        case 'NTN':
+            return {
+                url: `https://www.motion.com/products/search;q=${encodedModel};facet_attributes.MANUFACTURER_NAME=NTN`,
+                scrapingMethod: 'browserql',
+                requiresValidation: true // Need to check if search returns results
+            };
+
         default:
             return null; // No direct URL strategy - use Tavily search
     }
+}
+
+/**
+ * Scrape URL using BrowserQL (for Cloudflare-protected sites)
+ * Same implementation as in fetch-url.js
+ */
+async function scrapeWithBrowserQL(url) {
+    const browserqlApiKey = process.env.BROWSERQL_API_KEY;
+
+    if (!browserqlApiKey) {
+        throw new Error('BROWSERQL_API_KEY environment variable not set');
+    }
+
+    console.log(`Scraping with BrowserQL: ${url}`);
+
+    const query = `
+        mutation ScrapeUrl {
+            goto(
+                url: "${url}"
+                waitUntil: networkIdle
+            ) {
+                status
+            }
+
+            pageContent: evaluate(content: """
+                (() => {
+                    try {
+                        const scripts = document.querySelectorAll('script, style, noscript');
+                        scripts.forEach(el => el.remove());
+                        return JSON.stringify({ text: document.body.innerText, error: null });
+                    } catch (e) {
+                        return JSON.stringify({ text: null, error: e?.message ?? String(e) });
+                    }
+                })()
+            """) {
+                value
+            }
+        }
+    `;
+
+    const response = await fetch(`https://production-sfo.browserless.io/stealth/bql?token=${browserqlApiKey}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query })
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`BrowserQL API error: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+
+    if (result.errors) {
+        throw new Error(`BrowserQL GraphQL errors: ${JSON.stringify(result.errors)}`);
+    }
+
+    if (!result.data || !result.data.pageContent) {
+        throw new Error('BrowserQL returned no data');
+    }
+
+    const evaluateResult = JSON.parse(result.data.pageContent.value);
+
+    if (evaluateResult.error) {
+        throw new Error(`BrowserQL evaluation error: ${evaluateResult.error}`);
+    }
+
+    const content = evaluateResult.text;
+
+    if (!content) {
+        throw new Error('BrowserQL returned empty content');
+    }
+
+    console.log(`BrowserQL scraped successfully: ${content.length} characters`);
+
+    return {
+        content,
+        success: true
+    };
+}
+
+/**
+ * Check if content indicates "no search results" on motion.com
+ * Returns true if no results found, false if results exist
+ */
+function hasNoSearchResults(content) {
+    if (!content) return true;
+
+    const lowerContent = content.toLowerCase();
+
+    // Common "no results" patterns
+    const noResultsPatterns = [
+        'no results found',
+        'no products found',
+        '0 results',
+        'no items match',
+        'did not match any products',
+        'your search returned no results',
+        'we could not find any results',
+        'no matches found'
+    ];
+
+    for (const pattern of noResultsPatterns) {
+        if (lowerContent.includes(pattern)) {
+            console.log(`Detected "no results" pattern: "${pattern}"`);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 exports.handler = async function(event, context) {
@@ -79,32 +198,87 @@ exports.handler = async function(event, context) {
         const manufacturerStrategy = getManufacturerUrl(maker, model);
 
         if (manufacturerStrategy) {
-            // Use manufacturer-specific direct URL (no Tavily search needed)
-            console.log(`Using direct URL strategy for ${maker}: ${manufacturerStrategy.url} (scraping: ${manufacturerStrategy.scrapingMethod})`);
+            // Check if this URL requires validation (e.g., NTN on motion.com)
+            if (manufacturerStrategy.requiresValidation) {
+                console.log(`URL requires validation for ${maker}: ${manufacturerStrategy.url}`);
 
-            const urls = [{
-                index: 0,
-                url: manufacturerStrategy.url,
-                title: `${maker} ${model} Product Page`,
-                snippet: `Direct product page for ${maker} ${model}`,
-                scrapingMethod: manufacturerStrategy.scrapingMethod // Add scraping method to metadata
-            }];
+                try {
+                    // Scrape the URL with BrowserQL to check if results exist
+                    const scrapeResult = await scrapeWithBrowserQL(manufacturerStrategy.url);
 
-            await saveJobUrls(jobId, urls, context);
+                    // Check if search returned no results
+                    if (hasNoSearchResults(scrapeResult.content)) {
+                        console.log(`No search results found on ${manufacturerStrategy.url}, falling back to Tavily search`);
+                        // Fall through to Tavily search below (don't return here)
+                    } else {
+                        // Results found! Save this URL with the scraped content
+                        console.log(`Search results found on motion.com, using this content for analysis`);
 
-            console.log(`Job ${jobId} initialized with direct URL strategy (1 URL, method: ${manufacturerStrategy.scrapingMethod})`);
+                        const urls = [{
+                            index: 0,
+                            url: manufacturerStrategy.url,
+                            title: `${maker} ${model} Search Results`,
+                            snippet: `Search results from motion.com for ${maker} ${model}`,
+                            scrapingMethod: manufacturerStrategy.scrapingMethod
+                        }];
 
-            return {
-                statusCode: 200,
-                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jobId,
-                    status: 'urls_ready',
-                    urlCount: urls.length,
-                    strategy: 'direct_url',
+                        await saveJobUrls(jobId, urls, context);
+
+                        // Save the scraped content immediately
+                        await saveUrlResult(jobId, 0, {
+                            url: manufacturerStrategy.url,
+                            title: `${maker} ${model} Search Results`,
+                            snippet: `Search results from motion.com`,
+                            fullContent: scrapeResult.content
+                        }, context);
+
+                        console.log(`Job ${jobId} initialized with validated direct URL (content already scraped)`);
+
+                        // Mark job as ready for analysis (content already fetched)
+                        return {
+                            statusCode: 200,
+                            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                jobId,
+                                status: 'ready_for_analysis',
+                                urlCount: 1,
+                                strategy: 'validated_direct_url',
+                                contentLength: scrapeResult.content.length
+                            })
+                        };
+                    }
+                } catch (error) {
+                    console.error(`Validation scraping failed for ${maker}: ${error.message}, falling back to Tavily search`);
+                    // Fall through to Tavily search below
+                }
+            } else {
+                // Standard direct URL (no validation needed)
+                console.log(`Using direct URL strategy for ${maker}: ${manufacturerStrategy.url} (scraping: ${manufacturerStrategy.scrapingMethod})`);
+
+                const urls = [{
+                    index: 0,
+                    url: manufacturerStrategy.url,
+                    title: `${maker} ${model} Product Page`,
+                    snippet: `Direct product page for ${maker} ${model}`,
                     scrapingMethod: manufacturerStrategy.scrapingMethod
-                })
-            };
+                }];
+
+                await saveJobUrls(jobId, urls, context);
+
+                console.log(`Job ${jobId} initialized with direct URL strategy (1 URL, method: ${manufacturerStrategy.scrapingMethod})`);
+
+                return {
+                    statusCode: 200,
+                    headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jobId,
+                        status: 'urls_ready',
+                        urlCount: urls.length,
+                        strategy: 'direct_url',
+                        scrapingMethod: manufacturerStrategy.scrapingMethod
+                    })
+                };
+            }
         }
 
         // Perform Tavily search (URLs only - no raw_content)
