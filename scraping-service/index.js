@@ -818,11 +818,7 @@ app.post('/scrape-keyence', async (req, res) => {
         const inputSelector = '.m-form-search__input';
         const buttonSelector = '.m-form-search__button';
 
-        console.log('Search elements found, proceeding with search...');
-        await page.waitForSelector(inputSelector, { timeout: 2000 });
-        await page.waitForSelector(buttonSelector, { timeout: 2000 });
-
-        console.log(`Typing model "${model}" into search box...`);
+        console.log('Search elements confirmed, typing model into search box...');
         await page.type(inputSelector, model);
 
         console.log('Clicking search button...');
