@@ -626,6 +626,177 @@ app.post('/scrape', async (req, res) => {
     }
 });
 
+// KEYENCE-specific scraping endpoint (interactive search)
+app.post('/scrape-keyence', async (req, res) => {
+    const { model, callbackUrl, jobId, urlIndex } = req.body;
+
+    // Memory management: Increment request counter
+    requestCount++;
+    console.log(`[${new Date().toISOString()}] KEYENCE Search Request #${requestCount}/${MAX_REQUESTS_BEFORE_RESTART}`);
+
+    if (!model) {
+        return res.status(400).json({ error: 'Model is required' });
+    }
+
+    console.log(`[${new Date().toISOString()}] KEYENCE: Searching for model: ${model}`);
+    if (callbackUrl) {
+        console.log(`Callback URL provided: ${callbackUrl}`);
+    }
+
+    let browser = null;
+    let callbackSent = false;
+
+    try {
+        browser = await puppeteer.launch({
+            headless: 'new',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-background-networking',
+                '--disable-default-apps',
+                '--disable-sync',
+                '--disable-extensions',
+                '--disable-blink-features=AutomationControlled'
+            ],
+            timeout: 120000
+        });
+
+        const page = await browser.newPage();
+
+        await page.setUserAgent(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        );
+
+        await page.setViewport({ width: 1920, height: 1080 });
+
+        // Enable request interception to block heavy resources
+        await page.setRequestInterception(true);
+        page.on('request', (request) => {
+            const resourceType = request.resourceType();
+            if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                request.abort();
+            } else {
+                request.continue();
+            }
+        });
+
+        console.log('Navigating to KEYENCE homepage...');
+        await page.goto('https://www.keyence.co.jp/', {
+            waitUntil: 'networkidle2',
+            timeout: 60000
+        });
+
+        console.log('KEYENCE homepage loaded, looking for search elements...');
+
+        // Find the search container
+        const searchContainerSelector = '.m-layout-search__item.m-layout-search__item--input';
+        await page.waitForSelector(searchContainerSelector, { timeout: 10000 });
+
+        console.log('Search container found, locating input and button...');
+
+        // Find the input and button within the container
+        const inputSelector = `${searchContainerSelector} input`;
+        const buttonSelector = `${searchContainerSelector} button`;
+
+        await page.waitForSelector(inputSelector, { timeout: 5000 });
+        await page.waitForSelector(buttonSelector, { timeout: 5000 });
+
+        console.log(`Typing model "${model}" into search box...`);
+        await page.type(inputSelector, model);
+
+        console.log('Clicking search button...');
+
+        // Click button and wait for navigation
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }),
+            page.click(buttonSelector)
+        ]);
+
+        // Get the final URL after navigation
+        const finalUrl = page.url();
+        console.log(`Navigated to product page: ${finalUrl}`);
+
+        // Extract content from the product page
+        const htmlContent = await page.content();
+        const text = extractHTMLText(htmlContent);
+
+        console.log(`Extracted ${text.length} characters from KEYENCE product page`);
+
+        // Get page title
+        const title = await page.title();
+
+        const result = {
+            success: true,
+            url: finalUrl,
+            originalSearch: model,
+            title: title,
+            content: text,
+            contentLength: text.length,
+            method: 'keyence_interactive_search',
+            timestamp: new Date().toISOString()
+        };
+
+        // Send callback unconditionally
+        if (callbackUrl) {
+            await sendCallback(callbackUrl, {
+                jobId,
+                urlIndex,
+                content: text,
+                title: title,
+                snippet: `KEYENCE search result for ${model}`,
+                url: finalUrl
+            });
+            callbackSent = true;
+        }
+
+        await browser.close();
+        browser = null;
+
+        // Schedule restart if memory limit approaching
+        scheduleRestartIfNeeded();
+
+        return res.json(result);
+
+    } catch (error) {
+        console.error(`KEYENCE scraping error:`, error);
+
+        // Send error callback if not already sent
+        if (callbackUrl && !callbackSent) {
+            await sendCallback(callbackUrl, {
+                jobId,
+                urlIndex,
+                content: `[KEYENCE search failed: ${error.message}]`,
+                title: null,
+                snippet: '',
+                url: 'https://www.keyence.co.jp/'
+            });
+        }
+
+        if (browser) {
+            try {
+                await browser.close();
+            } catch (closeError) {
+                console.error('Error closing browser after KEYENCE scraping error:', closeError);
+            }
+        }
+
+        // Schedule restart if memory limit approaching
+        scheduleRestartIfNeeded();
+
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            model: model
+        });
+    }
+});
+
 // Batch scraping endpoint (multiple URLs)
 app.post('/scrape-batch', async (req, res) => {
     const { urls } = req.body;
