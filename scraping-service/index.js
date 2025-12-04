@@ -713,112 +713,33 @@ app.post('/scrape-keyence', async (req, res) => {
         });
         console.log('Resource blocking: images, media, and analytics blocked; CSS/JS allowed for KEYENCE');
 
-        // DIAGNOSTIC: Track network requests
-        const pendingRequests = new Map();
-        let requestCounter = 0;
-
-        page.on('request', request => {
-            requestCounter++;
-            const url = request.url();
-            const type = request.resourceType();
-            pendingRequests.set(url, { type, startTime: Date.now() });
-            if (requestCounter <= 10) {  // Log first 10 requests
-                console.log(`[REQUEST ${requestCounter}] ${type}: ${url.substring(0, 100)}`);
-            }
-        });
-
-        page.on('requestfinished', request => {
-            pendingRequests.delete(request.url());
-        });
-
-        page.on('requestfailed', request => {
-            const url = request.url();
-            console.log(`[REQUEST FAILED] ${request.resourceType()}: ${url.substring(0, 100)}`);
-            pendingRequests.delete(url);
-        });
-
         console.log('Navigating to KEYENCE homepage...');
-        const startTime = Date.now();
-
-        try {
-            await page.goto('https://www.keyence.co.jp/', {
-                waitUntil: 'load',
-                timeout: 30000
-            });
-
-            const loadTime = Date.now() - startTime;
-            console.log(`✓ KEYENCE homepage loaded successfully in ${loadTime}ms`);
-            console.log(`Total requests made: ${requestCounter}`);
-
-        } catch (navError) {
-            const failTime = Date.now() - startTime;
-            console.log(`✗ Navigation failed after ${failTime}ms`);
-            console.log(`Error: ${navError.message}`);
-            console.log(`Total requests made: ${requestCounter}`);
-            console.log(`Pending requests: ${pendingRequests.size}`);
-
-            if (pendingRequests.size > 0) {
-                console.log('Top 10 pending requests:');
-                let count = 0;
-                for (const [url, info] of pendingRequests) {
-                    if (count++ >= 10) break;
-                    const duration = Date.now() - info.startTime;
-                    console.log(`  [${info.type}] ${duration}ms - ${url.substring(0, 100)}`);
-                }
-            }
-
-            // Check current page URL
-            const currentUrl = page.url();
-            console.log(`Current page URL: ${currentUrl}`);
-
-            // Re-throw to trigger error handling
-            throw navError;
-        }
-
-        console.log('KEYENCE homepage loaded, looking for search elements...');
-
-        // DIAGNOSTIC: Check what's actually on the page
-        console.log('Waiting 3 seconds for JavaScript to render elements...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        // Check if search elements exist
-        const searchElements = await page.evaluate(() => {
-            const inputs = document.querySelectorAll('input');
-            const buttons = document.querySelectorAll('button');
-            const searchBar = document.querySelector('.m-form-search__input');
-            const searchButton = document.querySelector('.m-form-search__button');
-
-            return {
-                totalInputs: inputs.length,
-                totalButtons: buttons.length,
-                hasSearchInput: !!searchBar,
-                hasSearchButton: !!searchButton,
-                inputClasses: Array.from(inputs).slice(0, 5).map(input => ({
-                    type: input.type,
-                    placeholder: input.placeholder,
-                    classes: input.className
-                })),
-                buttonClasses: Array.from(buttons).slice(0, 5).map(btn => ({
-                    text: btn.textContent.trim().substring(0, 30),
-                    classes: btn.className
-                }))
-            };
+        await page.goto('https://www.keyence.co.jp/', {
+            waitUntil: 'domcontentloaded',  // Faster than 'load' (~5-10s vs ~20s)
+            timeout: 30000
         });
 
-        console.log('Page element diagnostics:', JSON.stringify(searchElements, null, 2));
+        console.log('KEYENCE homepage loaded, waiting for search elements to render...');
 
-        if (!searchElements.hasSearchInput) {
-            console.log('ERROR: Search input .m-form-search__input not found on page!');
-            console.log(`Found ${searchElements.totalInputs} input elements total`);
-            throw new Error('Search input not found on KEYENCE homepage');
+        // Wait for JavaScript to render the search bar
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Verify search elements exist
+        const hasSearchElements = await page.evaluate(() => {
+            const searchInput = document.querySelector('.m-form-search__input');
+            const searchButton = document.querySelector('.m-form-search__button');
+            return !!(searchInput && searchButton);
+        });
+
+        if (!hasSearchElements) {
+            throw new Error('Search input or button not found on KEYENCE homepage');
         }
 
         // Find the search input and button using specific classes
-        // Based on HTML: <input class="m-form-search__input ..."> and <button class="m-form-search__button ...">
         const inputSelector = '.m-form-search__input';
         const buttonSelector = '.m-form-search__button';
 
-        console.log('Search elements confirmed, typing model into search box...');
+        console.log(`Typing model "${model}" into search box...`);
         await page.type(inputSelector, model);
 
         console.log('Clicking search button...');
