@@ -675,16 +675,19 @@ app.post('/scrape-keyence', async (req, res) => {
 
         await page.setViewport({ width: 1920, height: 1080 });
 
-        // Enable request interception to block heavy resources
+        // Enable request interception to block only heavy resources (images and media)
+        // IMPORTANT: Allow stylesheets and scripts - KEYENCE needs them to render properly
         await page.setRequestInterception(true);
         page.on('request', (request) => {
             const resourceType = request.resourceType();
-            if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+            // Only block images and media - allow CSS, JS, fonts
+            if (['image', 'media'].includes(resourceType)) {
                 request.abort();
             } else {
                 request.continue();
             }
         });
+        console.log('Resource blocking: images and media blocked, CSS/JS allowed for KEYENCE');
 
         console.log('Navigating to KEYENCE homepage...');
         await page.goto('https://www.keyence.co.jp/', {
