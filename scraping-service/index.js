@@ -735,9 +735,8 @@ app.post('/scrape-keyence', async (req, res) => {
             throw new Error('Search input or button not found on KEYENCE homepage');
         }
 
-        // Find the search input and button using specific classes
+        // Find the search input using specific class
         const inputSelector = '.m-form-search__input';
-        const buttonSelector = '.m-form-search__button';
 
         console.log(`Setting search input value to "${model}"...`);
         // Use evaluate to set value directly (instant, not slow typing)
@@ -750,7 +749,7 @@ app.post('/scrape-keyence', async (req, res) => {
             }
         }, inputSelector, model);
 
-        console.log('Clicking search button...');
+        console.log('Pressing Enter to search...');
 
         // Click and navigate - with error recovery if navigation times out
         try {
