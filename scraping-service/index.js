@@ -777,14 +777,50 @@ app.post('/scrape-keyence', async (req, res) => {
 
         console.log('KEYENCE homepage loaded, looking for search elements...');
 
+        // DIAGNOSTIC: Check what's actually on the page
+        console.log('Waiting 3 seconds for JavaScript to render elements...');
+        await page.waitForTimeout(3000);
+
+        // Check if search elements exist
+        const searchElements = await page.evaluate(() => {
+            const inputs = document.querySelectorAll('input');
+            const buttons = document.querySelectorAll('button');
+            const searchBar = document.querySelector('.m-form-search__input');
+            const searchButton = document.querySelector('.m-form-search__button');
+
+            return {
+                totalInputs: inputs.length,
+                totalButtons: buttons.length,
+                hasSearchInput: !!searchBar,
+                hasSearchButton: !!searchButton,
+                inputClasses: Array.from(inputs).slice(0, 5).map(input => ({
+                    type: input.type,
+                    placeholder: input.placeholder,
+                    classes: input.className
+                })),
+                buttonClasses: Array.from(buttons).slice(0, 5).map(btn => ({
+                    text: btn.textContent.trim().substring(0, 30),
+                    classes: btn.className
+                }))
+            };
+        });
+
+        console.log('Page element diagnostics:', JSON.stringify(searchElements, null, 2));
+
+        if (!searchElements.hasSearchInput) {
+            console.log('ERROR: Search input .m-form-search__input not found on page!');
+            console.log(`Found ${searchElements.totalInputs} input elements total`);
+            throw new Error('Search input not found on KEYENCE homepage');
+        }
+
         // Find the search input and button using specific classes
         // Based on HTML: <input class="m-form-search__input ..."> and <button class="m-form-search__button ...">
         const inputSelector = '.m-form-search__input';
         const buttonSelector = '.m-form-search__button';
 
-        console.log('Waiting for search input and button...');
-        await page.waitForSelector(inputSelector, { timeout: 10000 });
-        await page.waitForSelector(buttonSelector, { timeout: 5000 });
+        console.log('Search elements found, proceeding with search...');
+        await page.waitForSelector(inputSelector, { timeout: 2000 });
+        await page.waitForSelector(buttonSelector, { timeout: 2000 });
 
         console.log(`Typing model "${model}" into search box...`);
         await page.type(inputSelector, model);
