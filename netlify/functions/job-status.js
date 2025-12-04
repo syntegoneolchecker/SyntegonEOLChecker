@@ -74,17 +74,24 @@ exports.handler = async function(event, context) {
             if (firstUrl) {
                 console.log(`Triggering first URL (sequential): ${firstUrl.url}`);
 
+                const payload = {
+                    jobId,
+                    urlIndex: firstUrl.index,
+                    url: firstUrl.url,
+                    title: firstUrl.title,
+                    snippet: firstUrl.snippet,
+                    scrapingMethod: firstUrl.scrapingMethod // Pass scraping method (render/browserql/keyence_interactive)
+                };
+
+                // Pass model for interactive searches (KEYENCE)
+                if (firstUrl.model) {
+                    payload.model = firstUrl.model;
+                }
+
                 fetch(fetchUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jobId,
-                        urlIndex: firstUrl.index,
-                        url: firstUrl.url,
-                        title: firstUrl.title,
-                        snippet: firstUrl.snippet,
-                        scrapingMethod: firstUrl.scrapingMethod // Pass scraping method (render/browserql)
-                    })
+                    body: JSON.stringify(payload)
                 }).then(() => {
                     console.log(`First fetch-url triggered (subsequent URLs will be triggered by callback)`);
                 }).catch(error => {

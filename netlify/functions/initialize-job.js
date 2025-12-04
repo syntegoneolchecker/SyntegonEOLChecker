@@ -37,6 +37,13 @@ function getManufacturerUrl(maker, model) {
                 requiresValidation: true // Need to check if search returns results
             };
 
+        case 'キーエンス':
+            return {
+                url: 'https://www.keyence.co.jp/', // Base URL (actual search is interactive)
+                scrapingMethod: 'keyence_interactive', // Special method for interactive search
+                model: model // Pass model for interactive search
+            };
+
         default:
             return null; // No direct URL strategy - use Tavily search
     }
@@ -263,6 +270,11 @@ exports.handler = async function(event, context) {
                     snippet: `Direct product page for ${maker} ${model}`,
                     scrapingMethod: manufacturerStrategy.scrapingMethod
                 }];
+
+                // Pass model for interactive searches (KEYENCE)
+                if (manufacturerStrategy.model) {
+                    urls[0].model = manufacturerStrategy.model;
+                }
 
                 await saveJobUrls(jobId, urls, context);
 

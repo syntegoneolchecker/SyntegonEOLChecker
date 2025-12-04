@@ -97,7 +97,7 @@ exports.handler = async function(event, context) {
     }
 
     try {
-        const { jobId, urlIndex, url, title, snippet, scrapingMethod } = JSON.parse(event.body);
+        const { jobId, urlIndex, url, title, snippet, scrapingMethod, model } = JSON.parse(event.body);
 
         console.log(`Fetching URL ${urlIndex} for job ${jobId}: ${url} (method: ${scrapingMethod || 'render'})`);
 
@@ -110,6 +110,88 @@ exports.handler = async function(event, context) {
         await markUrlFetching(jobId, urlIndex, context);
 
         // Branch based on scraping method
+        if (scrapingMethod === 'keyence_interactive') {
+            // Use KEYENCE interactive search (special Render endpoint)
+            console.log(`Using KEYENCE interactive search for model: ${model}`);
+
+            const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
+            const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
+
+            const keyencePayload = {
+                model: model,
+                callbackUrl,
+                jobId,
+                urlIndex
+            };
+
+            console.log(`Calling KEYENCE scraping service: ${scrapingServiceUrl}/scrape-keyence`);
+
+            // Retry logic for Render invocation
+            const maxRetries = 3;
+            let lastError = null;
+
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                console.log(`KEYENCE invocation attempt ${attempt}/${maxRetries}`);
+
+                try {
+                    const timeoutPromise = new Promise((resolve) =>
+                        setTimeout(() => resolve({ timedOut: true }), 10000)
+                    );
+
+                    const fetchPromise = fetch(`${scrapingServiceUrl}/scrape-keyence`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(keyencePayload)
+                    });
+
+                    const result = await Promise.race([fetchPromise, timeoutPromise]);
+
+                    if (result.timedOut) {
+                        console.log(`KEYENCE call - timeout after 10s (Render processing in background)`);
+                        break;
+                    } else {
+                        const response = result;
+                        console.log(`KEYENCE call responded with status: ${response.status}`);
+
+                        if (!response.ok) {
+                            const text = await response.text();
+                            console.error(`KEYENCE error response on attempt ${attempt}: ${response.status} - ${text}`);
+                            lastError = new Error(`KEYENCE scraping returned error: ${response.status} - ${text}`);
+                        } else {
+                            console.log(`KEYENCE successfully invoked on attempt ${attempt}`);
+                            break;
+                        }
+                    }
+                } catch (error) {
+                    console.error(`KEYENCE call failed on attempt ${attempt}:`, error.message);
+                    lastError = error;
+                }
+
+                if (attempt < maxRetries) {
+                    const backoffMs = Math.pow(2, attempt) * 500;
+                    console.log(`Retrying KEYENCE call in ${backoffMs}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                }
+            }
+
+            if (lastError) {
+                console.error(`All ${maxRetries} KEYENCE invocation attempts failed`);
+                return {
+                    statusCode: 500,
+                    body: JSON.stringify({
+                        success: false,
+                        error: `KEYENCE invocation failed after ${maxRetries} attempts: ${lastError.message}`,
+                        method: 'keyence_failed'
+                    })
+                };
+            }
+
+            return {
+                statusCode: 202,
+                body: JSON.stringify({ success: true, method: 'keyence_pending' })
+            };
+        }
+
         if (scrapingMethod === 'browserql') {
             // Use BrowserQL for Cloudflare-protected sites (synchronous)
             console.log(`Using BrowserQL for URL ${urlIndex}`);
@@ -297,17 +379,24 @@ exports.handler = async function(event, context) {
 // Helper function to trigger next URL fetch
 async function triggerFetch(jobId, urlInfo, baseUrl) {
     try {
+        const payload = {
+            jobId,
+            urlIndex: urlInfo.index,
+            url: urlInfo.url,
+            title: urlInfo.title,
+            snippet: urlInfo.snippet,
+            scrapingMethod: urlInfo.scrapingMethod
+        };
+
+        // Pass model for interactive searches (KEYENCE)
+        if (urlInfo.model) {
+            payload.model = urlInfo.model;
+        }
+
         await fetch(`${baseUrl}/.netlify/functions/fetch-url`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                jobId,
-                urlIndex: urlInfo.index,
-                url: urlInfo.url,
-                title: urlInfo.title,
-                snippet: urlInfo.snippet,
-                scrapingMethod: urlInfo.scrapingMethod
-            })
+            body: JSON.stringify(payload)
         });
     } catch (error) {
         console.error('Failed to trigger next fetch:', error);
