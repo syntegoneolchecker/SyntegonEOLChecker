@@ -805,7 +805,9 @@ app.post('/scrape-keyence', async (req, res) => {
         await browser.close();
         browser = null;
 
-        // Schedule restart if memory limit approaching
+        // Force restart after KEYENCE check (uses more memory than normal checks)
+        console.log('KEYENCE check complete - forcing restart to free memory');
+        requestCount = MAX_REQUESTS_BEFORE_RESTART;
         scheduleRestartIfNeeded();
 
         return res.json(result);
@@ -833,7 +835,9 @@ app.post('/scrape-keyence', async (req, res) => {
             }
         }
 
-        // Schedule restart if memory limit approaching
+        // Force restart after KEYENCE check (even on error - uses more memory than normal checks)
+        console.log('KEYENCE check failed - forcing restart to free memory');
+        requestCount = MAX_REQUESTS_BEFORE_RESTART;
         scheduleRestartIfNeeded();
 
         res.status(500).json({
