@@ -721,8 +721,8 @@ app.post('/scrape-keyence', async (req, res) => {
 
         console.log('KEYENCE homepage loaded, waiting for search elements to render...');
 
-        // Wait for JavaScript to render the search bar
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait briefly for JavaScript to render the search bar
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Verify search elements exist
         const hasSearchElements = await page.evaluate(() => {
@@ -753,21 +753,27 @@ app.post('/scrape-keyence', async (req, res) => {
         // Click the input to ensure it's focused and ready for keyboard events
         await page.click(inputSelector);
 
-        // Press Enter and wait for navigation
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
-            page.keyboard.press('Enter')
-        ]);
+        // Press Enter and wait for navigation - with error recovery
+        try {
+            await Promise.all([
+                page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
+                page.keyboard.press('Enter')
+            ]);
+        } catch (navError) {
+            // Navigation timeout - but page might have loaded anyway
+            console.log(`Navigation timeout: ${navError.message}`);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s for page to settle
+        }
 
         // Get the final URL after navigation
         const finalUrl = page.url();
-        console.log(`Navigated to product page: ${finalUrl}`);
+        console.log(`Final page URL: ${finalUrl}`);
 
-        // Extract content from the product page
+        // Extract content from the current page (whether navigation succeeded or not)
         const htmlContent = await page.content();
         const text = extractHTMLText(htmlContent);
 
-        console.log(`Extracted ${text.length} characters from KEYENCE product page`);
+        console.log(`Extracted ${text.length} characters from KEYENCE page`);
 
         // Get page title
         const title = await page.title();
