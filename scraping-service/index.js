@@ -735,19 +735,28 @@ app.post('/scrape-keyence', async (req, res) => {
             throw new Error('Search input or button not found on KEYENCE homepage');
         }
 
-        // Find the search input and button using specific classes
+        // Find the search input using specific class
         const inputSelector = '.m-form-search__input';
-        const buttonSelector = '.m-form-search__button';
 
-        console.log(`Typing model "${model}" into search box...`);
-        await page.type(inputSelector, model);
+        console.log(`Setting search input value to "${model}"...`);
+        // Paste value directly and focus input (instant, not slow typing)
+        await page.evaluate((selector, value) => {
+            const input = document.querySelector(selector);
+            if (input) {
+                input.value = value;
+                // Trigger input event so page JavaScript knows value changed
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                // Focus the input so it can receive keyboard events
+                input.focus();
+            }
+        }, inputSelector, model);
 
-        console.log('Clicking search button...');
+        console.log('Pressing Enter to search...');
 
-        // Click button and wait for navigation to product page
+        // Press Enter and wait for navigation to product page
         await Promise.all([
-            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),  // Fast load for search result
-            page.click(buttonSelector)
+            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
+            page.keyboard.press('Enter')
         ]);
 
         // Get the final URL after navigation
