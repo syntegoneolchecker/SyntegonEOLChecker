@@ -779,7 +779,7 @@ app.post('/scrape-keyence', async (req, res) => {
 
         // DIAGNOSTIC: Check what's actually on the page
         console.log('Waiting 3 seconds for JavaScript to render elements...');
-        await page.waitForTimeout(3000);
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
         // Check if search elements exist
         const searchElements = await page.evaluate(() => {
