@@ -721,8 +721,8 @@ app.post('/scrape-keyence', async (req, res) => {
 
         console.log('KEYENCE homepage loaded, waiting for search elements to render...');
 
-        // Wait for JavaScript to render the search bar
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait briefly for JavaScript to render the search bar
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Verify search elements exist
         const hasSearchElements = await page.evaluate(() => {
@@ -739,26 +739,40 @@ app.post('/scrape-keyence', async (req, res) => {
         const inputSelector = '.m-form-search__input';
         const buttonSelector = '.m-form-search__button';
 
-        console.log(`Typing model "${model}" into search box...`);
-        await page.type(inputSelector, model);
+        console.log(`Setting search input value to "${model}"...`);
+        // Use evaluate to set value directly (instant, not slow typing)
+        await page.evaluate((selector, value) => {
+            const input = document.querySelector(selector);
+            if (input) {
+                input.value = value;
+                // Trigger input event so page JavaScript knows value changed
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }, inputSelector, model);
 
         console.log('Clicking search button...');
 
-        // Click button and wait for navigation to product page
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),  // Fast load for search result
-            page.click(buttonSelector)
-        ]);
+        // Click and navigate - with error recovery if navigation times out
+        try {
+            await Promise.all([
+                page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }),
+                page.click(buttonSelector)
+            ]);
+        } catch (navError) {
+            // Navigation timeout - but page might have loaded anyway
+            console.log(`Navigation timeout, checking if page changed: ${navError.message}`);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s for page to settle
+        }
 
         // Get the final URL after navigation
         const finalUrl = page.url();
-        console.log(`Navigated to product page: ${finalUrl}`);
+        console.log(`Final page URL: ${finalUrl}`);
 
-        // Extract content from the product page
+        // Extract content from the current page (whether navigation succeeded or not)
         const htmlContent = await page.content();
         const text = extractHTMLText(htmlContent);
 
-        console.log(`Extracted ${text.length} characters from KEYENCE product page`);
+        console.log(`Extracted ${text.length} characters from KEYENCE page`);
 
         // Get page title
         const title = await page.title();
