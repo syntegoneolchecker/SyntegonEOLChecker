@@ -30,6 +30,33 @@ exports.handler = async function(event, context) {
             };
         }
 
+        // Construct base URL from request headers (used by multiple paths below)
+        const protocol = event.headers['x-forwarded-proto'] || 'https';
+        const host = event.headers['host'];
+        const baseUrl = `${protocol}://${host}`;
+
+        // If content is already ready for analysis (e.g., NTN validation), trigger analysis directly
+        if (job.status === 'ready_for_analysis') {
+            console.log(`Content already scraped for job ${jobId}, triggering analysis`);
+
+            // Update status to analyzing FIRST (to prevent duplicate triggers)
+            await updateJobStatus(jobId, 'analyzing', null, context);
+            job.status = 'analyzing';
+
+            const analyzeUrl = `${baseUrl}/.netlify/functions/analyze-job`;
+            console.log(`Analysis endpoint: ${analyzeUrl}`);
+
+            fetch(analyzeUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId })
+            }).then(() => {
+                console.log(`Analysis triggered for job ${jobId}`);
+            }).catch(error => {
+                console.error(`Failed to trigger analysis:`, error.message);
+            });
+        }
+
         // If URLs are ready but not being fetched yet, trigger fetching
         if (job.status === 'urls_ready') {
             console.log(`Triggering URL fetching for job ${jobId}`);
@@ -38,10 +65,6 @@ exports.handler = async function(event, context) {
             await updateJobStatus(jobId, 'fetching', null, context);
             job.status = 'fetching';
 
-            // Construct base URL from request headers
-            const protocol = event.headers['x-forwarded-proto'] || 'https';
-            const host = event.headers['host'];
-            const baseUrl = `${protocol}://${host}`;
             const fetchUrl = `${baseUrl}/.netlify/functions/fetch-url`;
             console.log(`Fetch endpoint: ${fetchUrl}`);
 
