@@ -694,17 +694,13 @@ app.post('/scrape-keyence', async (req, res) => {
 
         console.log('KEYENCE homepage loaded, looking for search elements...');
 
-        // Find the search container
-        const searchContainerSelector = '.m-layout-search__item.m-layout-search__item--input';
-        await page.waitForSelector(searchContainerSelector, { timeout: 10000 });
+        // Find the search input and button using specific classes
+        // Based on HTML: <input class="m-form-search__input ..."> and <button class="m-form-search__button ...">
+        const inputSelector = '.m-form-search__input';
+        const buttonSelector = '.m-form-search__button';
 
-        console.log('Search container found, locating input and button...');
-
-        // Find the input and button within the container
-        const inputSelector = `${searchContainerSelector} input`;
-        const buttonSelector = `${searchContainerSelector} button`;
-
-        await page.waitForSelector(inputSelector, { timeout: 5000 });
+        console.log('Waiting for search input and button...');
+        await page.waitForSelector(inputSelector, { timeout: 10000 });
         await page.waitForSelector(buttonSelector, { timeout: 5000 });
 
         console.log(`Typing model "${model}" into search box...`);
