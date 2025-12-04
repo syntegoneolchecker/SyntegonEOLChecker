@@ -689,11 +689,67 @@ app.post('/scrape-keyence', async (req, res) => {
         });
         console.log('Resource blocking: images and media blocked, CSS/JS allowed for KEYENCE');
 
-        console.log('Navigating to KEYENCE homepage...');
-        await page.goto('https://www.keyence.co.jp/', {
-            waitUntil: 'load',  // Wait for all resources - search bar needs JavaScript to render
-            timeout: 30000
+        // DIAGNOSTIC: Track network requests
+        const pendingRequests = new Map();
+        let requestCounter = 0;
+
+        page.on('request', request => {
+            requestCounter++;
+            const url = request.url();
+            const type = request.resourceType();
+            pendingRequests.set(url, { type, startTime: Date.now() });
+            if (requestCounter <= 10) {  // Log first 10 requests
+                console.log(`[REQUEST ${requestCounter}] ${type}: ${url.substring(0, 100)}`);
+            }
         });
+
+        page.on('requestfinished', request => {
+            pendingRequests.delete(request.url());
+        });
+
+        page.on('requestfailed', request => {
+            const url = request.url();
+            console.log(`[REQUEST FAILED] ${request.resourceType()}: ${url.substring(0, 100)}`);
+            pendingRequests.delete(url);
+        });
+
+        console.log('Navigating to KEYENCE homepage...');
+        const startTime = Date.now();
+
+        try {
+            await page.goto('https://www.keyence.co.jp/', {
+                waitUntil: 'load',
+                timeout: 30000
+            });
+
+            const loadTime = Date.now() - startTime;
+            console.log(`✓ KEYENCE homepage loaded successfully in ${loadTime}ms`);
+            console.log(`Total requests made: ${requestCounter}`);
+
+        } catch (navError) {
+            const failTime = Date.now() - startTime;
+            console.log(`✗ Navigation failed after ${failTime}ms`);
+            console.log(`Error: ${navError.message}`);
+            console.log(`Total requests made: ${requestCounter}`);
+            console.log(`Pending requests: ${pendingRequests.size}`);
+
+            if (pendingRequests.size > 0) {
+                console.log('Top 10 pending requests:');
+                let count = 0;
+                for (const [url, info] of pendingRequests) {
+                    if (count++ >= 10) break;
+                    const duration = Date.now() - info.startTime;
+                    console.log(`  [${info.type}] ${duration}ms - ${url.substring(0, 100)}`);
+                }
+            }
+
+            // Check current page URL
+            const currentUrl = page.url();
+            console.log(`Current page URL: ${currentUrl}`);
+
+            // Re-throw to trigger error handling
+            throw navError;
+        }
 
         console.log('KEYENCE homepage loaded, looking for search elements...');
 
