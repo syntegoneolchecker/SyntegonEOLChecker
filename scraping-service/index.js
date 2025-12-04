@@ -738,22 +738,22 @@ app.post('/scrape-keyence', async (req, res) => {
         // Find the search input using specific class
         const inputSelector = '.m-form-search__input';
 
-        console.log(`Setting search input value to "${model}"...`);
-        // Paste value directly and focus input (instant, not slow typing)
+        console.log(`Setting search input value to "${model}" and pressing Enter...`);
+        // Set value directly in the input
         await page.evaluate((selector, value) => {
             const input = document.querySelector(selector);
             if (input) {
                 input.value = value;
                 // Trigger input event so page JavaScript knows value changed
                 input.dispatchEvent(new Event('input', { bubbles: true }));
-                // Focus the input so it can receive keyboard events
-                input.focus();
+                input.dispatchEvent(new Event('change', { bubbles: true }));
             }
         }, inputSelector, model);
 
-        console.log('Pressing Enter to search...');
+        // Click the input to ensure it's focused and ready for keyboard events
+        await page.click(inputSelector);
 
-        // Press Enter and wait for navigation to product page
+        // Press Enter and wait for navigation
         await Promise.all([
             page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
             page.keyboard.press('Enter')
