@@ -52,6 +52,14 @@ function getManufacturerUrl(maker, model) {
                 requiresExtraction: true // Extract product URL from search results
             };
 
+        case '日進電子':
+            return {
+                url: `https://nissin-ele.co.jp/product/${encodedModel}`,
+                scrapingMethod: 'render',
+                requiresValidation: true,
+                requires404Check: true // Check if page is 404 (contains "Page not found")
+            };
+
         default:
             return null; // No direct URL strategy - use Tavily search
     }
@@ -193,6 +201,33 @@ function hasNoSearchResults(content) {
 }
 
 /**
+ * Check if content indicates a 404 page
+ * Returns true if 404 page detected, false otherwise
+ */
+function is404Page(content) {
+    if (!content) return false;
+
+    const lowerContent = content.toLowerCase();
+
+    // 404 patterns
+    const notFoundPatterns = [
+        'page not found',
+        'ページが見つかりません',
+        '404 not found',
+        '404 error'
+    ];
+
+    for (const pattern of notFoundPatterns) {
+        if (lowerContent.includes(pattern)) {
+            console.log(`Detected 404 pattern: "${pattern}"`);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
  * Extract first product URL from Takigen search results HTML
  * Returns the product URL path (e.g., "/products/detail/A-1038/A-1038") or null if not found
  */
@@ -320,6 +355,44 @@ exports.handler = async function(event, context) {
                                     urlCount: 1,
                                     strategy: 'takigen_extracted_url',
                                     extractedUrl: productUrl
+                                })
+                            };
+                        }
+                    } else if (manufacturerStrategy.requires404Check) {
+                        // Special handling for 日進電子 - check if page is 404
+                        console.log(`Checking for 404 page for ${maker}`);
+
+                        // Fetch the HTML to check if it's a 404 page
+                        const html = await fetchHtml(manufacturerStrategy.url);
+
+                        // Check if page is 404
+                        if (is404Page(html)) {
+                            console.log(`404 page detected for ${manufacturerStrategy.url}, falling back to Tavily search`);
+                            // Fall through to Tavily search below
+                        } else {
+                            // Valid product page! Save this URL for scraping
+                            console.log(`Valid product page found for ${maker} ${model}`);
+
+                            const urls = [{
+                                index: 0,
+                                url: manufacturerStrategy.url,
+                                title: `${maker} ${model} Product Page`,
+                                snippet: `Direct product page for ${maker} ${model}`,
+                                scrapingMethod: manufacturerStrategy.scrapingMethod
+                            }];
+
+                            await saveJobUrls(jobId, urls, context);
+
+                            console.log(`Job ${jobId} initialized with validated ${maker} product URL`);
+
+                            return {
+                                statusCode: 200,
+                                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    jobId,
+                                    status: 'urls_ready',
+                                    urlCount: 1,
+                                    strategy: 'nissin_validated_url'
                                 })
                             };
                         }
