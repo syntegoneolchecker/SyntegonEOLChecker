@@ -62,15 +62,53 @@ async function checkGroqTokens() {
 async function findNextProduct() {
     try {
         // Get database
-        const csvStore = getStore('csv-data');
-        const csvData = await csvStore.get('data', { type: 'json' });
+        const csvStore = getStore({
+            name: 'eol-database',
+            siteID: process.env.SITE_ID,
+            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+        });
+        const csvContent = await csvStore.get('database.csv');
 
-        if (!csvData || !csvData.data || csvData.data.length <= 1) {
+        if (!csvContent) {
             console.log('No products in database');
             return null;
         }
 
-        const rows = csvData.data.slice(1); // Skip header
+        // Parse CSV (same as get-csv.js)
+        const lines = csvContent.split('\n').filter(line => line.trim());
+        const data = lines.map(line => {
+            const cells = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                const nextChar = line[i + 1];
+
+                if (char === '"' && !inQuotes) {
+                    inQuotes = true;
+                } else if (char === '"' && inQuotes && nextChar === '"') {
+                    current += '"';
+                    i++;
+                } else if (char === '"' && inQuotes) {
+                    inQuotes = false;
+                } else if (char === ',' && !inQuotes) {
+                    cells.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            cells.push(current.trim());
+            return cells;
+        });
+
+        if (data.length <= 1) {
+            console.log('No products in database (only headers)');
+            return null;
+        }
+
+        const rows = data.slice(1); // Skip header
 
         // Priority 1: Products with empty Information Date (column 11)
         const unchecked = rows.filter(row => !row[11] || row[11].trim() === '');
@@ -208,23 +246,56 @@ async function pollJobStatus(jobId, manufacturer, model) {
 // Helper: Update product in database
 async function updateProduct(sapNumber, result) {
     try {
-        const csvStore = getStore('csv-data');
-        const csvData = await csvStore.get('data', { type: 'json' });
+        const csvStore = getStore({
+            name: 'eol-database',
+            siteID: process.env.SITE_ID,
+            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+        });
+        const csvContent = await csvStore.get('database.csv');
 
-        if (!csvData || !csvData.data) {
+        if (!csvContent) {
             console.error('Database not found');
             return;
         }
 
+        // Parse CSV
+        const lines = csvContent.split('\n').filter(line => line.trim());
+        const data = lines.map(line => {
+            const cells = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                const nextChar = line[i + 1];
+
+                if (char === '"' && !inQuotes) {
+                    inQuotes = true;
+                } else if (char === '"' && inQuotes && nextChar === '"') {
+                    current += '"';
+                    i++;
+                } else if (char === '"' && inQuotes) {
+                    inQuotes = false;
+                } else if (char === ',' && !inQuotes) {
+                    cells.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            cells.push(current.trim());
+            return cells;
+        });
+
         // Find product by SAP number
-        const rowIndex = csvData.data.findIndex((row, i) => i > 0 && row[0] === sapNumber);
+        const rowIndex = data.findIndex((row, i) => i > 0 && row[0] === sapNumber);
 
         if (rowIndex === -1) {
             console.error(`Product ${sapNumber} not found in database`);
             return;
         }
 
-        const row = csvData.data[rowIndex];
+        const row = data[rowIndex];
 
         // Update columns
         row[5] = result.status || 'UNKNOWN'; // Status
@@ -233,8 +304,13 @@ async function updateProduct(sapNumber, result) {
         row[8] = result.successor?.explanation || ''; // Successor Comment
         row[11] = new Date().toLocaleString(); // Information Date
 
+        // Convert back to CSV
+        const updatedCsv = data.map(row =>
+            row.map(cell => `"${cell}"`).join(',')
+        ).join('\n');
+
         // Save updated database
-        await csvStore.setJSON('data', csvData);
+        await csvStore.set('database.csv', updatedCsv);
 
         console.log(`Database updated for ${sapNumber}`);
 
@@ -250,7 +326,11 @@ exports.handler = async function(event, context) {
     console.log('='.repeat(60));
 
     try {
-        const store = getStore('auto-check-state');
+        const store = getStore({
+            name: 'auto-check-state',
+            siteID: process.env.SITE_ID,
+            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+        });
 
         // Get current state
         let state = await store.get('state', { type: 'json' });
@@ -355,7 +435,11 @@ exports.handler = async function(event, context) {
 
         // Mark as not running on error
         try {
-            const store = getStore('auto-check-state');
+            const store = getStore({
+                name: 'auto-check-state',
+                siteID: process.env.SITE_ID,
+                token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+            });
             let state = await store.get('state', { type: 'json' });
             if (state) {
                 state.isRunning = false;

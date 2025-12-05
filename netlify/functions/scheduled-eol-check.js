@@ -15,7 +15,11 @@ const handler = async (event, context) => {
     console.log('Scheduled EOL check triggered at:', new Date().toISOString());
 
     try {
-        const store = getStore('auto-check-state');
+        const store = getStore({
+            name: 'auto-check-state',
+            siteID: process.env.SITE_ID,
+            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+        });
 
         // Get current state
         let state = await store.get('state', { type: 'json' });
