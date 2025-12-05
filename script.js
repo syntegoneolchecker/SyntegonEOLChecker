@@ -1034,6 +1034,28 @@ function startAutoCheckMonitoring() {
                     toggle.checked = state.enabled;
                 }
 
+                // Detect stuck isRunning state (isRunning=true but no activity for >5 minutes)
+                if (state.isRunning) {
+                    const lastActivity = state.lastActivityTime ? new Date(state.lastActivityTime) : null;
+                    const now = new Date();
+                    const minutesSinceActivity = lastActivity ? (now - lastActivity) / 1000 / 60 : 999;
+
+                    if (minutesSinceActivity > 5) {
+                        console.warn(`Detected stuck isRunning state (no activity for ${minutesSinceActivity.toFixed(1)} min), resetting...`);
+
+                        // Reset isRunning to false
+                        await fetch('/.netlify/functions/set-auto-check-state', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ isRunning: false })
+                        });
+
+                        // Update local state
+                        state.isRunning = false;
+                        showStatus('Auto-check recovered from stuck state', 'info');
+                    }
+                }
+
                 // Update buttons based on isRunning
                 updateCheckEOLButtons(state.isRunning);
 

@@ -43,7 +43,8 @@ exports.handler = async function(event, context) {
                 enabled: false,
                 dailyCounter: 0,
                 lastResetDate: new Date().toISOString().split('T')[0],
-                isRunning: false
+                isRunning: false,
+                lastActivityTime: null
             };
         }
 
@@ -59,6 +60,13 @@ exports.handler = async function(event, context) {
         }
         if (updates.hasOwnProperty('isRunning')) {
             state.isRunning = updates.isRunning;
+            // When isRunning changes, update lastActivityTime
+            if (updates.isRunning) {
+                state.lastActivityTime = new Date().toISOString();
+            }
+        }
+        if (updates.hasOwnProperty('lastActivityTime')) {
+            state.lastActivityTime = updates.lastActivityTime;
         }
 
         // Save updated state

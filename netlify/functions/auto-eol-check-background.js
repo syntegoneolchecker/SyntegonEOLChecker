@@ -449,13 +449,16 @@ exports.handler = async function(event, context) {
         // Execute ONE EOL check
         const success = await executeEOLCheck(product, siteUrl);
 
-        // Increment counter (even if failed - count toward daily limit)
+        // Increment counter and update activity time (even if failed - count toward daily limit)
         // Use set-auto-check-state to avoid race condition
         const newCounter = preCheckState.dailyCounter + 1;
         await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dailyCounter: newCounter })
+            body: JSON.stringify({
+                dailyCounter: newCounter,
+                lastActivityTime: new Date().toISOString()
+            })
         });
 
         console.log(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${newCounter}/20`);
