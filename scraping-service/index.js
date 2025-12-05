@@ -438,10 +438,11 @@ app.post('/scrape', async (req, res) => {
             pendingRequests.delete(request.url());
         });
 
-        // Detect MISUMI pages - use different wait strategy
+        // Detect MISUMI pages
         const isMisumiPage = url.includes('misumi-ec.com');
-        const waitStrategy = isMisumiPage ? 'domcontentloaded' : 'networkidle2';
-        const navTimeout = 30000; // Reduced from 60s to 30s
+        // Use networkidle2 for all pages - tracking domains are blocked, so it won't hang
+        const waitStrategy = 'networkidle2';
+        const navTimeout = 45000; // Increased to 45s to allow MISUMI API calls to complete
 
         // Try navigation with timeout, extract content even if it times out
         let navigationTimedOut = false;
@@ -505,28 +506,18 @@ app.post('/scrape', async (req, res) => {
             }
         }
 
-        // Additional wait for JavaScript rendering (replaced deprecated waitForTimeout)
-        // Longer wait for:
-        // - Cloudflare-protected sites (challenge can take 10-20s)
-        // - MISUMI pages (product data loaded via JavaScript after domcontentloaded)
-        // Shorter wait if navigation timed out (content probably won't load more) - EXCEPT for MISUMI
-        let postLoadWait;
+        // Additional wait for JavaScript rendering after network settles
+        // networkidle2 means data is loaded, just need JS to render it
         if (isCloudflareProtected) {
-            postLoadWait = 20000; // Cloudflare challenge
-        } else if (isMisumiPage) {
-            postLoadWait = 8000; // MISUMI needs time for JS to fetch product data, even after timeout
-        } else if (navigationTimedOut) {
-            postLoadWait = 1000; // Other sites: short wait after timeout
-        } else {
-            postLoadWait = 5000; // Default wait
-        }
-
-        await new Promise(resolve => setTimeout(resolve, postLoadWait));
-
-        if (isCloudflareProtected) {
+            // Cloudflare challenge needs extra time
+            await new Promise(resolve => setTimeout(resolve, 20000));
             console.log('Extended 20-second wait for Cloudflare challenge completion');
-        } else if (isMisumiPage) {
-            console.log(`MISUMI page: waiting ${postLoadWait/1000}s for JavaScript product data to load`);
+        } else if (navigationTimedOut) {
+            // Timeout: minimal wait
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+            // Standard wait for JS rendering (data already loaded via networkidle2)
+            await new Promise(resolve => setTimeout(resolve, 3000));
         }
 
         // Extract content with timeout protection (page might be in bad state after nav timeout)
