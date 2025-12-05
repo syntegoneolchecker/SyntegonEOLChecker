@@ -15,6 +15,8 @@ const handler = async (event, context) => {
     console.log('Scheduled EOL check triggered at:', new Date().toISOString());
 
     try {
+        const siteUrl = process.env.URL || process.env.DEPLOY_URL || 'https://develop--syntegoneolchecker.netlify.app';
+
         const store = getStore({
             name: 'auto-check-state',
             siteID: process.env.SITE_ID,
@@ -71,7 +73,7 @@ const handler = async (event, context) => {
         }
 
         // Check Tavily credits
-        const tavilyResponse = await fetch(`${process.env.URL}/.netlify/functions/get-tavily-usage`);
+        const tavilyResponse = await fetch(`${siteUrl}/.netlify/functions/get-tavily-usage`);
         if (tavilyResponse.ok) {
             const tavilyData = await tavilyResponse.json();
             if (tavilyData.remaining <= 50) {
@@ -93,7 +95,9 @@ const handler = async (event, context) => {
         await store.setJSON('state', state);
 
         // Trigger the background function
-        const backgroundUrl = `${process.env.URL}/.netlify/functions/auto-eol-check-background`;
+        const backgroundUrl = `${siteUrl}/.netlify/functions/auto-eol-check-background`;
+        console.log(`Triggering background function at: ${backgroundUrl}`);
+
         const triggerResponse = await fetch(backgroundUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
