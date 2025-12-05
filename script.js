@@ -965,10 +965,16 @@ async function manualTriggerAutoCheck() {
         console.log('Daily counter reset to 0');
         showStatus('Counter reset. Triggering auto-check...', 'info');
 
+        // Pass the current site URL to the background function
+        const siteUrl = window.location.origin;
+
         const response = await fetch('/.netlify/functions/auto-eol-check-background', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ triggeredBy: 'manual' })
+            body: JSON.stringify({
+                triggeredBy: 'manual',
+                siteUrl: siteUrl
+            })
         });
 
         if (response.status === 202) {

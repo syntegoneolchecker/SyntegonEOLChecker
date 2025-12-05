@@ -103,7 +103,10 @@ const handler = async (event, context) => {
         const triggerResponse = await fetch(backgroundUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ triggeredBy: 'scheduled' })
+            body: JSON.stringify({
+                triggeredBy: 'scheduled',
+                siteUrl: siteUrl
+            })
         });
 
         console.log('Background function triggered, status:', triggerResponse.status);
