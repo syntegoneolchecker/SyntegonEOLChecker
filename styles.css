@@ -197,6 +197,15 @@ th {
     box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1); /* Subtle shadow when scrolling */
 }
 
+/* Sortable column headers - hover effect */
+th[onclick] {
+    transition: background-color 0.2s;
+}
+
+th[onclick]:hover {
+    background: #019966;
+}
+
 tr:hover {
     background: #f1f1f1;
 }
