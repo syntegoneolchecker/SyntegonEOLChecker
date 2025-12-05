@@ -408,6 +408,15 @@ exports.handler = async function(event, context) {
             return { statusCode: 200, body: 'No products to check' };
         }
 
+        // Re-check state RIGHT BEFORE starting EOL check (user may have disabled during prep)
+        const preCheckState = await store.get('state', { type: 'json' });
+        if (!preCheckState.enabled) {
+            console.log('Auto-check disabled before starting EOL check, stopping chain');
+            preCheckState.isRunning = false;
+            await store.setJSON('state', preCheckState);
+            return { statusCode: 200, body: 'Disabled before check' };
+        }
+
         // Execute ONE EOL check
         const success = await executeEOLCheck(product, siteUrl);
 
