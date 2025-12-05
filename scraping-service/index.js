@@ -438,10 +438,11 @@ app.post('/scrape', async (req, res) => {
             pendingRequests.delete(request.url());
         });
 
-        // Detect MISUMI pages - use different wait strategy
+        // Detect MISUMI pages
         const isMisumiPage = url.includes('misumi-ec.com');
-        const waitStrategy = isMisumiPage ? 'domcontentloaded' : 'networkidle2';
-        const navTimeout = 30000; // Reduced from 60s to 30s
+        // Use networkidle2 for all pages - tracking domains are blocked, so it won't hang
+        const waitStrategy = 'networkidle2';
+        const navTimeout = 45000; // Increased to 45s to allow MISUMI API calls to complete
 
         // Try navigation with timeout, extract content even if it times out
         let navigationTimedOut = false;
@@ -505,41 +506,18 @@ app.post('/scrape', async (req, res) => {
             }
         }
 
-        // Additional wait for JavaScript rendering
+        // Additional wait for JavaScript rendering after network settles
+        // networkidle2 means data is loaded, just need JS to render it
         if (isCloudflareProtected) {
-            // Cloudflare challenge wait
+            // Cloudflare challenge needs extra time
             await new Promise(resolve => setTimeout(resolve, 20000));
             console.log('Extended 20-second wait for Cloudflare challenge completion');
-        } else if (isMisumiPage) {
-            // MISUMI: Wait for search results to actually load (not just page skeleton)
-            console.log('MISUMI page: waiting for search results to load...');
-            try {
-                // Wait for body content to have substantial length (more than just skeleton)
-                // MISUMI search results add significant content when they load
-                await page.waitForFunction(
-                    () => {
-                        const bodyText = document.body.innerText;
-                        // Check if we have substantial content (>2000 chars means results loaded)
-                        // OR if we see "該当する商品がありません" (no results message)
-                        return bodyText.length > 2000 ||
-                               bodyText.includes('該当する商品がありません') ||
-                               bodyText.includes('検索結果') ||
-                               bodyText.includes('件') && bodyText.length > 1000;
-                    },
-                    { timeout: 45000 } // 45 second timeout - plenty of time for JS to load
-                );
-                console.log('MISUMI search results loaded successfully');
-            } catch (waitError) {
-                // Timeout waiting for content - log and continue anyway
-                console.log(`MISUMI content wait timed out after 45s: ${waitError.message}`);
-                console.log('Proceeding with extraction of whatever content is available...');
-            }
         } else if (navigationTimedOut) {
-            // Other sites: short wait after timeout
+            // Timeout: minimal wait
             await new Promise(resolve => setTimeout(resolve, 1000));
         } else {
-            // Default wait
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            // Standard wait for JS rendering (data already loaded via networkidle2)
+            await new Promise(resolve => setTimeout(resolve, 3000));
         }
 
         // Extract content with timeout protection (page might be in bad state after nav timeout)
