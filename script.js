@@ -993,17 +993,14 @@ async function manualTriggerAutoCheck() {
     }
 }
 
-// Update Check EOL buttons (disable/enable based on auto-check running state)
+// Update Check EOL buttons (hide/show based on auto-check running state)
 function updateCheckEOLButtons(isRunning) {
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
-        button.disabled = isRunning;
         if (isRunning) {
-            button.style.opacity = '0.5';
-            button.style.cursor = 'not-allowed';
+            button.style.display = 'none';
         } else {
-            button.style.opacity = '1';
-            button.style.cursor = 'pointer';
+            button.style.display = '';
         }
     });
 }
