@@ -32,7 +32,8 @@ async function wakeRenderService() {
 // Helper: Check if Groq tokens are ready (N/A means fully reset)
 async function checkGroqTokens() {
     try {
-        const response = await fetch(`${process.env.URL}/.netlify/functions/get-groq-usage`);
+        const siteUrl = process.env.URL || process.env.DEPLOY_URL || 'https://develop--syntegoneolchecker.netlify.app';
+        const response = await fetch(`${siteUrl}/.netlify/functions/get-groq-usage`);
         if (!response.ok) return true; // Assume OK if can't check
 
         const data = await response.json();
@@ -154,15 +155,23 @@ async function executeEOLCheck(product) {
     }
 
     try {
+        // Get the site URL from environment (Netlify sets these)
+        const siteUrl = process.env.URL || process.env.DEPLOY_URL || 'https://develop--syntegoneolchecker.netlify.app';
+        console.log(`Using site URL: ${siteUrl}`);
+
         // Initialize job
-        const initResponse = await fetch(`${process.env.URL}/.netlify/functions/initialize-job`, {
+        const initUrl = `${siteUrl}/.netlify/functions/initialize-job`;
+        console.log(`Calling initialize-job at: ${initUrl}`);
+
+        const initResponse = await fetch(initUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ model, maker: manufacturer })
         });
 
         if (!initResponse.ok) {
-            console.error('Job initialization failed:', initResponse.status);
+            const errorText = await initResponse.text();
+            console.error('Job initialization failed:', initResponse.status, errorText);
             return false;
         }
 
@@ -177,7 +186,7 @@ async function executeEOLCheck(product) {
         console.log(`Job initialized: ${jobId}`);
 
         // Poll for completion (max 60 attempts = 2 minutes)
-        const result = await pollJobStatus(jobId, manufacturer, model);
+        const result = await pollJobStatus(jobId, manufacturer, model, siteUrl);
 
         if (!result) {
             console.error('Job polling failed');
@@ -197,7 +206,7 @@ async function executeEOLCheck(product) {
 }
 
 // Helper: Poll job status
-async function pollJobStatus(jobId, manufacturer, model) {
+async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
     const maxAttempts = 60;
     let attempts = 0;
 
@@ -205,7 +214,8 @@ async function pollJobStatus(jobId, manufacturer, model) {
         attempts++;
 
         try {
-            const statusResponse = await fetch(`${process.env.URL}/.netlify/functions/job-status/${jobId}`);
+            const statusUrl = `${siteUrl}/.netlify/functions/job-status/${jobId}`;
+            const statusResponse = await fetch(statusUrl);
 
             if (!statusResponse.ok) {
                 console.error(`Status check failed: ${statusResponse.status}`);
@@ -379,54 +389,56 @@ exports.handler = async function(event, context) {
         // Wait for Groq tokens
         await checkGroqTokens();
 
-        // Find next product
-        const product = await findNextProduct();
-        if (!product) {
-            console.log('No products to check');
-            state.isRunning = false;
+        // Process products in a loop (stay within 15-min limit)
+        const startTime = Date.now();
+        const MAX_RUNTIME = 13 * 60 * 1000; // 13 minutes (leave 2 min buffer)
+        let checksPerformed = 0;
+
+        console.log('Starting processing loop...');
+
+        while (state.dailyCounter < 20 && state.enabled) {
+            // Check runtime limit
+            const elapsed = Date.now() - startTime;
+            if (elapsed > MAX_RUNTIME) {
+                console.log(`Runtime limit reached (${Math.round(elapsed / 1000)}s), stopping loop`);
+                break;
+            }
+
+            // Find next product
+            const product = await findNextProduct();
+            if (!product) {
+                console.log('No more products to check');
+                break;
+            }
+
+            // Execute EOL check
+            const success = await executeEOLCheck(product);
+
+            // Increment counter (even if failed - count toward daily limit)
+            state.dailyCounter++;
+            checksPerformed++;
             await store.setJSON('state', state);
-            return { statusCode: 200, body: 'No products to check' };
+
+            console.log(`Check ${checksPerformed} ${success ? 'succeeded' : 'failed'}, counter now: ${state.dailyCounter}/20`);
+
+            // Small delay between checks
+            if (state.dailyCounter < 20 && state.enabled) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
         }
 
-        // Execute EOL check
-        const success = await executeEOLCheck(product);
-
-        // Increment counter (even if failed - count toward daily limit)
-        state.dailyCounter++;
+        // Mark as not running when done
+        state.isRunning = false;
         await store.setJSON('state', state);
 
-        console.log(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${state.dailyCounter}/20`);
-
-        // Chain: Trigger next check if counter < 20
-        if (state.dailyCounter < 20 && state.enabled) {
-            console.log('Triggering next check...');
-
-            // Small delay before triggering next
-            setTimeout(async () => {
-                try {
-                    await fetch(`${process.env.URL}/.netlify/functions/auto-eol-check-background`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ triggeredBy: 'chain' })
-                    });
-                    console.log('Next check triggered');
-                } catch (error) {
-                    console.error('Failed to trigger next check:', error);
-                }
-            }, 2000);
-
-        } else {
-            console.log('Chain complete or disabled, stopping');
-            state.isRunning = false;
-            await store.setJSON('state', state);
-        }
+        console.log(`Batch complete: ${checksPerformed} checks performed, counter: ${state.dailyCounter}/20`);
 
         return {
             statusCode: 202, // Accepted (background processing)
             body: JSON.stringify({
-                message: 'Check completed',
-                counter: state.dailyCounter,
-                success: success
+                message: 'Batch completed',
+                checksPerformed: checksPerformed,
+                totalCounter: state.dailyCounter
             })
         };
 
