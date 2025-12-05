@@ -496,6 +496,7 @@ exports.handler = async function(event, context) {
                 max_results: 2,  // 2 URLs to stay within token limits
                 // NOTE: Removed include_raw_content - we'll scrape with Render instead
                 include_domains: [
+                    'automationdirect.com',
                     'takigen.co.jp',
                     'mitsubishielectric.co.jp',
                     'sentei.nissei-gtr.co.jp',
