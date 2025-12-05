@@ -506,13 +506,27 @@ app.post('/scrape', async (req, res) => {
         }
 
         // Additional wait for JavaScript rendering (replaced deprecated waitForTimeout)
-        // Longer wait for Cloudflare-protected sites (challenge can take 10-20s)
-        // Shorter wait if navigation timed out (content probably won't load more)
-        const postLoadWait = navigationTimedOut ? 1000 : (isCloudflareProtected ? 20000 : 5000);
+        // Longer wait for:
+        // - Cloudflare-protected sites (challenge can take 10-20s)
+        // - MISUMI pages (product data loaded via JavaScript after domcontentloaded)
+        // Shorter wait if navigation timed out (content probably won't load more) - EXCEPT for MISUMI
+        let postLoadWait;
+        if (isCloudflareProtected) {
+            postLoadWait = 20000; // Cloudflare challenge
+        } else if (isMisumiPage) {
+            postLoadWait = 8000; // MISUMI needs time for JS to fetch product data, even after timeout
+        } else if (navigationTimedOut) {
+            postLoadWait = 1000; // Other sites: short wait after timeout
+        } else {
+            postLoadWait = 5000; // Default wait
+        }
+
         await new Promise(resolve => setTimeout(resolve, postLoadWait));
 
         if (isCloudflareProtected) {
             console.log('Extended 20-second wait for Cloudflare challenge completion');
+        } else if (isMisumiPage) {
+            console.log(`MISUMI page: waiting ${postLoadWait/1000}s for JavaScript product data to load`);
         }
 
         // Extract content with timeout protection (page might be in bad state after nav timeout)
