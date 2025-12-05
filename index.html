@@ -61,6 +61,15 @@
 
             <button id="clear-database-btn" class="clear-database" onclick="clearDatabase()" style="display: none;">Clear Database</button>
 
+            <div class="auto-check-container">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="auto-check-toggle" onchange="toggleAutoCheck()">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span class="toggle-label">Auto EOL Check (Daily)</span>
+                <button id="manual-trigger-btn" onclick="manualTriggerAutoCheck()" style="margin-left: 10px;">Manual Trigger</button>
+            </div>
+
             <div class="file-actions">
                 <button onclick="downloadExcel()">Download Database (Excel)</button>
                 <label for="upload">

@@ -17,6 +17,8 @@ async function init() {
     await loadTavilyCredits();
     await loadGroqUsage();
     await checkRenderHealth();
+    await loadAutoCheckState();
+    startAutoCheckMonitoring(); // Start periodic monitoring
 }
 
 function showStatus(message, type = 'success', permanent = true) {
@@ -60,6 +62,17 @@ function render() {
             }
         }).join('')}${i > 0 ? `<td><button class="check-eol" onclick="checkEOL(${i})">Check EOL</button><button class="delete" onclick="delRow(${i})">Delete</button></td>` : '<th>Actions</th>'}</tr>`
     ).join('');
+
+    // Update Check EOL buttons state after rendering
+    // Check if auto-check state needs to disable buttons
+    fetch('/.netlify/functions/get-auto-check-state')
+        .then(r => r.ok ? r.json() : null)
+        .then(state => {
+            if (state && typeof updateCheckEOLButtons === 'function') {
+                updateCheckEOLButtons(state.isRunning);
+            }
+        })
+        .catch(() => {}); // Silently fail if state service not available
 }
 
 // Three-state sorting: null → asc → desc → null
@@ -328,7 +341,7 @@ async function checkEOL(rowIndex) {
 
 // Poll job status until complete
 async function pollJobStatus(jobId, manufacturer, model, checkButton) {
-    const maxAttempts = 90; // 90 attempts * 2s = 3 min max
+    const maxAttempts = 60; // 60 attempts * 2s = 2 min max
     let attempts = 0;
 
     while (attempts < maxAttempts) {
@@ -374,7 +387,17 @@ async function pollJobStatus(jobId, manufacturer, model, checkButton) {
         }
     }
 
-    throw new Error('Job timeout - processing took too long');
+    // Timeout reached - return UNKNOWN result
+    console.warn(`Job ${jobId} timed out after ${maxAttempts} attempts (2 minutes)`);
+    return {
+        status: 'UNKNOWN',
+        explanation: `EOL check timed out after ${maxAttempts} polling attempts (2 minutes). Please try again later.`,
+        successor: {
+            status: 'UNKNOWN',
+            model: null,
+            explanation: ''
+        }
+    };
 }
 
 async function downloadExcel() {
@@ -855,6 +878,160 @@ async function clearDatabase() {
         console.error('Clear database error:', error);
         showStatus('Error clearing database: ' + error.message, 'error');
     }
+}
+
+// ============================================================================
+// AUTO-CHECK FUNCTIONALITY
+// ============================================================================
+
+// Load auto-check state and update UI
+async function loadAutoCheckState() {
+    try {
+        const response = await fetch('/.netlify/functions/get-auto-check-state');
+
+        if (!response.ok) {
+            console.error('Failed to load auto-check state');
+            return;
+        }
+
+        const state = await response.json();
+        console.log('Auto-check state loaded:', state);
+
+        // Update toggle
+        const toggle = document.getElementById('auto-check-toggle');
+        if (toggle) {
+            toggle.checked = state.enabled;
+        }
+
+        // Update Check EOL buttons state
+        updateCheckEOLButtons(state.isRunning);
+
+    } catch (error) {
+        console.error('Error loading auto-check state:', error);
+    }
+}
+
+// Toggle auto-check enabled/disabled
+async function toggleAutoCheck() {
+    const toggle = document.getElementById('auto-check-toggle');
+    const enabled = toggle.checked;
+
+    try {
+        const response = await fetch('/.netlify/functions/set-auto-check-state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enabled })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to update state');
+        }
+
+        const result = await response.json();
+        console.log('Auto-check toggled:', result.state);
+
+        showStatus(`Auto EOL Check ${enabled ? 'enabled' : 'disabled'}`, 'success');
+
+    } catch (error) {
+        console.error('Error toggling auto-check:', error);
+        showStatus('Error updating auto-check state: ' + error.message, 'error');
+        // Revert toggle on error
+        toggle.checked = !enabled;
+    }
+}
+
+// Manual trigger for testing
+async function manualTriggerAutoCheck() {
+    const button = document.getElementById('manual-trigger-btn');
+    const originalText = button.textContent;
+
+    try {
+        button.textContent = 'Triggering...';
+        button.disabled = true;
+
+        showStatus('Manually triggering auto-check...', 'info');
+
+        const response = await fetch('/.netlify/functions/auto-eol-check-background', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ triggeredBy: 'manual' })
+        });
+
+        if (response.status === 202) {
+            showStatus('Auto-check triggered successfully! Check console for progress.', 'success');
+        } else {
+            const data = await response.json();
+            showStatus('Trigger response: ' + (data.message || data.body || 'Unknown'), 'info');
+        }
+
+    } catch (error) {
+        console.error('Error triggering auto-check:', error);
+        showStatus('Error triggering auto-check: ' + error.message, 'error');
+    } finally {
+        button.textContent = originalText;
+        button.disabled = false;
+    }
+}
+
+// Update Check EOL buttons (disable/enable based on auto-check running state)
+function updateCheckEOLButtons(isRunning) {
+    const checkButtons = document.querySelectorAll('.check-eol');
+    checkButtons.forEach(button => {
+        button.disabled = isRunning;
+        if (isRunning) {
+            button.style.opacity = '0.5';
+            button.style.cursor = 'not-allowed';
+        } else {
+            button.style.opacity = '1';
+            button.style.cursor = 'pointer';
+        }
+    });
+}
+
+// Monitor auto-check state periodically
+let autoCheckMonitoringInterval = null;
+
+function startAutoCheckMonitoring() {
+    // Check every 10 seconds
+    autoCheckMonitoringInterval = setInterval(async () => {
+        try {
+            const response = await fetch('/.netlify/functions/get-auto-check-state');
+            if (response.ok) {
+                const state = await response.json();
+
+                // Update buttons based on isRunning
+                updateCheckEOLButtons(state.isRunning);
+
+                // Auto-disable if credits too low
+                const creditsElement = document.getElementById('credits-remaining');
+                if (creditsElement) {
+                    const creditsText = creditsElement.textContent;
+                    const match = creditsText.match(/(\d+)\/\d+ remaining/);
+                    if (match) {
+                        const remaining = parseInt(match[1]);
+                        if (remaining <= 50 && state.enabled) {
+                            console.log('Auto-disabling auto-check due to low credits:', remaining);
+
+                            // Disable auto-check
+                            await fetch('/.netlify/functions/set-auto-check-state', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ enabled: false })
+                            });
+
+                            // Update toggle
+                            const toggle = document.getElementById('auto-check-toggle');
+                            if (toggle) toggle.checked = false;
+
+                            showStatus('Auto EOL Check disabled - Tavily credits too low (≤50)', 'info');
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Auto-check monitoring error:', error);
+        }
+    }, 10000); // Every 10 seconds
 }
 
 // Initialize when page loads

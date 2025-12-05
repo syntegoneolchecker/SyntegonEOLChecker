@@ -280,6 +280,13 @@ button:disabled {
     gap: 10px;
 }
 
+/* Auto-check toggle container */
+.auto-check-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 /* File actions container */
 .file-actions {
     display: flex;
