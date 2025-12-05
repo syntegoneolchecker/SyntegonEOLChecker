@@ -949,7 +949,21 @@ async function manualTriggerAutoCheck() {
         button.textContent = 'Triggering...';
         button.disabled = true;
 
-        showStatus('Manually triggering auto-check...', 'info');
+        showStatus('Resetting daily counter and triggering auto-check...', 'info');
+
+        // Reset the daily counter to 0 for testing purposes
+        const resetResponse = await fetch('/.netlify/functions/set-auto-check-state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dailyCounter: 0 })
+        });
+
+        if (!resetResponse.ok) {
+            throw new Error('Failed to reset counter: ' + resetResponse.statusText);
+        }
+
+        console.log('Daily counter reset to 0');
+        showStatus('Counter reset. Triggering auto-check...', 'info');
 
         const response = await fetch('/.netlify/functions/auto-eol-check-background', {
             method: 'POST',
@@ -958,7 +972,7 @@ async function manualTriggerAutoCheck() {
         });
 
         if (response.status === 202) {
-            showStatus('Auto-check triggered successfully! Check console for progress.', 'success');
+            showStatus('Auto-check triggered successfully! Counter reset to 0. Check console for progress.', 'success');
         } else {
             const data = await response.json();
             showStatus('Trigger response: ' + (data.message || data.body || 'Unknown'), 'info');
