@@ -1,5 +1,12 @@
 let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
 
+// Sorting state
+let originalData = null; // Stores the original order for reset
+let currentSort = {
+    column: null, // Column index being sorted (0-5 for sortable columns)
+    direction: null // 'asc', 'desc', or null
+};
+
 // Countdown interval for Groq rate limit reset
 let groqCountdownInterval = null;
 let groqResetTimestamp = null;
@@ -35,12 +42,72 @@ function formatID(input) {
 }
 
 function render() {
+    const sortableColumns = [0, 1, 2, 3, 4, 5]; // SAP Part Number, Legacy Part Number, Designation, Model, Manufacturer, Status
+
     let t = document.getElementById('table');
     t.innerHTML = data.map((r, i) =>
-        `<tr id="row-${i}">${r.map((c, j) =>
-            i == 0 ? `<th>${c}</th>` : `<td>${c}</td>`
-        ).join('')}${i > 0 ? `<td><button class="check-eol" onclick="checkEOL(${i})">Check EOL</button><button class="delete" onclick="delRow(${i})">Delete</button></td>` : '<th>Actions</th>'}</tr>`
+        `<tr id="row-${i}">${r.map((c, j) => {
+            if (i == 0) {
+                // Header row
+                const isSortable = sortableColumns.includes(j);
+                const sortIndicator = (currentSort.column === j)
+                    ? (currentSort.direction === 'asc' ? ' ▲' : currentSort.direction === 'desc' ? ' ▼' : '')
+                    : '';
+                const clickHandler = isSortable ? ` onclick="sortTable(${j})" style="cursor: pointer; user-select: none;"` : '';
+                return `<th${clickHandler}>${c}${sortIndicator}</th>`;
+            } else {
+                return `<td>${c}</td>`;
+            }
+        }).join('')}${i > 0 ? `<td><button class="check-eol" onclick="checkEOL(${i})">Check EOL</button><button class="delete" onclick="delRow(${i})">Delete</button></td>` : '<th>Actions</th>'}</tr>`
     ).join('');
+}
+
+// Three-state sorting: null → asc → desc → null
+function sortTable(columnIndex) {
+    // Save original order on first sort (if not already saved)
+    if (originalData === null) {
+        originalData = JSON.parse(JSON.stringify(data));
+    }
+
+    // Determine next sort state
+    if (currentSort.column === columnIndex) {
+        // Same column clicked - cycle through states
+        if (currentSort.direction === null) {
+            currentSort.direction = 'asc';
+        } else if (currentSort.direction === 'asc') {
+            currentSort.direction = 'desc';
+        } else {
+            // Reset to original order
+            currentSort.direction = null;
+            currentSort.column = null;
+            data = JSON.parse(JSON.stringify(originalData));
+            render();
+            return;
+        }
+    } else {
+        // Different column clicked - start fresh with ascending
+        currentSort.column = columnIndex;
+        currentSort.direction = 'asc';
+    }
+
+    // Perform the sort (exclude header row at index 0)
+    const header = data[0];
+    const rows = data.slice(1);
+
+    rows.sort((a, b) => {
+        const aVal = (a[columnIndex] || '').toString().toLowerCase();
+        const bVal = (b[columnIndex] || '').toString().toLowerCase();
+
+        if (currentSort.direction === 'asc') {
+            return aVal.localeCompare(bVal);
+        } else {
+            return bVal.localeCompare(aVal);
+        }
+    });
+
+    // Rebuild data array with header + sorted rows
+    data = [header, ...rows];
+    render();
 }
 
 async function addRow() {
@@ -98,6 +165,7 @@ async function addRow() {
         if (confirm(confirmMessage)) {
             // User confirmed - replace the entry
             data[existingIndex] = row;
+            if (originalData) originalData[existingIndex] = row;
             render();
             showStatus(`✓ Entry ${formattedID} replaced successfully`);
             await saveToServer();
@@ -113,6 +181,7 @@ async function addRow() {
     } else {
         // New entry - add it
         data.push(row);
+        if (originalData) originalData.push(row);
         render();
         showStatus(`✓ New entry ${formattedID} added successfully`);
         await saveToServer();
@@ -125,6 +194,18 @@ async function addRow() {
 }
 
 async function delRow(i) {
+    // If we have originalData, find and remove the matching row from it
+    if (originalData) {
+        const rowToDelete = data[i];
+        const sapNumber = rowToDelete[0]; // SAP Part Number is unique identifier
+
+        // Find and remove from originalData
+        const originalIndex = originalData.findIndex(row => row[0] === sapNumber);
+        if (originalIndex !== -1) {
+            originalData.splice(originalIndex, 1);
+        }
+    }
+
     data.splice(i, 1);
     render();
     await saveToServer();
@@ -203,6 +284,15 @@ async function checkEOL(rowIndex) {
 
         // Column 11: Information Date
         row[11] = new Date().toLocaleString();
+
+        // Update originalData if it exists (find by SAP Part Number)
+        if (originalData) {
+            const sapNumber = row[0];
+            const originalIndex = originalData.findIndex(r => r[0] === sapNumber);
+            if (originalIndex !== -1) {
+                originalData[originalIndex] = [...row]; // Copy the updated row
+            }
+        }
 
         // Re-render the table
         render();
@@ -423,13 +513,20 @@ function loadExcel(e) {
                 if (existingIndex !== -1) {
                     // Update existing entry
                     data[existingIndex] = newRow;
+                    if (originalData) originalData[existingIndex] = newRow;
                     updatedEntries++;
                 } else {
                     // Add new entry
                     data.push(newRow);
+                    if (originalData) originalData.push(newRow);
                     newEntries++;
                 }
             }
+
+            // Reset sorting state after import (data has changed)
+            originalData = null;
+            currentSort.column = null;
+            currentSort.direction = null;
 
             render();
 
@@ -487,6 +584,10 @@ async function loadFromServer() {
 
         if (result.data && Array.isArray(result.data)) {
             data = result.data;
+            // Reset sorting state when loading new data
+            originalData = null;
+            currentSort.column = null;
+            currentSort.direction = null;
             render();
             showStatus('✓ Database loaded successfully from cloud storage');
             return;
@@ -741,6 +842,11 @@ async function clearDatabase() {
 
         // Reset data to empty state with headers only
         data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
+
+        // Reset sorting state
+        originalData = null;
+        currentSort.column = null;
+        currentSort.direction = null;
 
         render();
         showStatus('✓ Database cleared successfully', 'success');
