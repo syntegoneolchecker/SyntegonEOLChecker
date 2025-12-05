@@ -31,7 +31,8 @@ exports.handler = async function(event, context) {
                 enabled: false,
                 dailyCounter: 0,
                 lastResetDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
-                isRunning: false
+                isRunning: false,
+                lastActivityTime: null
             };
             // Save default state
             await store.setJSON('state', state);

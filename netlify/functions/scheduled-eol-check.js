@@ -60,9 +60,17 @@ const handler = async (event, context) => {
         const currentDate = getGMT9Date();
         if (state.lastResetDate !== currentDate) {
             console.log(`New day detected (${currentDate}), resetting counter from ${state.dailyCounter} to 0`);
-            state.dailyCounter = 0;
-            state.lastResetDate = currentDate;
-            await store.setJSON('state', state);
+            // Use set-auto-check-state to avoid race condition
+            const resetResponse = await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dailyCounter: 0, lastResetDate: currentDate })
+            });
+            if (!resetResponse.ok) {
+                console.error('Failed to reset counter');
+            }
+            // Re-fetch state after update
+            state = await store.get('state', { type: 'json' });
         }
 
         // Check if we've already done 20 checks today
@@ -80,8 +88,12 @@ const handler = async (event, context) => {
             const tavilyData = await tavilyResponse.json();
             if (tavilyData.remaining <= 50) {
                 console.log(`Tavily credits too low (${tavilyData.remaining}), disabling auto-check`);
-                state.enabled = false;
-                await store.setJSON('state', state);
+                // Use set-auto-check-state to avoid race condition
+                await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: false })
+                });
                 return {
                     statusCode: 200,
                     body: JSON.stringify({ message: 'Credits too low, auto-check disabled' })
@@ -92,9 +104,12 @@ const handler = async (event, context) => {
         // All checks passed - trigger the background function
         console.log('Triggering background EOL check...');
 
-        // Mark as running
-        state.isRunning = true;
-        await store.setJSON('state', state);
+        // Mark as running - use set-auto-check-state to avoid race condition
+        await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isRunning: true })
+        });
 
         // Trigger the background function
         const backgroundUrl = `${siteUrl}/.netlify/functions/auto-eol-check-background`;

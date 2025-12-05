@@ -1027,6 +1027,35 @@ function startAutoCheckMonitoring() {
             if (response.ok) {
                 const state = await response.json();
 
+                // Update toggle to match server state (fixes slider jumping back on reload)
+                const toggle = document.getElementById('auto-check-toggle');
+                if (toggle && toggle.checked !== state.enabled) {
+                    console.log(`Syncing toggle with server state: ${state.enabled}`);
+                    toggle.checked = state.enabled;
+                }
+
+                // Detect stuck isRunning state (isRunning=true but no activity for >5 minutes)
+                if (state.isRunning) {
+                    const lastActivity = state.lastActivityTime ? new Date(state.lastActivityTime) : null;
+                    const now = new Date();
+                    const minutesSinceActivity = lastActivity ? (now - lastActivity) / 1000 / 60 : 999;
+
+                    if (minutesSinceActivity > 5) {
+                        console.warn(`Detected stuck isRunning state (no activity for ${minutesSinceActivity.toFixed(1)} min), resetting...`);
+
+                        // Reset isRunning to false
+                        await fetch('/.netlify/functions/set-auto-check-state', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ isRunning: false })
+                        });
+
+                        // Update local state
+                        state.isRunning = false;
+                        showStatus('Auto-check recovered from stuck state', 'info');
+                    }
+                }
+
                 // Update buttons based on isRunning
                 updateCheckEOLButtons(state.isRunning);
 
@@ -1048,7 +1077,6 @@ function startAutoCheckMonitoring() {
                             });
 
                             // Update toggle
-                            const toggle = document.getElementById('auto-check-toggle');
                             if (toggle) toggle.checked = false;
 
                             showStatus('Auto EOL Check disabled - Tavily credits too low (≤50)', 'info');
