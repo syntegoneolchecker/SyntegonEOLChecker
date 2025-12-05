@@ -30,10 +30,8 @@ async function wakeRenderService() {
 }
 
 // Helper: Check if Groq tokens are ready (N/A means fully reset)
-async function checkGroqTokens() {
+async function checkGroqTokens(siteUrl) {
     try {
-        // Use DEPLOY_PRIME_URL for branch deploys, URL for production
-        const siteUrl = process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || 'https://develop--syntegoneolchecker.netlify.app';
         const response = await fetch(`${siteUrl}/.netlify/functions/get-groq-usage`);
         if (!response.ok) return true; // Assume OK if can't check
 
@@ -143,7 +141,7 @@ async function findNextProduct() {
 }
 
 // Helper: Execute EOL check for a product
-async function executeEOLCheck(product) {
+async function executeEOLCheck(product, siteUrl) {
     const model = product[3]; // Column 3
     const manufacturer = product[4]; // Column 4
     const sapNumber = product[0]; // Column 0
@@ -156,9 +154,6 @@ async function executeEOLCheck(product) {
     }
 
     try {
-        // Get the site URL from environment (Netlify sets these)
-        // DEPLOY_PRIME_URL is the unique URL for this specific deploy (works for branch deploys)
-        const siteUrl = process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || 'https://develop--syntegoneolchecker.netlify.app';
         console.log(`Using site URL: ${siteUrl}`);
 
         // Initialize job
@@ -338,6 +333,14 @@ exports.handler = async function(event, context) {
     console.log('='.repeat(60));
 
     try {
+        // Parse the request body to get siteUrl
+        const body = JSON.parse(event.body || '{}');
+        const passedSiteUrl = body.siteUrl;
+
+        // Use passed siteUrl or fall back to environment variables
+        const siteUrl = passedSiteUrl || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || 'https://develop--syntegoneolchecker.netlify.app';
+        console.log(`Site URL: ${siteUrl} (${passedSiteUrl ? 'passed from caller' : 'from environment'})`);
+
         const store = getStore({
             name: 'auto-check-state',
             siteID: process.env.SITE_ID,
@@ -389,7 +392,7 @@ exports.handler = async function(event, context) {
         }
 
         // Wait for Groq tokens
-        await checkGroqTokens();
+        await checkGroqTokens(siteUrl);
 
         // Process products in a loop (stay within 15-min limit)
         const startTime = Date.now();
@@ -414,7 +417,7 @@ exports.handler = async function(event, context) {
             }
 
             // Execute EOL check
-            const success = await executeEOLCheck(product);
+            const success = await executeEOLCheck(product, siteUrl);
 
             // Increment counter (even if failed - count toward daily limit)
             state.dailyCounter++;
