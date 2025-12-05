@@ -408,22 +408,37 @@ exports.handler = async function(event, context) {
             return { statusCode: 200, body: 'No products to check' };
         }
 
+        // Re-check state RIGHT BEFORE starting EOL check (user may have disabled during prep)
+        const preCheckState = await store.get('state', { type: 'json' });
+        console.log(`Pre-check state: enabled=${preCheckState.enabled}, counter=${preCheckState.dailyCounter}, isRunning=${preCheckState.isRunning}`);
+
+        if (!preCheckState.enabled) {
+            console.log('🛑 Auto-check disabled before starting EOL check, stopping chain');
+            preCheckState.isRunning = false;
+            await store.setJSON('state', preCheckState);
+            return { statusCode: 200, body: 'Disabled before check' };
+        }
+
+        console.log('✓ Slider still enabled, proceeding with EOL check');
+
         // Execute ONE EOL check
         const success = await executeEOLCheck(product, siteUrl);
 
         // Increment counter (even if failed - count toward daily limit)
-        state.dailyCounter++;
-        await store.setJSON('state', state);
+        preCheckState.dailyCounter++;
+        await store.setJSON('state', preCheckState);
 
-        console.log(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${state.dailyCounter}/20`);
+        console.log(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${preCheckState.dailyCounter}/20`);
 
         // Check if we should continue (re-fetch state to get latest enabled status)
         const freshState = await store.get('state', { type: 'json' });
+        console.log(`Post-check state: enabled=${freshState.enabled}, counter=${freshState.dailyCounter}, isRunning=${freshState.isRunning}`);
+
         const shouldContinue = freshState.enabled && freshState.dailyCounter < 20;
 
         if (shouldContinue) {
             // Trigger next check by calling this function again
-            console.log('Triggering next check...');
+            console.log('✓ Slider still enabled, triggering next check...');
             const nextCheckUrl = `${siteUrl}/.netlify/functions/auto-eol-check-background`;
 
             try {
@@ -445,7 +460,8 @@ exports.handler = async function(event, context) {
             }
         } else {
             // Chain complete
-            console.log('Chain complete - no more checks needed');
+            const reason = !freshState.enabled ? 'slider disabled' : 'daily limit reached';
+            console.log(`🛑 Chain stopped: ${reason} (enabled=${freshState.enabled}, counter=${freshState.dailyCounter}/20)`);
             freshState.isRunning = false;
             await store.setJSON('state', freshState);
         }

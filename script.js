@@ -965,6 +965,17 @@ async function manualTriggerAutoCheck() {
         console.log('Daily counter reset to 0');
         showStatus('Counter reset. Triggering auto-check...', 'info');
 
+        // Set isRunning = true before triggering
+        const runningResponse = await fetch('/.netlify/functions/set-auto-check-state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isRunning: true })
+        });
+
+        if (!runningResponse.ok) {
+            throw new Error('Failed to set running state: ' + runningResponse.statusText);
+        }
+
         // Pass the current site URL to the background function
         const siteUrl = window.location.origin;
 
