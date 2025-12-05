@@ -204,7 +204,7 @@ async function executeEOLCheck(product, siteUrl) {
 
 // Helper: Poll job status
 async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
-    const maxAttempts = 60;
+    const maxAttempts = 90; // Increased to handle Render crashes/restarts
     let attempts = 0;
 
     while (attempts < maxAttempts) {
@@ -245,7 +245,7 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
     console.warn(`Job ${jobId} timed out after ${maxAttempts} attempts`);
     return {
         status: 'UNKNOWN',
-        explanation: `EOL check timed out after ${maxAttempts} polling attempts (2 minutes).`,
+        explanation: `EOL check timed out after ${maxAttempts} polling attempts (3 minutes).`,
         successor: { status: 'UNKNOWN', model: null, explanation: '' }
     };
 }
@@ -382,68 +382,80 @@ exports.handler = async function(event, context) {
 
         console.log(`Current progress: ${state.dailyCounter}/20 checks today`);
 
-        // Wake Render service
-        const renderReady = await wakeRenderService();
-        if (!renderReady) {
-            console.warn('Render service not ready, will retry next time');
-            state.isRunning = false;
-            await store.setJSON('state', state);
-            return { statusCode: 200, body: 'Render not ready' };
+        // Wake Render service (only on first check of the day)
+        if (state.dailyCounter === 0) {
+            const renderReady = await wakeRenderService();
+            if (!renderReady) {
+                console.warn('Render service not ready, will retry next time');
+                state.isRunning = false;
+                await store.setJSON('state', state);
+                return { statusCode: 200, body: 'Render not ready' };
+            }
         }
 
         // Wait for Groq tokens
         await checkGroqTokens(siteUrl);
 
-        // Process products in a loop (stay within 15-min limit)
-        const startTime = Date.now();
-        const MAX_RUNTIME = 13 * 60 * 1000; // 13 minutes (leave 2 min buffer)
-        let checksPerformed = 0;
+        // Small delay before processing (replaces delay between checks)
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
-        console.log('Starting processing loop...');
-
-        while (state.dailyCounter < 20 && state.enabled) {
-            // Check runtime limit
-            const elapsed = Date.now() - startTime;
-            if (elapsed > MAX_RUNTIME) {
-                console.log(`Runtime limit reached (${Math.round(elapsed / 1000)}s), stopping loop`);
-                break;
-            }
-
-            // Find next product
-            const product = await findNextProduct();
-            if (!product) {
-                console.log('No more products to check');
-                break;
-            }
-
-            // Execute EOL check
-            const success = await executeEOLCheck(product, siteUrl);
-
-            // Increment counter (even if failed - count toward daily limit)
-            state.dailyCounter++;
-            checksPerformed++;
+        // Find next product to check
+        const product = await findNextProduct();
+        if (!product) {
+            console.log('No more products to check');
+            state.isRunning = false;
             await store.setJSON('state', state);
-
-            console.log(`Check ${checksPerformed} ${success ? 'succeeded' : 'failed'}, counter now: ${state.dailyCounter}/20`);
-
-            // Small delay between checks
-            if (state.dailyCounter < 20 && state.enabled) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
+            return { statusCode: 200, body: 'No products to check' };
         }
 
-        // Mark as not running when done
-        state.isRunning = false;
+        // Execute ONE EOL check
+        const success = await executeEOLCheck(product, siteUrl);
+
+        // Increment counter (even if failed - count toward daily limit)
+        state.dailyCounter++;
         await store.setJSON('state', state);
 
-        console.log(`Batch complete: ${checksPerformed} checks performed, counter: ${state.dailyCounter}/20`);
+        console.log(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${state.dailyCounter}/20`);
+
+        // Check if we should continue (re-fetch state to get latest enabled status)
+        const freshState = await store.get('state', { type: 'json' });
+        const shouldContinue = freshState.enabled && freshState.dailyCounter < 20;
+
+        if (shouldContinue) {
+            // Trigger next check by calling this function again
+            console.log('Triggering next check...');
+            const nextCheckUrl = `${siteUrl}/.netlify/functions/auto-eol-check-background`;
+
+            try {
+                // Fire and forget - don't wait for response
+                fetch(nextCheckUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        triggeredBy: 'chain',
+                        siteUrl: siteUrl
+                    })
+                }).catch(err => {
+                    console.error('Failed to trigger next check:', err.message);
+                });
+
+                console.log('Next check triggered');
+            } catch (error) {
+                console.error('Error triggering next check:', error.message);
+            }
+        } else {
+            // Chain complete
+            console.log('Chain complete - no more checks needed');
+            freshState.isRunning = false;
+            await store.setJSON('state', freshState);
+        }
 
         return {
             statusCode: 202, // Accepted (background processing)
             body: JSON.stringify({
-                message: 'Batch completed',
-                checksPerformed: checksPerformed,
-                totalCounter: state.dailyCounter
+                message: 'Check completed',
+                counter: state.dailyCounter,
+                nextTriggered: shouldContinue
             })
         };
 
