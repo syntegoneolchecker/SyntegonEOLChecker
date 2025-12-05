@@ -13,7 +13,16 @@ const PORT = process.env.PORT || 3000;
 // Memory management: Track request count and restart after N requests
 // This prevents hitting Render's 512MB memory limit
 let requestCount = 0;
-const MAX_REQUESTS_BEFORE_RESTART = 10;
+const MAX_REQUESTS_BEFORE_RESTART = 5; // Reduced from 10 to restart more frequently
+
+// Request queue: Only allow one Puppeteer instance at a time
+// This prevents memory spikes from concurrent browser instances
+let puppeteerQueue = Promise.resolve();
+function enqueuePuppeteerTask(task) {
+    const result = puppeteerQueue.then(task, task); // Run task whether previous succeeded or failed
+    puppeteerQueue = result.catch(() => {}); // Prevent unhandled rejections from blocking queue
+    return result;
+}
 
 // Middleware
 app.use(cors());
@@ -330,11 +339,14 @@ app.post('/scrape', async (req, res) => {
 
         // Use Puppeteer for dynamic HTML pages only
         console.log(`Fast fetch failed, using Puppeteer for ${url}...`);
-        let browser = null;
-        let callbackSent = false; // Track if we've sent callback to avoid duplicates
 
-        try {
-            browser = await puppeteer.launch({
+        // Enqueue this Puppeteer task to prevent concurrent browser instances
+        return enqueuePuppeteerTask(async () => {
+            let browser = null;
+            let callbackSent = false; // Track if we've sent callback to avoid duplicates
+
+            try {
+                browser = await puppeteer.launch({
             headless: 'new',
             args: [
                 '--no-sandbox',
@@ -369,12 +381,33 @@ app.post('/scrape', async (req, res) => {
         // as CSS/JS might be needed for the challenge to complete
         const isCloudflareProtected = url.includes('orientalmotor.co.jp');
 
+        // Aggressive tracking/analytics domain blocking list
+        const blockedDomains = [
+            'google-analytics.com', 'googletagmanager.com', 'doubleclick.net',
+            'googleadservices.com', 'googlesyndication.com',
+            'facebook.net', 'facebook.com/tr', 'connect.facebook.net',
+            'adsrvr.org', 'adnxs.com', 'taboola.com', 'outbrain.com',
+            'clarity.ms', 'hotjar.com', 'mouseflow.com',
+            'im-apps.net', 'nakanohito.jp', 'yahoo.co.jp/rt',
+            'creativecdn.com', 'slim02.jp', 'cameleer',
+            'recommend-jp.misumi-ec.com', 'insight.adsrvr.org'
+        ];
+
         if (!isCloudflareProtected) {
             // Enable request interception to block heavy resources (reduces memory usage by 50-70%)
             await page.setRequestInterception(true);
 
             page.on('request', (request) => {
+                const requestUrl = request.url();
                 const resourceType = request.resourceType();
+
+                // Block tracking/analytics domains
+                const isBlockedDomain = blockedDomains.some(domain => requestUrl.includes(domain));
+                if (isBlockedDomain) {
+                    request.abort();
+                    return;
+                }
+
                 // Block images, stylesheets, fonts, and media to save memory
                 if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
                     request.abort();
@@ -382,7 +415,7 @@ app.post('/scrape', async (req, res) => {
                     request.continue();
                 }
             });
-            console.log('Resource blocking enabled for non-Cloudflare site');
+            console.log('Resource blocking enabled: images, fonts, media, and tracking domains blocked');
         } else {
             console.log('Resource blocking DISABLED for Cloudflare-protected site (Oriental Motor)');
         }
@@ -405,18 +438,23 @@ app.post('/scrape', async (req, res) => {
             pendingRequests.delete(request.url());
         });
 
-        // Try networkidle2 with 60s timeout, extract content even if it times out
+        // Detect MISUMI pages - use different wait strategy
+        const isMisumiPage = url.includes('misumi-ec.com');
+        const waitStrategy = isMisumiPage ? 'domcontentloaded' : 'networkidle2';
+        const navTimeout = 30000; // Reduced from 60s to 30s
+
+        // Try navigation with timeout, extract content even if it times out
         let navigationTimedOut = false;
         try {
             await page.goto(url, {
-                waitUntil: 'networkidle2', // Wait until ≤2 network connections remain
-                timeout: 60000 // 1 minute timeout
+                waitUntil: waitStrategy, // domcontentloaded for MISUMI, networkidle2 for others
+                timeout: navTimeout
             });
-            console.log('Navigation completed with networkidle2');
+            console.log(`Navigation completed with ${waitStrategy}`);
         } catch (navError) {
             // Check if it's a timeout error
             if (navError.message.includes('timeout') || navError.message.includes('Navigation timeout')) {
-                console.log(`Navigation timed out after 60s, but page may have partial content - continuing with extraction`);
+                console.log(`Navigation timed out after ${navTimeout/1000}s, but page may have partial content - continuing with extraction`);
                 navigationTimedOut = true;
 
                 // NETWORK DIAGNOSTICS: Log pending requests to identify timeout cause
@@ -482,7 +520,7 @@ app.post('/scrape', async (req, res) => {
         let pageTitle = '';
 
         try {
-            // Wrap extraction in Promise.race with 30s timeout
+            // Wrap extraction in Promise.race with 10s timeout (reduced from 30s)
             const extractionPromise = (async () => {
                 const extractedContent = await page.evaluate(() => {
                     const scripts = document.querySelectorAll('script, style, noscript');
@@ -494,7 +532,7 @@ app.post('/scrape', async (req, res) => {
             })();
 
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Content extraction timeout')), 30000)
+                setTimeout(() => reject(new Error('Content extraction timeout')), 10000)
             );
 
             const result = await Promise.race([extractionPromise, timeoutPromise]);
@@ -567,40 +605,51 @@ app.post('/scrape', async (req, res) => {
 
         res.json(result);
 
-        } catch (puppeteerError) {
-            // Catastrophic Puppeteer error (browser crash, launch failure, etc.)
-            console.error(`[${new Date().toISOString()}] Puppeteer catastrophic error:`, puppeteerError.message);
+            } catch (puppeteerError) {
+                // Catastrophic Puppeteer error (browser crash, launch failure, etc.)
+                console.error(`[${new Date().toISOString()}] Puppeteer catastrophic error:`, puppeteerError.message);
 
-            // Send error callback unconditionally (if not already sent)
-            if (!callbackSent) {
-                await sendCallback(callbackUrl, {
-                    jobId,
-                    urlIndex,
-                    content: `[Scraping failed completely: ${puppeteerError.message}]`,
-                    title: null,
-                    snippet,
-                    url
+                // Send error callback unconditionally (if not already sent)
+                if (!callbackSent) {
+                    await sendCallback(callbackUrl, {
+                        jobId,
+                        urlIndex,
+                        content: `[Scraping failed completely: ${puppeteerError.message}]`,
+                        title: null,
+                        snippet,
+                        url
+                    });
+                }
+
+                // Close browser if it's open
+                if (browser) {
+                    try {
+                        await browser.close();
+                    } catch (closeErr) {
+                        console.error('Failed to close browser:', closeErr.message);
+                    }
+                }
+
+                // Schedule restart if memory limit approaching
+                scheduleRestartIfNeeded();
+
+                return res.status(500).json({
+                    success: false,
+                    error: `Puppeteer error: ${puppeteerError.message}`,
+                    url: url
                 });
-            }
-
-            // Close browser if it's open
-            if (browser) {
-                try {
-                    await browser.close();
-                } catch (closeErr) {
-                    console.error('Failed to close browser:', closeErr.message);
+            } finally {
+                // Ensure browser is always closed, even if errors occur
+                if (browser) {
+                    try {
+                        await browser.close();
+                        browser = null;
+                    } catch (closeErr) {
+                        console.error('Failed to close browser in finally block:', closeErr.message);
+                    }
                 }
             }
-
-            // Schedule restart if memory limit approaching
-            scheduleRestartIfNeeded();
-
-            return res.status(500).json({
-                success: false,
-                error: `Puppeteer error: ${puppeteerError.message}`,
-                url: url
-            });
-        }
+        }); // End of enqueuePuppeteerTask
 
     } catch (error) {
         console.error(`[${new Date().toISOString()}] Scraping error:`, error.message);
@@ -643,11 +692,13 @@ app.post('/scrape-keyence', async (req, res) => {
         console.log(`Callback URL provided: ${callbackUrl}`);
     }
 
-    let browser = null;
-    let callbackSent = false;
+    // Enqueue this Puppeteer task to prevent concurrent browser instances
+    return enqueuePuppeteerTask(async () => {
+        let browser = null;
+        let callbackSent = false;
 
-    try {
-        browser = await puppeteer.launch({
+        try {
+            browser = await puppeteer.launch({
             headless: 'new',
             args: [
                 '--no-sandbox',
@@ -812,40 +863,51 @@ app.post('/scrape-keyence', async (req, res) => {
 
         return res.json(result);
 
-    } catch (error) {
-        console.error(`KEYENCE scraping error:`, error);
+        } catch (error) {
+            console.error(`KEYENCE scraping error:`, error);
 
-        // Send error callback if not already sent
-        if (callbackUrl && !callbackSent) {
-            await sendCallback(callbackUrl, {
-                jobId,
-                urlIndex,
-                content: `[KEYENCE search failed: ${error.message}]`,
-                title: null,
-                snippet: '',
-                url: 'https://www.keyence.co.jp/'
+            // Send error callback if not already sent
+            if (callbackUrl && !callbackSent) {
+                await sendCallback(callbackUrl, {
+                    jobId,
+                    urlIndex,
+                    content: `[KEYENCE search failed: ${error.message}]`,
+                    title: null,
+                    snippet: '',
+                    url: 'https://www.keyence.co.jp/'
+                });
+            }
+
+            if (browser) {
+                try {
+                    await browser.close();
+                } catch (closeError) {
+                    console.error('Error closing browser after KEYENCE scraping error:', closeError);
+                }
+            }
+
+            // Force restart after KEYENCE check (even on error - uses more memory than normal checks)
+            console.log('KEYENCE check failed - forcing restart to free memory');
+            requestCount = MAX_REQUESTS_BEFORE_RESTART;
+            scheduleRestartIfNeeded();
+
+            return res.status(500).json({
+                success: false,
+                error: error.message,
+                model: model
             });
-        }
-
-        if (browser) {
-            try {
-                await browser.close();
-            } catch (closeError) {
-                console.error('Error closing browser after KEYENCE scraping error:', closeError);
+        } finally {
+            // Ensure browser is always closed
+            if (browser) {
+                try {
+                    await browser.close();
+                    browser = null;
+                } catch (closeErr) {
+                    console.error('Failed to close browser in finally block:', closeErr.message);
+                }
             }
         }
-
-        // Force restart after KEYENCE check (even on error - uses more memory than normal checks)
-        console.log('KEYENCE check failed - forcing restart to free memory');
-        requestCount = MAX_REQUESTS_BEFORE_RESTART;
-        scheduleRestartIfNeeded();
-
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            model: model
-        });
-    }
+    }); // End of enqueuePuppeteerTask
 });
 
 // Batch scraping endpoint (multiple URLs)
