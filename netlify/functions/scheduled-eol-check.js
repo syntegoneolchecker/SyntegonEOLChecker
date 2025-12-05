@@ -15,7 +15,9 @@ const handler = async (event, context) => {
     console.log('Scheduled EOL check triggered at:', new Date().toISOString());
 
     try {
-        const siteUrl = process.env.URL || process.env.DEPLOY_URL || 'https://develop--syntegoneolchecker.netlify.app';
+        // Use DEPLOY_PRIME_URL for branch deploys, URL for production
+        const siteUrl = process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || 'https://develop--syntegoneolchecker.netlify.app';
+        console.log(`Using site URL: ${siteUrl}`);
 
         const store = getStore({
             name: 'auto-check-state',

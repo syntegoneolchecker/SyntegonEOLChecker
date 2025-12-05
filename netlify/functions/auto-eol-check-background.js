@@ -32,7 +32,8 @@ async function wakeRenderService() {
 // Helper: Check if Groq tokens are ready (N/A means fully reset)
 async function checkGroqTokens() {
     try {
-        const siteUrl = process.env.URL || process.env.DEPLOY_URL || 'https://develop--syntegoneolchecker.netlify.app';
+        // Use DEPLOY_PRIME_URL for branch deploys, URL for production
+        const siteUrl = process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || 'https://develop--syntegoneolchecker.netlify.app';
         const response = await fetch(`${siteUrl}/.netlify/functions/get-groq-usage`);
         if (!response.ok) return true; // Assume OK if can't check
 
@@ -156,7 +157,8 @@ async function executeEOLCheck(product) {
 
     try {
         // Get the site URL from environment (Netlify sets these)
-        const siteUrl = process.env.URL || process.env.DEPLOY_URL || 'https://develop--syntegoneolchecker.netlify.app';
+        // DEPLOY_PRIME_URL is the unique URL for this specific deploy (works for branch deploys)
+        const siteUrl = process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || 'https://develop--syntegoneolchecker.netlify.app';
         console.log(`Using site URL: ${siteUrl}`);
 
         // Initialize job
