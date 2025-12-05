@@ -358,8 +358,12 @@ exports.handler = async function(event, context) {
         // Check if enabled
         if (!state.enabled) {
             console.log('Auto-check disabled, stopping');
-            state.isRunning = false;
-            await store.setJSON('state', state);
+            // Use set-auto-check-state to avoid race condition
+            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isRunning: false })
+            });
             return { statusCode: 200, body: 'Disabled' };
         }
 
@@ -367,16 +371,25 @@ exports.handler = async function(event, context) {
         const currentDate = getGMT9Date();
         if (state.lastResetDate !== currentDate) {
             console.log(`New day detected (${currentDate}), resetting counter`);
-            state.dailyCounter = 0;
-            state.lastResetDate = currentDate;
-            await store.setJSON('state', state);
+            // Use set-auto-check-state to avoid race condition
+            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dailyCounter: 0, lastResetDate: currentDate })
+            });
+            // Re-fetch state after update
+            state = await store.get('state', { type: 'json' });
         }
 
         // Check if daily limit reached
         if (state.dailyCounter >= 20) {
             console.log('Daily limit reached (20 checks)');
-            state.isRunning = false;
-            await store.setJSON('state', state);
+            // Use set-auto-check-state to avoid race condition
+            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isRunning: false })
+            });
             return { statusCode: 200, body: 'Daily limit reached' };
         }
 
@@ -387,8 +400,12 @@ exports.handler = async function(event, context) {
             const renderReady = await wakeRenderService();
             if (!renderReady) {
                 console.warn('Render service not ready, will retry next time');
-                state.isRunning = false;
-                await store.setJSON('state', state);
+                // Use set-auto-check-state to avoid race condition
+                await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isRunning: false })
+                });
                 return { statusCode: 200, body: 'Render not ready' };
             }
         }
@@ -403,8 +420,12 @@ exports.handler = async function(event, context) {
         const product = await findNextProduct();
         if (!product) {
             console.log('No more products to check');
-            state.isRunning = false;
-            await store.setJSON('state', state);
+            // Use set-auto-check-state to avoid race condition
+            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isRunning: false })
+            });
             return { statusCode: 200, body: 'No products to check' };
         }
 
@@ -414,8 +435,12 @@ exports.handler = async function(event, context) {
 
         if (!preCheckState.enabled) {
             console.log('🛑 Auto-check disabled before starting EOL check, stopping chain');
-            preCheckState.isRunning = false;
-            await store.setJSON('state', preCheckState);
+            // Use set-auto-check-state to avoid race condition
+            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isRunning: false })
+            });
             return { statusCode: 200, body: 'Disabled before check' };
         }
 
@@ -425,10 +450,15 @@ exports.handler = async function(event, context) {
         const success = await executeEOLCheck(product, siteUrl);
 
         // Increment counter (even if failed - count toward daily limit)
-        preCheckState.dailyCounter++;
-        await store.setJSON('state', preCheckState);
+        // Use set-auto-check-state to avoid race condition
+        const newCounter = preCheckState.dailyCounter + 1;
+        await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dailyCounter: newCounter })
+        });
 
-        console.log(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${preCheckState.dailyCounter}/20`);
+        console.log(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${newCounter}/20`);
 
         // Check if we should continue (re-fetch state to get latest enabled status)
         const freshState = await store.get('state', { type: 'json' });
@@ -462,15 +492,19 @@ exports.handler = async function(event, context) {
             // Chain complete
             const reason = !freshState.enabled ? 'slider disabled' : 'daily limit reached';
             console.log(`🛑 Chain stopped: ${reason} (enabled=${freshState.enabled}, counter=${freshState.dailyCounter}/20)`);
-            freshState.isRunning = false;
-            await store.setJSON('state', freshState);
+            // Use set-auto-check-state to avoid race condition
+            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isRunning: false })
+            });
         }
 
         return {
             statusCode: 202, // Accepted (background processing)
             body: JSON.stringify({
                 message: 'Check completed',
-                counter: state.dailyCounter,
+                counter: newCounter,
                 nextTriggered: shouldContinue
             })
         };
@@ -480,16 +514,17 @@ exports.handler = async function(event, context) {
 
         // Mark as not running on error
         try {
-            const store = getStore({
-                name: 'auto-check-state',
-                siteID: process.env.SITE_ID,
-                token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+            // Determine siteUrl for error handling
+            const body = JSON.parse(event.body || '{}');
+            const passedSiteUrl = body.siteUrl;
+            const errorSiteUrl = passedSiteUrl || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || 'https://develop--syntegoneolchecker.netlify.app';
+
+            // Use set-auto-check-state to avoid race condition
+            await fetch(`${errorSiteUrl}/.netlify/functions/set-auto-check-state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isRunning: false })
             });
-            let state = await store.get('state', { type: 'json' });
-            if (state) {
-                state.isRunning = false;
-                await store.setJSON('state', state);
-            }
         } catch (e) {
             console.error('Failed to update state on error:', e);
         }

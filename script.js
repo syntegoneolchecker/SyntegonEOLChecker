@@ -1027,6 +1027,13 @@ function startAutoCheckMonitoring() {
             if (response.ok) {
                 const state = await response.json();
 
+                // Update toggle to match server state (fixes slider jumping back on reload)
+                const toggle = document.getElementById('auto-check-toggle');
+                if (toggle && toggle.checked !== state.enabled) {
+                    console.log(`Syncing toggle with server state: ${state.enabled}`);
+                    toggle.checked = state.enabled;
+                }
+
                 // Update buttons based on isRunning
                 updateCheckEOLButtons(state.isRunning);
 
@@ -1048,7 +1055,6 @@ function startAutoCheckMonitoring() {
                             });
 
                             // Update toggle
-                            const toggle = document.getElementById('auto-check-toggle');
                             if (toggle) toggle.checked = false;
 
                             showStatus('Auto EOL Check disabled - Tavily credits too low (≤50)', 'info');
