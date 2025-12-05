@@ -512,46 +512,6 @@ app.post('/scrape', async (req, res) => {
             // Cloudflare challenge needs extra time
             await new Promise(resolve => setTimeout(resolve, 20000));
             console.log('Extended 20-second wait for Cloudflare challenge completion');
-        } else if (isMisumiPage && !navigationTimedOut) {
-            // MISUMI: Wait for actual product content to be rendered in DOM
-            console.log('MISUMI: Waiting for product content to render in DOM...');
-            try {
-                await page.waitForFunction(
-                    () => {
-                        // Get the visible text content
-                        const bodyText = document.body.innerText || '';
-
-                        // Check for product-specific content indicators
-                        // Products will have: price, product code, specifications, etc.
-                        const hasProductContent =
-                            bodyText.includes('¥') ||           // Price in yen
-                            bodyText.includes('円') ||          // Price in yen (kanji)
-                            bodyText.includes('型番') ||        // Model number
-                            bodyText.includes('在庫') ||        // Stock status
-                            bodyText.includes('出荷日') ||      // Shipping date
-                            bodyText.includes('商品詳細') ||    // Product details
-                            bodyText.includes('CAD');           // CAD download (common on product pages)
-
-                        // Also check if there's substantial content (API data rendered)
-                        const hasSubstantialContent = bodyText.length > 1500;
-
-                        // Check for "no results" message
-                        const hasNoResults =
-                            bodyText.includes('該当する商品がありません') ||
-                            bodyText.includes('見つかりませんでした');
-
-                        return (hasProductContent && hasSubstantialContent) || hasNoResults;
-                    },
-                    {
-                        timeout: 20000,      // 20 second timeout
-                        polling: 500         // Check every 500ms
-                    }
-                );
-                console.log('MISUMI: Product content detected in DOM');
-            } catch (waitError) {
-                // Timeout - log but continue (we'll extract whatever is there)
-                console.log(`MISUMI: Content wait timed out after 20s, extracting anyway`);
-            }
         } else if (navigationTimedOut) {
             // Timeout: minimal wait
             await new Promise(resolve => setTimeout(resolve, 1000));
