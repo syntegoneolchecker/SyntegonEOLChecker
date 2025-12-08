@@ -845,7 +845,12 @@ app.post('/scrape-keyence', async (req, res) => {
             timestamp: new Date().toISOString()
         };
 
-        // Send callback unconditionally
+        // Close browser IMMEDIATELY to free memory before callback
+        await browser.close();
+        browser = null;
+        console.log('Browser closed, memory freed');
+
+        // Send callback unconditionally (browser already closed)
         if (callbackUrl) {
             await sendCallback(callbackUrl, {
                 jobId,
@@ -858,9 +863,6 @@ app.post('/scrape-keyence', async (req, res) => {
             callbackSent = true;
         }
 
-        await browser.close();
-        browser = null;
-
         // Force restart after KEYENCE check (uses more memory than normal checks)
         console.log('KEYENCE check complete - forcing restart to free memory');
         requestCount = MAX_REQUESTS_BEFORE_RESTART;
@@ -871,7 +873,18 @@ app.post('/scrape-keyence', async (req, res) => {
         } catch (error) {
             console.error(`KEYENCE scraping error:`, error);
 
-            // Send error callback if not already sent
+            // Close browser IMMEDIATELY to free memory before callback
+            if (browser) {
+                try {
+                    await browser.close();
+                    browser = null;
+                    console.log('Browser closed after error, memory freed');
+                } catch (closeError) {
+                    console.error('Error closing browser after KEYENCE scraping error:', closeError);
+                }
+            }
+
+            // Send error callback if not already sent (browser already closed)
             if (callbackUrl && !callbackSent) {
                 await sendCallback(callbackUrl, {
                     jobId,
@@ -881,14 +894,6 @@ app.post('/scrape-keyence', async (req, res) => {
                     snippet: '',
                     url: 'https://www.keyence.co.jp/'
                 });
-            }
-
-            if (browser) {
-                try {
-                    await browser.close();
-                } catch (closeError) {
-                    console.error('Error closing browser after KEYENCE scraping error:', closeError);
-                }
             }
 
             // Force restart after KEYENCE check (even on error - uses more memory than normal checks)
