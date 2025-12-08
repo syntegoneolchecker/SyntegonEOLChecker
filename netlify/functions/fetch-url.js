@@ -2,6 +2,21 @@
 const { markUrlFetching, saveUrlResult, getJob } = require('./lib/job-storage');
 
 /**
+ * Check if Render scraping service is healthy
+ */
+async function checkRenderHealth(scrapingServiceUrl) {
+    try {
+        const response = await fetch(`${scrapingServiceUrl}/health`, {
+            signal: AbortSignal.timeout(5000)
+        });
+        return response.ok;
+    } catch (error) {
+        console.error('Render health check failed:', error.message);
+        return false;
+    }
+}
+
+/**
  * Scrape URL using BrowserQL (for Cloudflare-protected sites)
  * This is a synchronous scraping method that returns content directly
  */
@@ -282,6 +297,50 @@ exports.handler = async function(event, context) {
         // Default: Call Render scraping service with callback URL (asynchronous)
         const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
         const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
+
+        // Check if Render is healthy before calling
+        console.log('Checking Render service health...');
+        const isHealthy = await checkRenderHealth(scrapingServiceUrl);
+
+        if (!isHealthy) {
+            console.warn('Render service unhealthy, waiting 10s for recovery...');
+            await new Promise(resolve => setTimeout(resolve, 10000));
+
+            // Retry health check
+            const isHealthyRetry = await checkRenderHealth(scrapingServiceUrl);
+            if (!isHealthyRetry) {
+                console.error('Render service still unhealthy after retry');
+                // Save error result and continue pipeline
+                const allDone = await saveUrlResult(jobId, urlIndex, {
+                    url,
+                    title: null,
+                    snippet,
+                    fullContent: '[Render service unavailable - will retry later]'
+                }, context);
+
+                if (allDone) {
+                    await triggerAnalysis(jobId, baseUrl);
+                } else {
+                    // Find and trigger next pending URL
+                    const job = await getJob(jobId, context);
+                    if (job) {
+                        const nextUrl = job.urls.find(u => u.status === 'pending');
+                        if (nextUrl) {
+                            await triggerFetch(jobId, nextUrl, baseUrl);
+                        }
+                    }
+                }
+
+                return {
+                    statusCode: 503,
+                    body: JSON.stringify({
+                        success: false,
+                        error: 'Render service unavailable'
+                    })
+                };
+            }
+            console.log('Render service recovered after retry');
+        }
 
         const renderPayload = {
             url,
