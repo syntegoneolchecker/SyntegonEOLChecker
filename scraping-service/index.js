@@ -211,27 +211,48 @@ async function tryFastFetch(url, timeout = 5000) {
     }
 }
 
-// Helper: Send callback unconditionally (with retry logic)
+// Helper: Send callback unconditionally (with retry logic and response validation)
 async function sendCallback(callbackUrl, payload, maxRetries = 3) {
     if (!callbackUrl) return;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             console.log(`Sending callback (attempt ${attempt}/${maxRetries}): ${callbackUrl}`);
-            await fetch(callbackUrl, {
+            const response = await fetch(callbackUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            console.log('Callback successful');
-            return; // Success - exit
+
+            // CRITICAL FIX: Validate response status
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => 'Could not read response body');
+                console.error(`Callback returned HTTP ${response.status} on attempt ${attempt}/${maxRetries}:`, errorText);
+
+                if (attempt < maxRetries) {
+                    // Retry on HTTP errors (500, 502, 503, 504, etc.)
+                    const backoffMs = 1000 * Math.pow(2, attempt); // 2s, 4s, 8s
+                    console.log(`Retrying callback in ${backoffMs}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                    continue; // Try again
+                } else {
+                    throw new Error(`Callback failed with HTTP ${response.status}: ${errorText}`);
+                }
+            }
+
+            // Success!
+            console.log(`✓ Callback successful (HTTP ${response.status})`);
+            return;
         } catch (callbackError) {
             console.error(`Callback attempt ${attempt} failed:`, callbackError.message);
             if (attempt === maxRetries) {
-                console.error('All callback attempts failed - callback lost');
+                console.error(`❌ All ${maxRetries} callback attempts failed - callback lost`);
+                throw callbackError; // Propagate error so scraping endpoint can handle it
             } else {
                 // Wait before retry (exponential backoff)
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                const backoffMs = 1000 * Math.pow(2, attempt); // 2s, 4s, 8s
+                console.log(`Retrying callback in ${backoffMs}ms...`);
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
             }
         }
     }
