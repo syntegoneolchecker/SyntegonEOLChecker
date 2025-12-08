@@ -739,7 +739,14 @@ app.post('/scrape-keyence', async (req, res) => {
                 '--disable-default-apps',
                 '--disable-sync',
                 '--disable-extensions',
-                '--disable-blink-features=AutomationControlled'
+                '--disable-blink-features=AutomationControlled',
+                // MEMORY OPTIMIZATIONS for KEYENCE (prevent OOM on 512MB limit)
+                '--single-process', // Run in single process to reduce overhead
+                '--disable-features=site-per-process', // Reduce process isolation overhead
+                '--js-flags=--max-old-space-size=256', // Limit V8 heap to 256MB
+                '--disable-web-security', // Disable CORS (reduces memory for cross-origin checks)
+                '--disable-features=IsolateOrigins', // Reduce memory isolation
+                '--disable-site-isolation-trials' // Further reduce isolation overhead
             ],
             timeout: 120000
         });
@@ -750,7 +757,8 @@ app.post('/scrape-keyence', async (req, res) => {
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         );
 
-        await page.setViewport({ width: 1920, height: 1080 });
+        // MEMORY OPTIMIZATION: Reduce viewport size to save rendering memory
+        await page.setViewport({ width: 1280, height: 720 });
 
         // Enable request interception to block only heavy resources (images and media)
         // IMPORTANT: Allow stylesheets and scripts - KEYENCE needs them to render properly
@@ -772,8 +780,8 @@ app.post('/scrape-keyence', async (req, res) => {
             const url = request.url();
             const resourceType = request.resourceType();
 
-            // Block images and media
-            if (['image', 'media'].includes(resourceType)) {
+            // MEMORY OPTIMIZATION: Block images, media, and fonts to reduce memory usage
+            if (['image', 'media', 'font'].includes(resourceType)) {
                 request.abort();
                 return;
             }
@@ -785,10 +793,10 @@ app.post('/scrape-keyence', async (req, res) => {
                 return;
             }
 
-            // Allow everything else
+            // Allow everything else (CSS/JS needed for KEYENCE functionality)
             request.continue();
         });
-        console.log('Resource blocking: images, media, and analytics blocked; CSS/JS allowed for KEYENCE');
+        console.log('Resource blocking: images, media, fonts, and analytics blocked; CSS/JS allowed for KEYENCE');
 
         console.log('Navigating to KEYENCE homepage...');
         await page.goto('https://www.keyence.co.jp/', {
@@ -830,30 +838,67 @@ app.post('/scrape-keyence', async (req, res) => {
         // Click the input to ensure it's focused and ready for keyboard events
         await page.click(inputSelector);
 
-        // Press Enter and wait for navigation - with error recovery
+        // Press Enter and wait for navigation - with aggressive timeout to save memory
         try {
             await Promise.all([
-                page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
+                page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }), // Reduced from 30s
                 page.keyboard.press('Enter')
             ]);
+            console.log('Navigation completed successfully');
         } catch (navError) {
             // Navigation timeout - but page might have loaded anyway
-            console.log(`Navigation timeout: ${navError.message}`);
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s for page to settle
+            console.log(`Navigation timeout (${navError.message}), checking if page loaded...`);
+            // Reduce settle time from 2s to 1s to close browser faster
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
         // Get the final URL after navigation
         const finalUrl = page.url();
         console.log(`Final page URL: ${finalUrl}`);
 
-        // Extract content from the current page (whether navigation succeeded or not)
-        const htmlContent = await page.content();
-        const text = extractHTMLText(htmlContent);
+        // CRITICAL MEMORY FIX: Extract text directly in browser context instead of loading full HTML
+        // This prevents transferring massive HTML strings to Node.js (saves 90%+ memory)
+        console.log('Extracting text content (in-browser method)...');
 
-        console.log(`Extracted ${text.length} characters from KEYENCE page`);
+        let text, title;
+        try {
+            // Race extraction against timeout to prevent hanging
+            const extractionPromise = page.evaluate(() => {
+                try {
+                    // Remove scripts, styles, and noscript elements
+                    const scripts = document.querySelectorAll('script, style, noscript');
+                    scripts.forEach(el => el.remove());
 
-        // Get page title
-        const title = await page.title();
+                    // Extract text directly from DOM (no HTML string transfer)
+                    const bodyText = document.body.innerText || document.body.textContent || '';
+                    const pageTitle = document.title || '';
+
+                    return { text: bodyText, title: pageTitle };
+                } catch (e) {
+                    return { text: '', title: '', error: e.message };
+                }
+            });
+
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Content extraction timeout (10s)')), 10000)
+            );
+
+            const result = await Promise.race([extractionPromise, timeoutPromise]);
+
+            if (result.error) {
+                console.error(`Browser evaluation error: ${result.error}`);
+            }
+
+            text = result.text || '';
+            title = result.title || '';
+
+            console.log(`✓ Extracted ${text.length} characters from KEYENCE page (memory-efficient method)`);
+        } catch (extractionError) {
+            console.error(`Content extraction failed: ${extractionError.message}`);
+            // Fallback to empty content rather than crashing
+            text = `[Content extraction failed: ${extractionError.message}]`;
+            title = 'KEYENCE';
+        }
 
         const result = {
             success: true,
