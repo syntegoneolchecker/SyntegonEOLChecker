@@ -204,7 +204,7 @@ async function executeEOLCheck(product, siteUrl) {
 
 // Helper: Poll job status with improved resilience for Render restarts
 async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
-    const maxAttempts = 120; // Increased from 90 to 120 (4 minutes)
+    const maxAttempts = 90; // 90 attempts = ~3 minutes max (sufficient based on observed data)
     let attempts = 0;
     let consecutiveFailures = 0;
     let lastBackoffDelay = 2000;
