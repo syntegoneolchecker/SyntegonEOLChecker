@@ -13,9 +13,19 @@ const PORT = process.env.PORT || 3000;
 // Memory management: Track request count and restart after N requests
 // This prevents hitting Render's 512MB memory limit
 let requestCount = 0;
-const MAX_REQUESTS_BEFORE_RESTART = 5; // Reduced from 10 to restart more frequently
-const MEMORY_LIMIT_MB = 450; // Bail out at 450MB (before 512MB kill)
+const MAX_REQUESTS_BEFORE_RESTART = 3; // Reduced from 5 to 3 for better memory stability
+const MEMORY_LIMIT_MB = 400; // Lowered to 400MB for more safety margin (from 450MB)
 let isShuttingDown = false; // Flag to signal shutdown in progress
+
+// Force garbage collection if available (start with --expose-gc flag)
+function forceGarbageCollection() {
+    if (global.gc) {
+        const before = getMemoryUsageMB();
+        global.gc();
+        const after = getMemoryUsageMB();
+        console.log(`GC: ${before.rss}MB → ${after.rss}MB (freed ${before.rss - after.rss}MB)`);
+    }
+}
 
 // Helper: Get current memory usage in MB
 function getMemoryUsageMB() {
@@ -322,7 +332,16 @@ app.use((req, res, next) => {
 app.post('/scrape', async (req, res) => {
     const { url, callbackUrl, jobId, urlIndex, title, snippet } = req.body;
 
-    // Memory management: Increment request counter
+    // FIX: Check shutdown state BEFORE incrementing counter (prevents 6/5 race condition)
+    if (isShuttingDown) {
+        console.log(`Rejecting /scrape request during shutdown (counter: ${requestCount}/${MAX_REQUESTS_BEFORE_RESTART})`);
+        return res.status(503).json({
+            error: 'Service restarting',
+            retryAfter: 30
+        });
+    }
+
+    // Memory management: Increment request counter (now protected from shutdown race)
     requestCount++;
     console.log(`[${new Date().toISOString()}] Request #${requestCount}/${MAX_REQUESTS_BEFORE_RESTART}`);
 
@@ -372,12 +391,19 @@ app.post('/scrape', async (req, res) => {
             console.log(`[${new Date().toISOString()}] Fast fetch successful: ${url}`);
             console.log(`Content length: ${fastResult.length} characters`);
 
+            // FIX #4: Detect empty/invalid content
+            let finalContent = fastResult;
+            if (!fastResult || fastResult.length < 50) {
+                console.warn(`⚠️  Empty or invalid content (${fastResult ? fastResult.length : 0} chars), adding explanation`);
+                finalContent = `[The website could not be scraped - received only ${fastResult ? fastResult.length : 0} characters. The site may be blocking automated access or the page may be empty.]`;
+            }
+
             const result = {
                 success: true,
                 url: url,
                 title: null,
-                content: fastResult,
-                contentLength: fastResult.length,
+                content: finalContent,
+                contentLength: finalContent.length,
                 method: 'fast_fetch',
                 timestamp: new Date().toISOString()
             };
@@ -386,11 +412,16 @@ app.post('/scrape', async (req, res) => {
             await sendCallback(callbackUrl, {
                 jobId,
                 urlIndex,
-                content: fastResult,
+                content: finalContent,
                 title: null,
                 snippet,
                 url
             });
+
+            // MEMORY CLEANUP: Force GC and null out large variables
+            fastResult = null;
+            finalContent = null;
+            forceGarbageCollection();
 
             // Schedule restart if memory limit approaching
             scheduleRestartIfNeeded();
@@ -677,12 +708,19 @@ app.post('/scrape', async (req, res) => {
             });
         }
 
+        // FIX #4: Detect empty/invalid content from Puppeteer
+        let finalContent = content;
+        if (!content || content.length < 50) {
+            console.warn(`⚠️  Empty or invalid Puppeteer content (${content ? content.length : 0} chars), adding explanation`);
+            finalContent = `[The website could not be scraped - Puppeteer extracted only ${content ? content.length : 0} characters. The site may require authentication, use anti-bot protection, or be temporarily unavailable.]`;
+        }
+
         const result = {
             success: true,
             url: url,
             title: pageTitle,
-            content: content,
-            contentLength: content.length,
+            content: finalContent,
+            contentLength: finalContent.length,
             method: 'puppeteer',
             timestamp: new Date().toISOString()
         };
@@ -696,12 +734,18 @@ app.post('/scrape', async (req, res) => {
         await sendCallback(callbackUrl, {
             jobId,
             urlIndex,
-            content: content,
+            content: finalContent,
             title: pageTitle,
             snippet,
             url
         });
         callbackSent = true;
+
+        // MEMORY CLEANUP: Null out large variables and force GC
+        content = null;
+        finalContent = null;
+        pageTitle = null;
+        forceGarbageCollection();
 
         // Schedule restart if memory limit approaching
         scheduleRestartIfNeeded();
@@ -782,7 +826,16 @@ app.post('/scrape', async (req, res) => {
 app.post('/scrape-keyence', async (req, res) => {
     const { model, callbackUrl, jobId, urlIndex } = req.body;
 
-    // Memory management: Increment request counter
+    // FIX: Check shutdown state BEFORE incrementing counter (prevents 6/5 race condition)
+    if (isShuttingDown) {
+        console.log(`Rejecting /scrape-keyence request during shutdown (counter: ${requestCount}/${MAX_REQUESTS_BEFORE_RESTART})`);
+        return res.status(503).json({
+            error: 'Service restarting',
+            retryAfter: 30
+        });
+    }
+
+    // Memory management: Increment request counter (now protected from shutdown race)
     requestCount++;
     console.log(`[${new Date().toISOString()}] KEYENCE Search Request #${requestCount}/${MAX_REQUESTS_BEFORE_RESTART}`);
 
@@ -977,13 +1030,20 @@ app.post('/scrape-keyence', async (req, res) => {
             title = 'KEYENCE';
         }
 
-        const result = {
+        // FIX #4: Detect empty/invalid content from KEYENCE
+        let finalContent = text;
+        if (!text || text.length < 50) {
+            console.warn(`⚠️  Empty or invalid KEYENCE content (${text ? text.length : 0} chars), adding explanation`);
+            finalContent = `[KEYENCE search extracted only ${text ? text.length : 0} characters. The search may have returned no results, the page may be unavailable, or the site may be blocking automated access.]`;
+        }
+
+        const keyenceResult = {
             success: true,
             url: finalUrl,
             originalSearch: model,
             title: title,
-            content: text,
-            contentLength: text.length,
+            content: finalContent,
+            contentLength: finalContent.length,
             method: 'keyence_interactive_search',
             timestamp: new Date().toISOString()
         };
@@ -998,7 +1058,7 @@ app.post('/scrape-keyence', async (req, res) => {
             await sendCallback(callbackUrl, {
                 jobId,
                 urlIndex,
-                content: text,
+                content: finalContent,
                 title: title,
                 snippet: `KEYENCE search result for ${model}`,
                 url: finalUrl
@@ -1006,12 +1066,18 @@ app.post('/scrape-keyence', async (req, res) => {
             callbackSent = true;
         }
 
+        // MEMORY CLEANUP: Null out large variables and force GC
+        text = null;
+        finalContent = null;
+        title = null;
+        forceGarbageCollection();
+
         // Force restart after KEYENCE check (uses more memory than normal checks)
         console.log('KEYENCE check complete - forcing restart to free memory');
         requestCount = MAX_REQUESTS_BEFORE_RESTART;
         scheduleRestartIfNeeded();
 
-        return res.json(result);
+        return res.json(keyenceResult);
 
         } catch (error) {
             console.error(`KEYENCE scraping error:`, error);

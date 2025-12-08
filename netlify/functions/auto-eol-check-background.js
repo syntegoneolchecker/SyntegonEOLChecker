@@ -29,6 +29,19 @@ async function wakeRenderService() {
     }
 }
 
+// FIX #6: Helper to check Render service health (quick check)
+async function checkRenderHealth() {
+    try {
+        const response = await fetch('https://eolscrapingservice.onrender.com/health', {
+            signal: AbortSignal.timeout(5000) // 5s timeout for quick check
+        });
+        return response.ok;
+    } catch (error) {
+        console.error('Render health check failed:', error.message);
+        return false;
+    }
+}
+
 // Helper: Check if Groq tokens are ready (N/A means fully reset)
 async function checkGroqTokens(siteUrl) {
     try {
@@ -257,11 +270,24 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
         }
     }
 
-    // Timeout
-    console.warn(`Job ${jobId} timed out after ${maxAttempts} attempts (${Math.round(maxAttempts * 2.5 / 60)} minutes)`);
+    // Timeout - check if Render crashed or if job is genuinely stuck
+    console.warn(`Job ${jobId} timed out after ${maxAttempts} attempts (~${Math.round(maxAttempts * 2.5 / 60)} minutes)`);
+
+    // FIX #3: Try to detect if timeout was caused by Render crash
+    const renderHealthy = await checkRenderHealth().catch(() => false);
+    if (!renderHealthy) {
+        console.warn('Render service appears to be down/restarting - timeout likely caused by service crash');
+        return {
+            status: 'UNKNOWN',
+            explanation: `EOL check timed out after ${maxAttempts} attempts. Render scraping service appears to have crashed during processing. This product should be retried.`,
+            successor: { status: 'UNKNOWN', model: null, explanation: '' }
+        };
+    }
+
+    // Render is healthy - job is genuinely stuck or slow
     return {
         status: 'UNKNOWN',
-        explanation: `EOL check timed out after ${maxAttempts} polling attempts (${Math.round(maxAttempts * 2.5 / 60)} minutes).`,
+        explanation: `EOL check timed out after ${maxAttempts} polling attempts (~${Math.round(maxAttempts * 2.5 / 60)} minutes). The scraping process may be stuck or taking unusually long.`,
         successor: { status: 'UNKNOWN', model: null, explanation: '' }
     };
 }
@@ -462,18 +488,33 @@ exports.handler = async function(event, context) {
 
         console.log('✓ Slider still enabled, proceeding with EOL check');
 
+        // FIX #6: Check Render service health before executing EOL check
+        const renderHealthy = await checkRenderHealth();
+        if (!renderHealthy) {
+            console.warn('⚠️  Render service unhealthy, skipping this check (will retry next cycle)');
+            // Don't increment counter - this check should be retried
+            // Use set-auto-check-state to avoid race condition
+            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isRunning: false })
+            });
+            return { statusCode: 200, body: 'Render service unhealthy' };
+        }
+
         // Execute ONE EOL check
         const success = await executeEOLCheck(product, siteUrl);
 
         // Increment counter and update activity time (even if failed - count toward daily limit)
-        // Use set-auto-check-state to avoid race condition
+        // FIX #5: Keep isRunning=true during chain execution for accurate state tracking
         const newCounter = preCheckState.dailyCounter + 1;
         await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 dailyCounter: newCounter,
-                lastActivityTime: new Date().toISOString()
+                lastActivityTime: new Date().toISOString(),
+                isRunning: true  // Explicitly maintain running state during chain
             })
         });
 
