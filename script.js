@@ -7,6 +7,9 @@ let currentSort = {
     direction: null // 'asc', 'desc', or null
 };
 
+// Manual Check EOL state
+let isManualCheckRunning = false; // Track if manual Check EOL is in progress
+
 // Countdown interval for Groq rate limit reset
 let groqCountdownInterval = null;
 let groqResetTimestamp = null;
@@ -64,15 +67,21 @@ function render() {
     ).join('');
 
     // Update Check EOL buttons state after rendering
-    // Check if auto-check state needs to disable buttons
-    fetch('/.netlify/functions/get-auto-check-state')
-        .then(r => r.ok ? r.json() : null)
-        .then(state => {
-            if (state && typeof updateCheckEOLButtons === 'function') {
-                updateCheckEOLButtons(state.isRunning);
-            }
-        })
-        .catch(() => {}); // Silently fail if state service not available
+    // Check if auto-check OR manual check is running
+    if (isManualCheckRunning) {
+        // Manual check in progress - hide all buttons immediately
+        updateCheckEOLButtons(true);
+    } else {
+        // Check if auto-check state needs to disable buttons
+        fetch('/.netlify/functions/get-auto-check-state')
+            .then(r => r.ok ? r.json() : null)
+            .then(state => {
+                if (state && typeof updateCheckEOLButtons === 'function') {
+                    updateCheckEOLButtons(state.isRunning);
+                }
+            })
+            .catch(() => {}); // Silently fail if state service not available
+    }
 }
 
 // Three-state sorting: null → asc → desc → null
@@ -1016,6 +1025,7 @@ function updateCheckEOLButtons(isRunning) {
 
 // Disable all Check EOL buttons (for manual check - prevent parallel execution)
 function disableAllCheckEOLButtons() {
+    isManualCheckRunning = true; // Set global flag
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
         button.style.display = 'none';
@@ -1025,6 +1035,7 @@ function disableAllCheckEOLButtons() {
 
 // Enable all Check EOL buttons (after manual check completes)
 function enableAllCheckEOLButtons() {
+    isManualCheckRunning = false; // Clear global flag
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
         button.style.display = '';
