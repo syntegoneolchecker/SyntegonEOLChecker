@@ -911,7 +911,10 @@ async function loadAutoCheckState() {
         }
 
         // Update Check EOL buttons state
-        updateCheckEOLButtons(state.isRunning);
+        // BUT: Don't override manual check state
+        if (!isManualCheckRunning) {
+            updateCheckEOLButtons(state.isRunning);
+        }
 
     } catch (error) {
         console.error('Error loading auto-check state:', error);
@@ -1084,7 +1087,10 @@ function startAutoCheckMonitoring() {
                 }
 
                 // Update buttons based on isRunning
-                updateCheckEOLButtons(state.isRunning);
+                // BUT: Don't override manual check state
+                if (!isManualCheckRunning) {
+                    updateCheckEOLButtons(state.isRunning);
+                }
 
                 // Auto-disable if credits too low
                 const creditsElement = document.getElementById('credits-remaining');
