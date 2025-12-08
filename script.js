@@ -234,15 +234,17 @@ async function checkEOL(rowIndex) {
         return;
     }
 
+    // DISABLE ALL CHECK EOL BUTTONS (prevent parallel execution)
+    disableAllCheckEOLButtons();
+
     try {
         // Show loading state
         const rowElement = document.getElementById(`row-${rowIndex}`);
         const checkButton = rowElement.querySelector('.check-eol');
         const originalButtonText = checkButton.textContent;
         checkButton.textContent = 'Waking Render...';
-        checkButton.disabled = true;
 
-        // Wake up Render scraping service (handles cold starts)
+        // Wake up Render scraping service (handles cold starts and post-restart downtime)
         showStatus(`Waking up scraping service...`, 'info', false);
         await checkRenderHealth();
 
@@ -323,19 +325,15 @@ async function checkEOL(rowIndex) {
 
         showStatus(`✓ EOL check completed for ${manufacturer} ${model}`, 'success');
 
-        // Re-enable button
-        checkButton.textContent = originalButtonText;
-        checkButton.disabled = false;
+        // RE-ENABLE ALL CHECK EOL BUTTONS
+        enableAllCheckEOLButtons();
 
     } catch (error) {
         console.error('EOL check failed:', error);
         showStatus(`Error checking EOL: ${error.message}`, 'error');
 
-        // Re-enable button
-        const rowElement = document.getElementById(`row-${rowIndex}`);
-        const checkButton = rowElement.querySelector('.check-eol');
-        checkButton.textContent = 'Check EOL';
-        checkButton.disabled = false;
+        // RE-ENABLE ALL CHECK EOL BUTTONS (even on error)
+        enableAllCheckEOLButtons();
     }
 }
 
@@ -1014,6 +1012,24 @@ function updateCheckEOLButtons(isRunning) {
             button.style.display = '';
         }
     });
+}
+
+// Disable all Check EOL buttons (for manual check - prevent parallel execution)
+function disableAllCheckEOLButtons() {
+    const checkButtons = document.querySelectorAll('.check-eol');
+    checkButtons.forEach(button => {
+        button.style.display = 'none';
+    });
+    console.log('All Check EOL buttons disabled (manual check in progress)');
+}
+
+// Enable all Check EOL buttons (after manual check completes)
+function enableAllCheckEOLButtons() {
+    const checkButtons = document.querySelectorAll('.check-eol');
+    checkButtons.forEach(button => {
+        button.style.display = '';
+    });
+    console.log('All Check EOL buttons re-enabled (manual check complete)');
 }
 
 // Monitor auto-check state periodically
