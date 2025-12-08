@@ -202,10 +202,12 @@ async function executeEOLCheck(product, siteUrl) {
     }
 }
 
-// Helper: Poll job status
+// Helper: Poll job status with improved resilience for Render restarts
 async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
-    const maxAttempts = 90; // Increased to handle Render crashes/restarts
+    const maxAttempts = 120; // Increased from 90 to 120 (4 minutes)
     let attempts = 0;
+    let consecutiveFailures = 0;
+    let lastBackoffDelay = 2000;
 
     while (attempts < maxAttempts) {
         attempts++;
@@ -215,10 +217,22 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
             const statusResponse = await fetch(statusUrl);
 
             if (!statusResponse.ok) {
-                console.error(`Status check failed: ${statusResponse.status}`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                consecutiveFailures++;
+                console.error(`Status check failed: ${statusResponse.status} (${consecutiveFailures} consecutive)`);
+
+                // Exponential backoff on failures (could be restart in progress)
+                if (consecutiveFailures >= 3) {
+                    lastBackoffDelay = Math.min(lastBackoffDelay * 1.5, 10000); // Cap at 10s
+                    console.log(`Backing off to ${lastBackoffDelay}ms due to consecutive failures`);
+                }
+
+                await new Promise(resolve => setTimeout(resolve, lastBackoffDelay));
                 continue;
             }
+
+            // Reset on success
+            consecutiveFailures = 0;
+            lastBackoffDelay = 2000;
 
             const statusData = await statusResponse.json();
 
@@ -232,20 +246,22 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
                 return null;
             }
 
-            // Still processing
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Still processing - use adaptive delay
+            const delay = attempts < 10 ? 2000 : 3000; // Slower polling after 10 attempts
+            await new Promise(resolve => setTimeout(resolve, delay));
 
         } catch (error) {
+            consecutiveFailures++;
             console.error(`Polling error (attempt ${attempts}):`, error.message);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, lastBackoffDelay));
         }
     }
 
     // Timeout
-    console.warn(`Job ${jobId} timed out after ${maxAttempts} attempts`);
+    console.warn(`Job ${jobId} timed out after ${maxAttempts} attempts (${Math.round(maxAttempts * 2.5 / 60)} minutes)`);
     return {
         status: 'UNKNOWN',
-        explanation: `EOL check timed out after ${maxAttempts} polling attempts (3 minutes).`,
+        explanation: `EOL check timed out after ${maxAttempts} polling attempts (${Math.round(maxAttempts * 2.5 / 60)} minutes).`,
         successor: { status: 'UNKNOWN', model: null, explanation: '' }
     };
 }

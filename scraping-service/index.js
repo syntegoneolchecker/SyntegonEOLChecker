@@ -14,6 +14,19 @@ const PORT = process.env.PORT || 3000;
 // This prevents hitting Render's 512MB memory limit
 let requestCount = 0;
 const MAX_REQUESTS_BEFORE_RESTART = 5; // Reduced from 10 to restart more frequently
+const MEMORY_LIMIT_MB = 450; // Bail out at 450MB (before 512MB kill)
+let isShuttingDown = false; // Flag to signal shutdown in progress
+
+// Helper: Get current memory usage in MB
+function getMemoryUsageMB() {
+    const used = process.memoryUsage();
+    return {
+        rss: Math.round(used.rss / 1024 / 1024),
+        heapUsed: Math.round(used.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(used.heapTotal / 1024 / 1024),
+        external: Math.round(used.external / 1024 / 1024)
+    };
+}
 
 // Request queue: Only allow one Puppeteer instance at a time
 // This prevents memory spikes from concurrent browser instances
@@ -266,6 +279,9 @@ function scheduleRestartIfNeeded() {
         console.log(`Scheduling graceful restart in 2 seconds to free memory...`);
         console.log(`${'='.repeat(60)}\n`);
 
+        // Signal shutdown to reject new requests
+        isShuttingDown = true;
+
         // Give time for response to be sent, then exit
         // Render will automatically restart the service
         setTimeout(() => {
@@ -280,6 +296,28 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Status endpoint (includes shutdown state)
+app.get('/status', (req, res) => {
+    res.json({
+        status: isShuttingDown ? 'shutting_down' : 'ok',
+        requestCount: requestCount,
+        maxRequests: MAX_REQUESTS_BEFORE_RESTART,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Middleware: Reject new scraping requests during shutdown
+app.use((req, res, next) => {
+    if (isShuttingDown && ['/scrape', '/scrape-keyence'].includes(req.path)) {
+        console.log(`Rejecting ${req.path} request during shutdown`);
+        return res.status(503).json({
+            error: 'Service restarting',
+            retryAfter: 30  // seconds
+        });
+    }
+    next();
+});
+
 // Main scraping endpoint
 app.post('/scrape', async (req, res) => {
     const { url, callbackUrl, jobId, urlIndex, title, snippet } = req.body;
@@ -290,6 +328,34 @@ app.post('/scrape', async (req, res) => {
 
     if (!url) {
         return res.status(400).json({ error: 'URL is required' });
+    }
+
+    // MEMORY CIRCUIT BREAKER: Check memory before launching browser
+    const memBefore = getMemoryUsageMB();
+    console.log(`Memory before scrape: RSS=${memBefore.rss}MB, Heap=${memBefore.heapUsed}/${memBefore.heapTotal}MB`);
+
+    if (memBefore.rss > MEMORY_LIMIT_MB) {
+        console.error(`⚠️  Memory too high (${memBefore.rss}MB), forcing restart instead of scraping`);
+
+        // Send error callback
+        await sendCallback(callbackUrl, {
+            jobId,
+            urlIndex,
+            content: `[Scraping skipped - service restarting due to high memory usage (${memBefore.rss}MB)]`,
+            title: null,
+            snippet,
+            url
+        });
+
+        // Force immediate restart
+        requestCount = MAX_REQUESTS_BEFORE_RESTART;
+        scheduleRestartIfNeeded();
+
+        return res.status(503).json({
+            success: false,
+            error: 'Service restarting due to high memory',
+            memoryMB: memBefore.rss
+        });
     }
 
     console.log(`[${new Date().toISOString()}] Scraping URL: ${url}`);
@@ -384,7 +450,14 @@ app.post('/scrape', async (req, res) => {
                 '--disable-sync',
                 '--disable-extensions',
                 // Explicitly disable automation flag (Cloudflare detection)
-                '--disable-blink-features=AutomationControlled'
+                '--disable-blink-features=AutomationControlled',
+                // MEMORY OPTIMIZATIONS (prevent OOM on 512MB limit)
+                '--single-process', // Run in single process to reduce overhead
+                '--disable-features=site-per-process', // Reduce process isolation overhead
+                '--js-flags=--max-old-space-size=256', // Limit V8 heap to 256MB
+                '--disable-web-security', // Disable CORS (reduces memory for cross-origin checks)
+                '--disable-features=IsolateOrigins', // Reduce memory isolation
+                '--disable-site-isolation-trials' // Further reduce isolation overhead
             ],
             timeout: 120000 // 2 minutes
         });
@@ -395,7 +468,8 @@ app.post('/scrape', async (req, res) => {
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         );
 
-        await page.setViewport({ width: 1920, height: 1080 });
+        // MEMORY OPTIMIZATION: Reduce viewport size to save rendering memory
+        await page.setViewport({ width: 1280, height: 720 });
 
         // Conditionally enable resource blocking
         // Skip resource blocking for Cloudflare-protected sites (Oriental Motor)
@@ -603,8 +677,6 @@ app.post('/scrape', async (req, res) => {
             });
         }
 
-        await browser.close();
-
         const result = {
             success: true,
             url: url,
@@ -615,7 +687,12 @@ app.post('/scrape', async (req, res) => {
             timestamp: new Date().toISOString()
         };
 
-        // Send success callback unconditionally
+        // Close browser IMMEDIATELY to free memory before callback
+        await browser.close();
+        browser = null;
+        console.log('Browser closed, memory freed');
+
+        // Send success callback unconditionally (browser already closed and freed)
         await sendCallback(callbackUrl, {
             jobId,
             urlIndex,
