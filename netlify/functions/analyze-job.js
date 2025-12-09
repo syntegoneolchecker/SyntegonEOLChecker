@@ -1,6 +1,47 @@
 // Run LLM analysis on fetched results
 const { getJob, saveFinalResult, updateJobStatus } = require('./lib/job-storage');
 
+// Check Groq API token availability before making request
+async function checkGroqTokenAvailability() {
+    try {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'openai/gpt-oss-120b',
+                messages: [{ role: 'user', content: 'ping' }],
+                max_completion_tokens: 1
+            })
+        });
+
+        const resetTokens = response.headers.get('x-ratelimit-reset-tokens');
+        const remainingTokens = parseInt(response.headers.get('x-ratelimit-remaining-tokens') || '0');
+
+        let resetSeconds = null;
+        if (resetTokens) {
+            const match = resetTokens.match(/^([\d.]+)s?$/);
+            if (match) {
+                resetSeconds = parseFloat(match[1]);
+            }
+        }
+
+        console.log(`Groq tokens remaining: ${remainingTokens}, reset in: ${resetSeconds || 'N/A'}s`);
+
+        return {
+            available: remainingTokens > 500, // Need at least 500 tokens for analysis
+            remainingTokens,
+            resetSeconds: resetSeconds || 0
+        };
+    } catch (error) {
+        console.error('Failed to check Groq token availability:', error.message);
+        // If check fails, assume tokens available and let actual call handle it
+        return { available: true, remainingTokens: null, resetSeconds: 0 };
+    }
+}
+
 exports.handler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, body: 'Method Not Allowed' };
@@ -23,10 +64,19 @@ exports.handler = async function(event, context) {
         // Update status to analyzing
         await updateJobStatus(jobId, 'analyzing', null, context);
 
+        // FIX: Check Groq token availability BEFORE analysis
+        const tokenCheck = await checkGroqTokenAvailability();
+        if (!tokenCheck.available && tokenCheck.resetSeconds > 0) {
+            const waitMs = Math.ceil(tokenCheck.resetSeconds * 1000) + 1000; // Add 1s buffer
+            console.log(`⏳ Groq tokens low (${tokenCheck.remainingTokens}), waiting ${waitMs}ms for rate limit reset...`);
+            await new Promise(resolve => setTimeout(resolve, waitMs));
+            console.log(`✓ Wait complete, proceeding with analysis`);
+        }
+
         // Format results for LLM
         const searchContext = formatResults(job);
 
-        // Call Groq
+        // Call Groq with retry logic
         const analysis = await analyzeWithGroq(job.maker, job.model, searchContext);
 
         // Save final result
@@ -485,46 +535,103 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY 
 }`;
 
     console.log('This is the entire prompt:\n' + prompt);
-    
-    const groqResponse = await fetch(
-        'https://api.groq.com/openai/v1/chat/completions',
-        {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: 'openai/gpt-oss-120b',
-                messages: [
-                    {
-                        role: 'user',
-                        content: prompt
+
+    // FIX: Add retry logic with exponential backoff for rate limits
+    const MAX_RETRIES = 3;
+    let groqResponse = null;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            console.log(`Groq API call attempt ${attempt}/${MAX_RETRIES}`);
+
+            groqResponse = await fetch(
+                'https://api.groq.com/openai/v1/chat/completions',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: 'openai/gpt-oss-120b',
+                        messages: [
+                            {
+                                role: 'user',
+                                content: prompt
+                            }
+                        ],
+                        temperature: 0,
+                        max_completion_tokens: 8192,
+                        top_p: 1,
+                        stream: false,
+                        reasoning_effort: 'low',
+                        response_format: {
+                            type: 'json_object'
+                        },
+                        stop: null,
+                        seed: 1
+                    })
+                }
+            );
+
+            if (!groqResponse.ok) {
+                const errorText = await groqResponse.text();
+                console.error(`Groq API error (attempt ${attempt}):`, errorText);
+
+                if (groqResponse.status === 429) {
+                    // Rate limit - extract reset time from headers and wait
+                    const resetTokens = groqResponse.headers.get('x-ratelimit-reset-tokens');
+                    let resetSeconds = 60; // Default to 60s if not provided
+
+                    if (resetTokens) {
+                        const match = resetTokens.match(/^([\d.]+)s?$/);
+                        if (match) {
+                            resetSeconds = parseFloat(match[1]);
+                        }
                     }
-                ],
-                temperature: 0,
-                max_completion_tokens: 8192,
-                top_p: 1,
-                stream: false,
-                reasoning_effort: 'low',
-                response_format: {
-                    type: 'json_object'
-                },
-                stop: null,
-                seed: 1
-            })
+
+                    if (attempt < MAX_RETRIES) {
+                        const waitMs = Math.ceil(resetSeconds * 1000) + 2000; // Add 2s buffer
+                        console.log(`⏳ Rate limit hit, waiting ${waitMs}ms before retry ${attempt + 1}...`);
+                        await new Promise(resolve => setTimeout(resolve, waitMs));
+                        continue; // Retry
+                    } else {
+                        throw new Error(`Rate limit exceeded after ${MAX_RETRIES} attempts`);
+                    }
+                }
+
+                // Other HTTP errors
+                if (attempt < MAX_RETRIES) {
+                    const backoffMs = 2000 * Math.pow(2, attempt - 1); // 2s, 4s, 8s
+                    console.log(`HTTP ${groqResponse.status} error, retrying in ${backoffMs}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                    continue;
+                } else {
+                    throw new Error(`Groq API failed: ${groqResponse.status} - ${errorText}`);
+                }
+            }
+
+            // Success!
+            console.log(`✓ Groq API call successful on attempt ${attempt}`);
+            break;
+
+        } catch (error) {
+            lastError = error;
+            console.error(`Groq API attempt ${attempt} failed:`, error.message);
+
+            if (attempt < MAX_RETRIES) {
+                const backoffMs = 2000 * Math.pow(2, attempt - 1);
+                console.log(`Retrying in ${backoffMs}ms...`);
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
+            } else {
+                throw error;
+            }
         }
-    );
+    }
 
-    if (!groqResponse.ok) {
-        const errorText = await groqResponse.text();
-        console.error('Groq API error:', errorText);
-
-        if (groqResponse.status === 429) {
-            throw new Error('Rate limit exceeded. Please try again in a moment.');
-        }
-
-        throw new Error(`Groq API failed: ${groqResponse.status} - ${errorText}`);
+    if (!groqResponse || !groqResponse.ok) {
+        throw lastError || new Error('Groq API call failed after all retries');
     }
 
     const groqData = await groqResponse.json();
