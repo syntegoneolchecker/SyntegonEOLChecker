@@ -1,4 +1,6 @@
 const { getStore } = require('@netlify/blobs');
+const { toCSV } = require('./lib/csv-parser');
+const { validateCsvData } = require('./lib/validators');
 
 exports.handler = async function(event, context) {
     // Only allow POST requests
@@ -13,18 +15,19 @@ exports.handler = async function(event, context) {
         console.log('Parsing request body...');
         const { data } = JSON.parse(event.body);
 
-        if (!data || !Array.isArray(data)) {
+        // Validate CSV data
+        const validation = validateCsvData(data);
+        if (!validation.valid) {
+            console.error('CSV validation failed:', validation.error);
             return {
                 statusCode: 400,
-                body: JSON.stringify({ error: 'Invalid data format' })
+                body: JSON.stringify({ error: validation.error })
             };
         }
 
         console.log('Converting data to CSV format...');
-        // Convert data back to CSV format
-        const csvContent = data.map(row =>
-            row.map(cell => `"${cell}"`).join(',')
-        ).join('\n');
+        // Convert data back to CSV format using shared utility
+        const csvContent = toCSV(data);
 
         // Save to Netlify Blobs
         console.log('Getting Netlify Blobs store...');

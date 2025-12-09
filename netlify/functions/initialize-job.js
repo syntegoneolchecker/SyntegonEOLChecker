@@ -1,5 +1,6 @@
 // Initialize EOL check job - Search with Tavily and save URLs
 const { createJob, saveJobUrls, saveFinalResult, saveUrlResult } = require('./lib/job-storage');
+const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 
 /**
  * Get manufacturer-specific direct URL if available
@@ -291,15 +292,22 @@ exports.handler = async function(event, context) {
     }
 
     try {
-        const { maker, model } = JSON.parse(event.body);
+        const requestBody = JSON.parse(event.body);
 
-        if (!maker || !model) {
+        // Validate input
+        const validation = validateInitializeJob(requestBody);
+        if (!validation.valid) {
+            console.error('Validation failed:', validation.errors);
             return {
                 statusCode: 400,
                 headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ error: 'Maker and model are required' })
+                body: JSON.stringify({ error: 'Validation failed', details: validation.errors })
             };
         }
+
+        // Sanitize inputs
+        const maker = sanitizeString(requestBody.maker, 200);
+        const model = sanitizeString(requestBody.model, 200);
 
         console.log('Creating job for:', { maker, model });
 

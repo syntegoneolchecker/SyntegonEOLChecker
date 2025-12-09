@@ -10,12 +10,15 @@ puppeteer.use(StealthPlugin());
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Memory management: Track request count and restart after N requests
-// This prevents hitting Render's 512MB memory limit
+// Memory management: Monitor actual memory usage and restart when approaching limit
+// Render's free tier has 512MB memory limit
 let requestCount = 0;
-const MAX_REQUESTS_BEFORE_RESTART = 3; // Reduced from 5 to 3 for better memory stability
-const MEMORY_LIMIT_MB = 400; // Lowered to 400MB for more safety margin (from 450MB)
+const MEMORY_LIMIT_MB = 450; // Restart threshold (leaves 62MB buffer before 512MB limit)
+const MEMORY_WARNING_MB = 380; // Warning threshold (log detailed memory info)
 let isShuttingDown = false; // Flag to signal shutdown in progress
+
+// Memory usage tracking for analysis
+let memoryHistory = [];
 
 // Force garbage collection if available (start with --expose-gc flag)
 function forceGarbageCollection() {
@@ -36,6 +39,46 @@ function getMemoryUsageMB() {
         heapTotal: Math.round(used.heapTotal / 1024 / 1024),
         external: Math.round(used.external / 1024 / 1024)
     };
+}
+
+// Helper: Track memory usage history
+function trackMemoryUsage(stage) {
+    const memory = getMemoryUsageMB();
+    const entry = {
+        timestamp: new Date().toISOString(),
+        stage,
+        requestCount,
+        ...memory
+    };
+
+    memoryHistory.push(entry);
+
+    // Keep only last 20 entries to avoid memory bloat
+    if (memoryHistory.length > 20) {
+        memoryHistory.shift();
+    }
+
+    // Log warning if approaching limit
+    if (memory.rss >= MEMORY_WARNING_MB) {
+        console.warn(`⚠️  Memory approaching limit: ${memory.rss}MB RSS (warning threshold: ${MEMORY_WARNING_MB}MB)`);
+        console.log(`Memory history (last 5): ${JSON.stringify(memoryHistory.slice(-5), null, 2)}`);
+    }
+
+    return memory;
+}
+
+// Helper: Check if we should restart based on memory usage
+function shouldRestartDueToMemory() {
+    const memory = getMemoryUsageMB();
+
+    if (memory.rss >= MEMORY_LIMIT_MB) {
+        console.error(`❌ Memory limit reached: ${memory.rss}MB >= ${MEMORY_LIMIT_MB}MB, scheduling restart`);
+        console.log(`Memory breakdown: Heap=${memory.heapUsed}/${memory.heapTotal}MB, External=${memory.external}MB`);
+        console.log(`Request count at restart: ${requestCount}`);
+        return true;
+    }
+
+    return false;
 }
 
 // Request queue: Only allow one Puppeteer instance at a time
@@ -288,21 +331,23 @@ async function sendCallback(callbackUrl, payload, maxRetries = 3) {
     }
 }
 
-// Helper: Schedule process restart if request limit reached
+// Helper: Schedule process restart if memory limit reached
 function scheduleRestartIfNeeded() {
-    if (requestCount >= MAX_REQUESTS_BEFORE_RESTART) {
+    if (shouldRestartDueToMemory()) {
         console.log(`\n${'='.repeat(60)}`);
-        console.log(`🔄 REQUEST LIMIT REACHED (${requestCount}/${MAX_REQUESTS_BEFORE_RESTART})`);
+        console.log(`🔄 MEMORY LIMIT REACHED - RESTARTING`);
+        console.log(`Current memory: ${getMemoryUsageMB().rss}MB RSS`);
         console.log(`Scheduling graceful restart in 2 seconds to free memory...`);
         console.log(`${'='.repeat(60)}\n`);
 
-        // Note: isShuttingDown is now set immediately when counter reaches limit (see endpoints)
-        // This prevents race conditions where multiple requests increment past the limit
+        // Set shutdown flag to reject new requests
+        isShuttingDown = true;
 
         // Give time for response to be sent, then exit
         // Render will automatically restart the service
         setTimeout(() => {
             console.log('Exiting process for restart...');
+            console.log(`Total requests processed before restart: ${requestCount}`);
             process.exit(0);
         }, 2000);
     }
@@ -310,7 +355,21 @@ function scheduleRestartIfNeeded() {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    const memory = getMemoryUsageMB();
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        memory: {
+            rss: memory.rss,
+            heapUsed: memory.heapUsed,
+            heapTotal: memory.heapTotal,
+            limit: MEMORY_LIMIT_MB,
+            warning: MEMORY_WARNING_MB,
+            percentUsed: Math.round((memory.rss / MEMORY_LIMIT_MB) * 100)
+        },
+        requestCount: requestCount,
+        isShuttingDown: isShuttingDown
+    });
 });
 
 // Status endpoint (includes shutdown state)
@@ -339,33 +398,26 @@ app.use((req, res, next) => {
 app.post('/scrape', async (req, res) => {
     const { url, callbackUrl, jobId, urlIndex, title, snippet } = req.body;
 
-    // FIX: Check shutdown state BEFORE incrementing counter (prevents 6/5 race condition)
+    // Check shutdown state before processing
     if (isShuttingDown) {
-        console.log(`Rejecting /scrape request during shutdown (counter: ${requestCount}/${MAX_REQUESTS_BEFORE_RESTART})`);
+        console.log(`Rejecting /scrape request during shutdown (current memory: ${getMemoryUsageMB().rss}MB)`);
         return res.status(503).json({
-            error: 'Service restarting',
+            error: 'Service restarting due to memory limit',
             retryAfter: 30
         });
     }
 
-    // Memory management: Increment request counter (now protected from shutdown race)
+    // Increment request counter and track memory
     requestCount++;
-    console.log(`[${new Date().toISOString()}] Request #${requestCount}/${MAX_REQUESTS_BEFORE_RESTART}`);
-
-    // FIX: Set shutdown flag IMMEDIATELY when limit reached (prevents 4/3 race condition)
-    if (requestCount >= MAX_REQUESTS_BEFORE_RESTART) {
-        isShuttingDown = true;
-    }
+    const memBefore = trackMemoryUsage(`request_start_${requestCount}`);
+    console.log(`[${new Date().toISOString()}] Request #${requestCount} - Memory: ${memBefore.rss}MB RSS`);
 
     if (!url) {
         return res.status(400).json({ error: 'URL is required' });
     }
 
-    // MEMORY CIRCUIT BREAKER: Check memory before launching browser
-    const memBefore = getMemoryUsageMB();
-    console.log(`Memory before scrape: RSS=${memBefore.rss}MB, Heap=${memBefore.heapUsed}/${memBefore.heapTotal}MB`);
-
-    if (memBefore.rss > MEMORY_LIMIT_MB) {
+    // Check if memory is already too high before starting scrape
+    if (shouldRestartDueToMemory()) {
         console.error(`⚠️  Memory too high (${memBefore.rss}MB), forcing restart instead of scraping`);
 
         // Send error callback
@@ -378,8 +430,7 @@ app.post('/scrape', async (req, res) => {
             url
         });
 
-        // Force immediate restart
-        requestCount = MAX_REQUESTS_BEFORE_RESTART;
+        // Schedule restart
         scheduleRestartIfNeeded();
 
         return res.status(503).json({
@@ -435,7 +486,10 @@ app.post('/scrape', async (req, res) => {
             finalContent = null;
             forceGarbageCollection();
 
-            // Schedule restart if memory limit approaching
+            // Track memory after cleanup
+            trackMemoryUsage(`request_complete_${requestCount}_fast_fetch`);
+
+            // Schedule restart if memory limit reached
             scheduleRestartIfNeeded();
 
             return res.json(result);
@@ -759,7 +813,10 @@ app.post('/scrape', async (req, res) => {
         pageTitle = null;
         forceGarbageCollection();
 
-        // Schedule restart if memory limit approaching
+        // Track memory after cleanup
+        trackMemoryUsage(`request_complete_${requestCount}_puppeteer`);
+
+        // Schedule restart if memory limit reached
         scheduleRestartIfNeeded();
 
         res.json(result);
@@ -838,23 +895,19 @@ app.post('/scrape', async (req, res) => {
 app.post('/scrape-keyence', async (req, res) => {
     const { model, callbackUrl, jobId, urlIndex } = req.body;
 
-    // FIX: Check shutdown state BEFORE incrementing counter (prevents 6/5 race condition)
+    // Check shutdown state before processing
     if (isShuttingDown) {
-        console.log(`Rejecting /scrape-keyence request during shutdown (counter: ${requestCount}/${MAX_REQUESTS_BEFORE_RESTART})`);
+        console.log(`Rejecting /scrape-keyence request during shutdown (current memory: ${getMemoryUsageMB().rss}MB)`);
         return res.status(503).json({
-            error: 'Service restarting',
+            error: 'Service restarting due to memory limit',
             retryAfter: 30
         });
     }
 
-    // Memory management: Increment request counter (now protected from shutdown race)
+    // Increment request counter and track memory
     requestCount++;
-    console.log(`[${new Date().toISOString()}] KEYENCE Search Request #${requestCount}/${MAX_REQUESTS_BEFORE_RESTART}`);
-
-    // FIX: Set shutdown flag IMMEDIATELY when limit reached (prevents 4/3 race condition)
-    if (requestCount >= MAX_REQUESTS_BEFORE_RESTART) {
-        isShuttingDown = true;
-    }
+    const memBefore = trackMemoryUsage(`keyence_start_${requestCount}`);
+    console.log(`[${new Date().toISOString()}] KEYENCE Search Request #${requestCount} - Memory: ${memBefore.rss}MB RSS`);
 
     if (!model) {
         return res.status(400).json({ error: 'Model is required' });
@@ -1089,9 +1142,10 @@ app.post('/scrape-keyence', async (req, res) => {
         title = null;
         forceGarbageCollection();
 
-        // Force restart after KEYENCE check (uses more memory than normal checks)
-        console.log('KEYENCE check complete - forcing restart to free memory');
-        requestCount = MAX_REQUESTS_BEFORE_RESTART;
+        // Track memory after cleanup
+        trackMemoryUsage(`keyence_complete_${requestCount}`);
+
+        // KEYENCE searches use more memory - check if we should restart
         scheduleRestartIfNeeded();
 
         return res.json(keyenceResult);

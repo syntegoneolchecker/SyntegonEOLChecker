@@ -1,6 +1,7 @@
 // Background function for automatic EOL checking (chains itself)
 // Checks ONE product and triggers next check if counter < 20
 const { getStore } = require('@netlify/blobs');
+const { parseCSV, toCSV } = require('./lib/csv-parser');
 
 // Helper: Get current date in GMT+9 timezone
 function getGMT9Date() {
@@ -74,34 +75,8 @@ async function findNextProduct() {
             return null;
         }
 
-        // Parse CSV (same as get-csv.js)
-        const lines = csvContent.split('\n').filter(line => line.trim());
-        const data = lines.map(line => {
-            const cells = [];
-            let current = '';
-            let inQuotes = false;
-
-            for (let i = 0; i < line.length; i++) {
-                const char = line[i];
-                const nextChar = line[i + 1];
-
-                if (char === '"' && !inQuotes) {
-                    inQuotes = true;
-                } else if (char === '"' && inQuotes && nextChar === '"') {
-                    current += '"';
-                    i++;
-                } else if (char === '"' && inQuotes) {
-                    inQuotes = false;
-                } else if (char === ',' && !inQuotes) {
-                    cells.push(current.trim());
-                    current = '';
-                } else {
-                    current += char;
-                }
-            }
-            cells.push(current.trim());
-            return cells;
-        });
+        // Parse CSV using shared utility
+        const data = parseCSV(csvContent);
 
         if (data.length <= 1) {
             console.log('No products in database (only headers)');
@@ -204,7 +179,7 @@ async function executeEOLCheck(product, siteUrl) {
 
 // Helper: Poll job by checking Blobs directly and orchestrating workflow
 async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
-    const maxAttempts = 90; // 90 attempts × 2s = 3 minutes max
+    const maxAttempts = 60; // 60 attempts × 2s = 2 minutes max
     let attempts = 0;
     let analyzeTriggered = false;
     let fetchTriggered = false;
@@ -218,7 +193,7 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
         token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
     });
 
-    console.log(`Polling job ${jobId} (max ${maxAttempts} attempts, 3 minutes)`);
+    console.log(`Polling job ${jobId} (max ${maxAttempts} attempts, 2 minutes)`);
 
     while (attempts < maxAttempts) {
         attempts++;
@@ -375,34 +350,8 @@ async function updateProduct(sapNumber, result) {
             return;
         }
 
-        // Parse CSV
-        const lines = csvContent.split('\n').filter(line => line.trim());
-        const data = lines.map(line => {
-            const cells = [];
-            let current = '';
-            let inQuotes = false;
-
-            for (let i = 0; i < line.length; i++) {
-                const char = line[i];
-                const nextChar = line[i + 1];
-
-                if (char === '"' && !inQuotes) {
-                    inQuotes = true;
-                } else if (char === '"' && inQuotes && nextChar === '"') {
-                    current += '"';
-                    i++;
-                } else if (char === '"' && inQuotes) {
-                    inQuotes = false;
-                } else if (char === ',' && !inQuotes) {
-                    cells.push(current.trim());
-                    current = '';
-                } else {
-                    current += char;
-                }
-            }
-            cells.push(current.trim());
-            return cells;
-        });
+        // Parse CSV using shared utility
+        const data = parseCSV(csvContent);
 
         // Find product by SAP number
         const rowIndex = data.findIndex((row, i) => i > 0 && row[0] === sapNumber);
@@ -421,10 +370,8 @@ async function updateProduct(sapNumber, result) {
         row[8] = result.successor?.explanation || ''; // Successor Comment
         row[11] = new Date().toLocaleString(); // Information Date
 
-        // Convert back to CSV
-        const updatedCsv = data.map(row =>
-            row.map(cell => `"${cell}"`).join(',')
-        ).join('\n');
+        // Convert back to CSV using shared utility
+        const updatedCsv = toCSV(data);
 
         // Save updated database
         await csvStore.set('database.csv', updatedCsv);
