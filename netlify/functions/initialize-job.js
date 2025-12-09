@@ -501,7 +501,6 @@ exports.handler = async function(event, context) {
                     'takigen.co.jp',
                     'mitsubishielectric.co.jp',
                     'sentei.nissei-gtr.co.jp',
-                    'orimvexta.co.jp',
                     'tamron.com',
                     'search.sugatsune.co.jp',
                     'sanwa.co.jp',
