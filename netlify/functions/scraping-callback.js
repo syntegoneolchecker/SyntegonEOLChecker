@@ -3,8 +3,7 @@ const { saveUrlResult, getJob } = require('./lib/job-storage');
 
 /**
  * Trigger fetch-url for the next pending URL
- * This function awaits the HTTP request to ensure it's sent before function terminates
- * The CALLER uses fire-and-forget (doesn't await this function)
+ * Must be awaited to ensure the HTTP request completes before function terminates
  */
 async function triggerFetch(jobId, urlInfo, baseUrl) {
     try {
@@ -75,9 +74,9 @@ async function retryBlobsOperation(operationName, operation, maxRetries = 3) {
 
 /**
  * IMPORTANT: This function must complete within Netlify's 30s timeout
- * - We use fire-and-forget for triggerAnalysis/triggerFetch (no await)
+ * - We await triggerFetch to ensure next URL is triggered (fast, < 1s)
+ * - We skip triggering analysis (let polling loop handle it)
  * - This prevents timeouts when analyze-job waits for Groq token reset (30-60s)
- * - The polling in auto-eol-check-background will detect when analysis completes
  */
 exports.handler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
@@ -130,7 +129,7 @@ exports.handler = async function(event, context) {
             // We don't trigger analysis here to avoid 30s timeout (analyze-job can take 30-60s waiting for Groq tokens)
             console.log(`✓ All URLs complete for job ${jobId}. Polling loop will trigger analysis.`);
         } else {
-            // Find and trigger next pending URL (fire-and-forget to avoid timeout)
+            // Find and trigger next pending URL
             console.log(`Checking for next pending URL...`);
             const job = await getJob(jobId, context);
 
@@ -139,8 +138,7 @@ exports.handler = async function(event, context) {
 
                 if (nextUrl) {
                     console.log(`Triggering next URL ${nextUrl.index}: ${nextUrl.url}`);
-                    // Fire-and-forget: don't await to prevent timeout
-                    triggerFetch(jobId, nextUrl, baseUrl);
+                    await triggerFetch(jobId, nextUrl, baseUrl);
                 } else {
                     console.log(`No more pending URLs found (this should not happen)`);
                 }
