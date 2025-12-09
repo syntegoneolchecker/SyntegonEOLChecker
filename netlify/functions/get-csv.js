@@ -1,4 +1,5 @@
 const { getStore } = require('@netlify/blobs');
+const { parseCSV } = require('./lib/csv-parser');
 
 exports.handler = async function(event, context) {
     try {
@@ -14,46 +15,17 @@ exports.handler = async function(event, context) {
         let csvContent = await store.get('database.csv');
         console.log('Blob fetch result:', csvContent ? 'Data found' : 'No data (empty store)');
 
-        // If no data exists yet, return default headers
+        // If no data exists yet, return default headers (13 columns)
         if (!csvContent) {
-            const defaultData = [['Model', 'Maker', 'EOL Status', 'EOL Comment', 'Successor Status', 'Successor Name', 'Successor Comment']];
+            const defaultData = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
             return {
                 statusCode: 200,
                 body: JSON.stringify({ data: defaultData })
             };
         }
 
-        const lines = csvContent.split('\n').filter(line => line.trim());
-
-        // Parse CSV data - handle quoted fields properly
-        const data = lines.map(line => {
-            // Simple CSV parser for quoted fields
-            const cells = [];
-            let current = '';
-            let inQuotes = false;
-
-            for (let i = 0; i < line.length; i++) {
-                const char = line[i];
-                const nextChar = line[i + 1];
-
-                if (char === '"' && !inQuotes) {
-                    inQuotes = true;
-                } else if (char === '"' && inQuotes && nextChar === '"') {
-                    current += '"';
-                    i++; // Skip next quote
-                } else if (char === '"' && inQuotes) {
-                    inQuotes = false;
-                } else if (char === ',' && !inQuotes) {
-                    cells.push(current.trim());
-                    current = '';
-                } else {
-                    current += char;
-                }
-            }
-            cells.push(current.trim()); // Add last cell
-
-            return cells;
-        });
+        // Parse CSV data using shared utility
+        const data = parseCSV(csvContent);
 
         return {
             statusCode: 200,

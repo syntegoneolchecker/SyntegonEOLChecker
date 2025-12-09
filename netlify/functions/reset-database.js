@@ -18,7 +18,7 @@ exports.handler = async function(event, context) {
         });
 
         // Delete the main database blob
-        await store.delete('database');
+        await store.delete('database.csv');
 
         console.log('Database cleared successfully');
 
