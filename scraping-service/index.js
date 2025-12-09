@@ -289,8 +289,8 @@ function scheduleRestartIfNeeded() {
         console.log(`Scheduling graceful restart in 2 seconds to free memory...`);
         console.log(`${'='.repeat(60)}\n`);
 
-        // Signal shutdown to reject new requests
-        isShuttingDown = true;
+        // Note: isShuttingDown is now set immediately when counter reaches limit (see endpoints)
+        // This prevents race conditions where multiple requests increment past the limit
 
         // Give time for response to be sent, then exit
         // Render will automatically restart the service
@@ -345,6 +345,11 @@ app.post('/scrape', async (req, res) => {
     requestCount++;
     console.log(`[${new Date().toISOString()}] Request #${requestCount}/${MAX_REQUESTS_BEFORE_RESTART}`);
 
+    // FIX: Set shutdown flag IMMEDIATELY when limit reached (prevents 4/3 race condition)
+    if (requestCount >= MAX_REQUESTS_BEFORE_RESTART) {
+        isShuttingDown = true;
+    }
+
     if (!url) {
         return res.status(400).json({ error: 'URL is required' });
     }
@@ -385,7 +390,7 @@ app.post('/scrape', async (req, res) => {
     try {
         // Try fast fetch first (handles PDFs, text files, and simple HTML)
         console.log(`Attempting fast fetch for ${url}...`);
-        const fastResult = await tryFastFetch(url);
+        let fastResult = await tryFastFetch(url);
 
         if (fastResult) {
             console.log(`[${new Date().toISOString()}] Fast fetch successful: ${url}`);
@@ -838,6 +843,11 @@ app.post('/scrape-keyence', async (req, res) => {
     // Memory management: Increment request counter (now protected from shutdown race)
     requestCount++;
     console.log(`[${new Date().toISOString()}] KEYENCE Search Request #${requestCount}/${MAX_REQUESTS_BEFORE_RESTART}`);
+
+    // FIX: Set shutdown flag IMMEDIATELY when limit reached (prevents 4/3 race condition)
+    if (requestCount >= MAX_REQUESTS_BEFORE_RESTART) {
+        isShuttingDown = true;
+    }
 
     if (!model) {
         return res.status(400).json({ error: 'Model is required' });

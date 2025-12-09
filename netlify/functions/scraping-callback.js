@@ -88,9 +88,50 @@ exports.handler = async function(event, context) {
         console.log(`Result saved. All URLs done: ${allDone}`);
 
         if (allDone) {
-            // All URLs fetched - trigger LLM analysis
-            console.log(`✓ All URLs complete for job ${jobId}, triggering analysis`);
-            await triggerAnalysis(jobId, baseUrl);
+            // All URLs fetched - but check if analysis already started (prevent duplicate triggers)
+            let job;
+            try {
+                job = await retryBlobsOperation(
+                    `getJob(${jobId}) for analysis check`,
+                    async () => await getJob(jobId, context)
+                );
+            } catch (error) {
+                console.error(`CRITICAL: Failed to get job for analysis check:`, error);
+                return {
+                    statusCode: 500,
+                    body: JSON.stringify({
+                        error: 'Failed to check job status before analysis',
+                        details: error.message
+                    })
+                };
+            }
+
+            // FIX: Only trigger analysis if not already analyzing/complete (prevents duplicate triggers from retries/races)
+            if (job.status !== 'analyzing' && job.status !== 'complete') {
+                console.log(`✓ All URLs complete for job ${jobId}, triggering analysis (status: ${job.status} → analyzing)`);
+
+                // Atomically mark as analyzing BEFORE triggering to prevent race condition
+                const { updateJobStatus } = require('./lib/job-storage');
+                try {
+                    await retryBlobsOperation(
+                        `updateJobStatus(${jobId}, 'analyzing')`,
+                        async () => await updateJobStatus(jobId, 'analyzing', null, context)
+                    );
+                } catch (error) {
+                    console.error(`CRITICAL: Failed to update job status to analyzing:`, error);
+                    return {
+                        statusCode: 500,
+                        body: JSON.stringify({
+                            error: 'Failed to update job status before analysis',
+                            details: error.message
+                        })
+                    };
+                }
+
+                await triggerAnalysis(jobId, baseUrl);
+            } else {
+                console.log(`⚠️  All URLs complete but analysis already in progress/complete (status: ${job.status}), skipping duplicate trigger`);
+            }
         } else {
             // SEQUENTIAL EXECUTION: Trigger next pending URL (Render free tier = 1 concurrent request)
             console.log(`URL ${urlIndex} complete, checking for next pending URL...`);
@@ -131,8 +172,20 @@ exports.handler = async function(event, context) {
                     console.log(`Job state: ${completeCount}/${job.urls.length} complete, ${fetchingCount} fetching, ${pendingCount} pending`);
 
                     if (allComplete) {
-                        console.log(`🔧 RECOVERY: All URLs are actually complete, triggering analysis`);
-                        await triggerAnalysis(jobId, baseUrl);
+                        // FIX: Check status before recovery trigger (same race condition prevention)
+                        if (job.status !== 'analyzing' && job.status !== 'complete') {
+                            console.log(`🔧 RECOVERY: All URLs are actually complete, triggering analysis (status: ${job.status} → analyzing)`);
+
+                            const { updateJobStatus } = require('./lib/job-storage');
+                            await retryBlobsOperation(
+                                `updateJobStatus(${jobId}, 'analyzing') [recovery]`,
+                                async () => await updateJobStatus(jobId, 'analyzing', null, context)
+                            );
+
+                            await triggerAnalysis(jobId, baseUrl);
+                        } else {
+                            console.log(`🔧 RECOVERY: All URLs complete but analysis already started (status: ${job.status}), skipping`);
+                        }
                     } else {
                         console.error(`⚠️  Job stuck: Some URLs are still fetching or in unknown state`);
                         console.error(`URLs status:`, job.urls.map(u => ({ index: u.index, status: u.status })));
