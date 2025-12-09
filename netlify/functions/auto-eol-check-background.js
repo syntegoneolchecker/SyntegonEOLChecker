@@ -217,7 +217,7 @@ async function executeEOLCheck(product, siteUrl) {
 
 // Helper: Poll job status with proactive Render restart detection
 async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
-    const maxAttempts = 90; // 90 attempts = ~3 minutes max (sufficient based on observed data)
+    const maxAttempts = 60; // 60 attempts × 2s = 2 minutes max
     let attempts = 0;
     let consecutiveFailures = 0;
     let lastBackoffDelay = 2000;
@@ -226,10 +226,10 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
     while (attempts < maxAttempts) {
         attempts++;
 
-        // PROACTIVE RENDER HEALTH CHECK: Every 10 attempts (~20s), check if Render is restarting
-        // This detects restarts early instead of waiting for timeout
-        if (attempts % 10 === 0) {
-            console.log(`Health check at attempt ${attempts}/90...`);
+        // PROACTIVE RENDER HEALTH CHECK: Every 20 attempts (~40s), check if Render is restarting
+        // Reduced frequency to minimize polling overhead
+        if (attempts % 20 === 0) {
+            console.log(`Health check at attempt ${attempts}/${maxAttempts}...`);
             const renderHealthy = await checkRenderHealth().catch(() => false);
 
             if (!renderHealthy) {
@@ -307,9 +307,8 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
                 return null;
             }
 
-            // Still processing - use adaptive delay
-            const delay = attempts < 10 ? 2000 : 3000; // Slower polling after 10 attempts
-            await new Promise(resolve => setTimeout(resolve, delay));
+            // Still processing - use consistent 2s delay
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
         } catch (error) {
             consecutiveFailures++;
@@ -319,14 +318,15 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
     }
 
     // Timeout - final health check to determine cause
-    console.warn(`Job ${jobId} timed out after ${maxAttempts} attempts (~${Math.round(maxAttempts * 2.5 / 60)} minutes)`);
+    const timeoutMinutes = Math.round(maxAttempts * 2 / 60);
+    console.warn(`Job ${jobId} timed out after ${maxAttempts} attempts (~${timeoutMinutes} minutes)`);
 
     const renderHealthy = await checkRenderHealth().catch(() => false);
     if (!renderHealthy) {
         console.warn('Render service is down/crashed - timeout caused by service unavailability');
         return {
             status: 'UNKNOWN',
-            explanation: `EOL check timed out after ${maxAttempts} attempts. Render scraping service appears to have crashed during processing. This product should be retried.`,
+            explanation: `EOL check timed out after ${maxAttempts} attempts (~${timeoutMinutes} min). Render scraping service appears to have crashed during processing. This product should be retried.`,
             successor: { status: 'UNKNOWN', model: null, explanation: '' }
         };
     }
@@ -335,7 +335,7 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
     console.warn('Render is healthy but job timed out - job may be stuck or analysis failed');
     return {
         status: 'UNKNOWN',
-        explanation: `EOL check timed out after ${maxAttempts} polling attempts (~${Math.round(maxAttempts * 2.5 / 60)} minutes). The scraping completed but analysis may have failed or hung. Check Netlify function logs for analyze-job errors.`,
+        explanation: `EOL check timed out after ${maxAttempts} polling attempts (~${timeoutMinutes} min). The scraping completed but analysis may have failed or hung. Check Netlify function logs for analyze-job errors.`,
         successor: { status: 'UNKNOWN', model: null, explanation: '' }
     };
 }
