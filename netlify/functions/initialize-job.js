@@ -528,7 +528,6 @@ exports.handler = async function(event, context) {
                     'takabel.com',
                     'ysol.co.jp',
                     'manualslib.com',
-                    'mouser.jp',
                     'digikey.jp',
                     'rs-components.com',
                     'fa-ubon.jp',
