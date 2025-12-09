@@ -2,8 +2,9 @@
 const { saveUrlResult, getJob } = require('./lib/job-storage');
 
 /**
- * Trigger fetch-url for the next pending URL (fire-and-forget)
- * Does not await to prevent timeout issues
+ * Trigger fetch-url for the next pending URL
+ * This function awaits the HTTP request to ensure it's sent before function terminates
+ * The CALLER uses fire-and-forget (doesn't await this function)
  */
 async function triggerFetch(jobId, urlInfo, baseUrl) {
     try {
@@ -21,12 +22,10 @@ async function triggerFetch(jobId, urlInfo, baseUrl) {
             payload.model = urlInfo.model;
         }
 
-        fetch(`${baseUrl}/.netlify/functions/fetch-url`, {
+        await fetch(`${baseUrl}/.netlify/functions/fetch-url`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
-        }).catch(error => {
-            console.error('Failed to trigger next fetch:', error);
         });
     } catch (error) {
         console.error('Failed to trigger next fetch:', error);
