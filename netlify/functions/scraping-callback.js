@@ -42,6 +42,12 @@ async function retryBlobsOperation(operationName, operation, maxRetries = 3) {
     throw lastError;
 }
 
+/**
+ * IMPORTANT: This function must complete within Netlify's 30s timeout
+ * - We use fire-and-forget for triggerAnalysis/triggerFetch (no await)
+ * - This prevents timeouts when analyze-job waits for Groq token reset (30-60s)
+ * - The polling in auto-eol-check-background will detect when analysis completes
+ */
 exports.handler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, body: 'Method Not Allowed' };
@@ -128,7 +134,11 @@ exports.handler = async function(event, context) {
                     };
                 }
 
-                await triggerAnalysis(jobId, baseUrl);
+                // Fire-and-forget: trigger analysis without waiting for response to avoid 30s timeout
+                triggerAnalysis(jobId, baseUrl).catch(err => {
+                    console.error(`⚠️  Failed to trigger analysis (non-blocking): ${err.message}`);
+                });
+                console.log(`✓ Analysis triggered for job ${jobId} (non-blocking)`);
             } else {
                 console.log(`⚠️  All URLs complete but analysis already in progress/complete (status: ${job.status}), skipping duplicate trigger`);
             }
@@ -159,7 +169,10 @@ exports.handler = async function(event, context) {
 
                 if (nextUrl) {
                     console.log(`➡️  Triggering next URL ${nextUrl.index}: ${nextUrl.url}`);
-                    await triggerFetch(jobId, nextUrl, baseUrl);
+                    // Fire-and-forget: trigger fetch without waiting to avoid timeout
+                    triggerFetch(jobId, nextUrl, baseUrl).catch(err => {
+                        console.error(`⚠️  Failed to trigger next URL fetch (non-blocking): ${err.message}`);
+                    });
                 } else {
                     // FALLBACK: No pending URLs, but allDone was false - verify job state
                     console.warn(`⚠️  No pending URLs found, but allDone=false. Verifying job state...`);
@@ -182,7 +195,11 @@ exports.handler = async function(event, context) {
                                 async () => await updateJobStatus(jobId, 'analyzing', null, context)
                             );
 
-                            await triggerAnalysis(jobId, baseUrl);
+                            // Fire-and-forget: trigger analysis without waiting
+                            triggerAnalysis(jobId, baseUrl).catch(err => {
+                                console.error(`⚠️  Failed to trigger recovery analysis (non-blocking): ${err.message}`);
+                            });
+                            console.log(`✓ Recovery analysis triggered for job ${jobId} (non-blocking)`);
                         } else {
                             console.log(`🔧 RECOVERY: All URLs complete but analysis already started (status: ${job.status}), skipping`);
                         }
