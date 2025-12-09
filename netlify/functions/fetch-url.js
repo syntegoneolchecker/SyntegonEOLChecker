@@ -141,9 +141,10 @@ exports.handler = async function(event, context) {
 
             console.log(`Calling KEYENCE scraping service: ${scrapingServiceUrl}/scrape-keyence`);
 
-            // Retry logic for Render invocation
+            // Retry logic for Render invocation (KEYENCE endpoint)
             const maxRetries = 3;
             let lastError = null;
+            let isRenderRestarting = false;
 
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 console.log(`KEYENCE invocation attempt ${attempt}/${maxRetries}`);
@@ -171,6 +172,13 @@ exports.handler = async function(event, context) {
                         if (!response.ok) {
                             const text = await response.text();
                             console.error(`KEYENCE error response on attempt ${attempt}: ${response.status} - ${text}`);
+
+                            // Detect 503 Service Unavailable (Render restarting)
+                            if (response.status === 503) {
+                                isRenderRestarting = true;
+                                console.warn(`⚠️  Render service is restarting (503 response)`);
+                            }
+
                             lastError = new Error(`KEYENCE scraping returned error: ${response.status} - ${text}`);
                         } else {
                             console.log(`KEYENCE successfully invoked on attempt ${attempt}`);
@@ -183,7 +191,16 @@ exports.handler = async function(event, context) {
                 }
 
                 if (attempt < maxRetries) {
-                    const backoffMs = Math.pow(2, attempt) * 500;
+                    // Use longer backoff for 503 errors (Render restart takes ~30 seconds)
+                    let backoffMs;
+                    if (isRenderRestarting) {
+                        // For Render restart: wait 15s, 30s on retries (enough time for restart to complete)
+                        backoffMs = attempt === 1 ? 15000 : 30000;
+                        console.log(`Render is restarting, using longer backoff: ${backoffMs}ms (attempt ${attempt})`);
+                    } else {
+                        // Standard exponential backoff for other errors
+                        backoffMs = Math.pow(2, attempt) * 500; // 1s, 2s, 4s
+                    }
                     console.log(`Retrying KEYENCE call in ${backoffMs}ms...`);
                     await new Promise(resolve => setTimeout(resolve, backoffMs));
                 }
@@ -191,12 +208,52 @@ exports.handler = async function(event, context) {
 
             if (lastError) {
                 console.error(`All ${maxRetries} KEYENCE invocation attempts failed`);
+                console.log(`Saving error result and continuing pipeline to prevent job from hanging...`);
+
+                // Determine if this is a Render restart (503 error)
+                const isRenderRestart = lastError.message.includes('503') || lastError.message.includes('Service restarting');
+                const errorMessage = isRenderRestart
+                    ? '[Render service was restarting - this KEYENCE search will be retried on next check]'
+                    : `[KEYENCE search failed after ${maxRetries} attempts: ${lastError.message}]`;
+
+                // Save error result to prevent job from hanging
+                const allDone = await saveUrlResult(jobId, urlIndex, {
+                    url,
+                    title: null,
+                    snippet,
+                    fullContent: errorMessage
+                }, context);
+
+                console.log(`Error result saved for KEYENCE URL ${urlIndex}. All done: ${allDone}`);
+
+                // Continue pipeline even on error - check if analysis already started
+                if (allDone) {
+                    const job = await getJob(jobId, context);
+                    if (job && job.status !== 'analyzing' && job.status !== 'complete') {
+                        console.log(`All URLs complete (with errors) for job ${jobId}, triggering analysis`);
+                        await triggerAnalysis(jobId, baseUrl);
+                    } else {
+                        console.log(`All URLs complete but analysis already started (status: ${job?.status}), skipping duplicate trigger`);
+                    }
+                } else {
+                    // Find and trigger next pending URL
+                    const job = await getJob(jobId, context);
+                    if (job) {
+                        const nextUrl = job.urls.find(u => u.status === 'pending');
+                        if (nextUrl) {
+                            console.log(`Triggering next URL ${nextUrl.index} after KEYENCE error`);
+                            await triggerFetch(jobId, nextUrl, baseUrl);
+                        }
+                    }
+                }
+
                 return {
                     statusCode: 500,
                     body: JSON.stringify({
                         success: false,
                         error: `KEYENCE invocation failed after ${maxRetries} attempts: ${lastError.message}`,
-                        method: 'keyence_failed'
+                        method: 'keyence_failed',
+                        pipelineContinued: true
                     })
                 };
             }
@@ -356,6 +413,7 @@ exports.handler = async function(event, context) {
         // Retry logic for Render invocation
         const maxRetries = 3;
         let lastError = null;
+        let isRenderRestarting = false;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             console.log(`Render invocation attempt ${attempt}/${maxRetries} for URL ${urlIndex}`);
@@ -386,6 +444,13 @@ exports.handler = async function(event, context) {
                     if (!response.ok) {
                         const text = await response.text();
                         console.error(`Render error response on attempt ${attempt}: ${response.status} - ${text}`);
+
+                        // Detect 503 Service Unavailable (Render restarting)
+                        if (response.status === 503) {
+                            isRenderRestarting = true;
+                            console.warn(`⚠️  Render service is restarting (503 response)`);
+                        }
+
                         lastError = new Error(`Render returned error: ${response.status} - ${text}`);
                         // Continue to retry
                     } else {
@@ -400,23 +465,72 @@ exports.handler = async function(event, context) {
                 // Continue to retry
             }
 
-            // If not last attempt, wait before retrying (exponential backoff)
+            // If not last attempt, wait before retrying
             if (attempt < maxRetries) {
-                const backoffMs = Math.pow(2, attempt) * 500; // 1s, 2s, 4s
+                // Use longer backoff for 503 errors (Render restart takes ~30 seconds)
+                let backoffMs;
+                if (isRenderRestarting) {
+                    // For Render restart: wait 15s, 30s on retries (enough time for restart to complete)
+                    backoffMs = attempt === 1 ? 15000 : 30000;
+                    console.log(`Render is restarting, using longer backoff: ${backoffMs}ms (attempt ${attempt})`);
+                } else {
+                    // Standard exponential backoff for other errors
+                    backoffMs = Math.pow(2, attempt) * 500; // 1s, 2s, 4s
+                }
                 console.log(`Retrying Render call in ${backoffMs}ms...`);
                 await new Promise(resolve => setTimeout(resolve, backoffMs));
             }
         }
 
-        // If all retries failed, return error
+        // If all retries failed, save error result and continue pipeline
         if (lastError) {
             console.error(`All ${maxRetries} Render invocation attempts failed for URL ${urlIndex}`);
+            console.log(`Saving error result and continuing pipeline to prevent job from hanging...`);
+
+            // Determine if this is a Render restart (503 error)
+            const isRenderRestart = lastError.message.includes('503') || lastError.message.includes('Service restarting');
+            const errorMessage = isRenderRestart
+                ? '[Render service was restarting - this URL will be retried on next check]'
+                : `[Scraping failed after ${maxRetries} attempts: ${lastError.message}]`;
+
+            // Save error result to prevent job from hanging
+            const allDone = await saveUrlResult(jobId, urlIndex, {
+                url,
+                title: null,
+                snippet,
+                fullContent: errorMessage
+            }, context);
+
+            console.log(`Error result saved for URL ${urlIndex}. All done: ${allDone}`);
+
+            // Continue pipeline even on error - check if analysis already started
+            if (allDone) {
+                const job = await getJob(jobId, context);
+                if (job && job.status !== 'analyzing' && job.status !== 'complete') {
+                    console.log(`All URLs complete (with errors) for job ${jobId}, triggering analysis`);
+                    await triggerAnalysis(jobId, baseUrl);
+                } else {
+                    console.log(`All URLs complete but analysis already started (status: ${job?.status}), skipping duplicate trigger`);
+                }
+            } else {
+                // Find and trigger next pending URL
+                const job = await getJob(jobId, context);
+                if (job) {
+                    const nextUrl = job.urls.find(u => u.status === 'pending');
+                    if (nextUrl) {
+                        console.log(`Triggering next URL ${nextUrl.index} after error`);
+                        await triggerFetch(jobId, nextUrl, baseUrl);
+                    }
+                }
+            }
+
             return {
                 statusCode: 500,
                 body: JSON.stringify({
                     success: false,
                     error: `Render invocation failed after ${maxRetries} attempts: ${lastError.message}`,
-                    method: 'render_failed'
+                    method: 'render_failed',
+                    pipelineContinued: true
                 })
             };
         }
