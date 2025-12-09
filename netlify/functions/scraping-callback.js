@@ -2,6 +2,38 @@
 const { saveUrlResult, getJob } = require('./lib/job-storage');
 
 /**
+ * Trigger fetch-url for the next pending URL (fire-and-forget)
+ * Does not await to prevent timeout issues
+ */
+async function triggerFetch(jobId, urlInfo, baseUrl) {
+    try {
+        const payload = {
+            jobId,
+            urlIndex: urlInfo.index,
+            url: urlInfo.url,
+            title: urlInfo.title,
+            snippet: urlInfo.snippet,
+            scrapingMethod: urlInfo.scrapingMethod
+        };
+
+        // Pass model for interactive searches (KEYENCE)
+        if (urlInfo.model) {
+            payload.model = urlInfo.model;
+        }
+
+        fetch(`${baseUrl}/.netlify/functions/fetch-url`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).catch(error => {
+            console.error('Failed to trigger next fetch:', error);
+        });
+    } catch (error) {
+        console.error('Failed to trigger next fetch:', error);
+    }
+}
+
+/**
  * Retry helper for Blobs operations with exponential backoff
  * Handles transient network errors (socket closures, timeouts, etc.)
  */
@@ -93,12 +125,29 @@ exports.handler = async function(event, context) {
 
         console.log(`Result saved. All URLs done: ${allDone}`);
 
-        // SIMPLIFIED: Just save the result and return
-        // The polling loop in auto-eol-check-background will detect completion and trigger analysis
+        // Continue pipeline: trigger next URL or let polling loop handle analysis
         if (allDone) {
+            // All URLs complete - let polling loop detect and trigger analysis
+            // We don't trigger analysis here to avoid 30s timeout (analyze-job can take 30-60s waiting for Groq tokens)
             console.log(`✓ All URLs complete for job ${jobId}. Polling loop will trigger analysis.`);
         } else {
-            console.log(`⚠️  Job ${jobId} has more URLs pending, but we don't support multiple URLs per job yet.`);
+            // Find and trigger next pending URL (fire-and-forget to avoid timeout)
+            console.log(`Checking for next pending URL...`);
+            const job = await getJob(jobId, context);
+
+            if (job) {
+                const nextUrl = job.urls.find(u => u.status === 'pending');
+
+                if (nextUrl) {
+                    console.log(`Triggering next URL ${nextUrl.index}: ${nextUrl.url}`);
+                    // Fire-and-forget: don't await to prevent timeout
+                    triggerFetch(jobId, nextUrl, baseUrl);
+                } else {
+                    console.log(`No more pending URLs found (this should not happen)`);
+                }
+            } else {
+                console.error(`Failed to get job ${jobId} for next URL trigger`);
+            }
         }
 
         const duration = Date.now() - startTime;
