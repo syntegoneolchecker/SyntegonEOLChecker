@@ -9,14 +9,14 @@ function getGMT9Date() {
     return gmt9Time.toISOString().split('T')[0];
 }
 
-// Helper: Wake up Render scraping service
+// Helper: Wake up Render scraping service (cold start)
 async function wakeRenderService() {
     console.log('Waking up Render scraping service...');
     const startTime = Date.now();
 
     try {
         const response = await fetch('https://eolscrapingservice.onrender.com/health', {
-            signal: AbortSignal.timeout(65000) // 65s timeout
+            signal: AbortSignal.timeout(30000) // 30s timeout
         });
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -25,19 +25,6 @@ async function wakeRenderService() {
         return response.ok;
     } catch (error) {
         console.error('Failed to wake Render service:', error.message);
-        return false;
-    }
-}
-
-// FIX #6: Helper to check Render service health (quick check)
-async function checkRenderHealth() {
-    try {
-        const response = await fetch('https://eolscrapingservice.onrender.com/health', {
-            signal: AbortSignal.timeout(5000) // 5s timeout for quick check
-        });
-        return response.ok;
-    } catch (error) {
-        console.error('Render health check failed:', error.message);
         return false;
     }
 }
@@ -215,127 +202,115 @@ async function executeEOLCheck(product, siteUrl) {
     }
 }
 
-// Helper: Poll job status with proactive Render restart detection
+// Helper: Poll job by checking Blobs directly and orchestrating workflow
 async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
-    const maxAttempts = 60; // 60 attempts × 2s = 2 minutes max
+    const maxAttempts = 90; // 90 attempts × 2s = 3 minutes max
     let attempts = 0;
-    let consecutiveFailures = 0;
-    let lastBackoffDelay = 2000;
-    let renderRestartDetected = false;
+    let analyzeTriggered = false;
+
+    // Get job storage helper
+    const { getStore } = require('@netlify/blobs');
+    const jobStore = getStore({
+        name: 'eol-jobs',
+        siteID: process.env.SITE_ID,
+        token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+    });
+
+    console.log(`Polling job ${jobId} (max ${maxAttempts} attempts, 3 minutes)`);
 
     while (attempts < maxAttempts) {
         attempts++;
 
-        // PROACTIVE RENDER HEALTH CHECK: Every 20 attempts (~40s), check if Render is restarting
-        // Reduced frequency to minimize polling overhead
-        if (attempts % 20 === 0) {
-            console.log(`Health check at attempt ${attempts}/${maxAttempts}...`);
-            const renderHealthy = await checkRenderHealth().catch(() => false);
-
-            if (!renderHealthy) {
-                console.warn('⚠️  Render service is down/restarting - waiting 30s for recovery...');
-                renderRestartDetected = true;
-
-                // Wait for Render to restart (typically 20-30 seconds based on logs)
-                await new Promise(resolve => setTimeout(resolve, 30000));
-
-                // Verify recovery
-                const renderRecovered = await checkRenderHealth().catch(() => false);
-                if (renderRecovered) {
-                    console.log('✓ Render service recovered, resuming polling');
-                    renderRestartDetected = false;
-                } else {
-                    console.warn('⚠️  Render service still down after 30s, continuing polling with backoff');
-                    // Continue polling but with longer delays
-                    lastBackoffDelay = 5000;
-                }
-
-                // Don't count this as a polling attempt since we were waiting for Render
-                attempts--;
-                continue;
-            } else if (renderRestartDetected) {
-                console.log('✓ Render service healthy again');
-                renderRestartDetected = false;
-            }
+        // Log progress every 30 attempts (~1 minute)
+        if (attempts % 30 === 0) {
+            console.log(`Polling attempt ${attempts}/${maxAttempts} (~${Math.round(attempts * 2 / 60)} min elapsed)...`);
         }
 
         try {
-            const statusUrl = `${siteUrl}/.netlify/functions/job-status/${jobId}`;
-            const statusResponse = await fetch(statusUrl);
+            // Poll Blobs directly
+            const job = await jobStore.get(jobId, { type: 'json' });
 
-            if (!statusResponse.ok) {
-                consecutiveFailures++;
-                console.error(`Status check failed: ${statusResponse.status} (${consecutiveFailures} consecutive)`);
-
-                // After 3 consecutive failures, check if it's a Render restart
-                if (consecutiveFailures >= 3 && !renderRestartDetected) {
-                    console.log('Multiple failures detected, checking Render health...');
-                    const renderHealthy = await checkRenderHealth().catch(() => false);
-
-                    if (!renderHealthy) {
-                        console.warn('⚠️  Render restart detected mid-polling - waiting 30s...');
-                        renderRestartDetected = true;
-                        await new Promise(resolve => setTimeout(resolve, 30000));
-                        consecutiveFailures = 0; // Reset after waiting
-                        continue;
-                    }
-                }
-
-                // Exponential backoff on failures
-                if (consecutiveFailures >= 3) {
-                    lastBackoffDelay = Math.min(lastBackoffDelay * 1.5, 10000); // Cap at 10s
-                    console.log(`Backing off to ${lastBackoffDelay}ms due to consecutive failures`);
-                }
-
-                await new Promise(resolve => setTimeout(resolve, lastBackoffDelay));
+            if (!job) {
+                console.error(`Job ${jobId} not found in Blobs storage`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
                 continue;
             }
 
-            // Reset on success
-            consecutiveFailures = 0;
-            lastBackoffDelay = 2000;
-
-            const statusData = await statusResponse.json();
-
-            if (statusData.status === 'complete') {
-                console.log(`Job complete after ${attempts} attempts`);
-                return statusData.result;
+            // Check if job is complete
+            if (job.status === 'complete' && job.finalResult) {
+                console.log(`✓ Job complete after ${attempts} attempts (~${Math.round(attempts * 2 / 60)} min)`);
+                return job.finalResult;
             }
 
-            if (statusData.status === 'error') {
-                console.error(`Job failed: ${statusData.error}`);
-                return null;
+            if (job.status === 'error') {
+                console.error(`Job failed with error: ${job.error}`);
+                return {
+                    status: 'UNKNOWN',
+                    explanation: `Job failed: ${job.error}`,
+                    successor: { status: 'UNKNOWN', model: null, explanation: '' }
+                };
             }
 
-            // Still processing - use consistent 2s delay
+            // Check if scraping is complete and analysis needs to be triggered
+            const allUrlsComplete = job.urls && job.urls.length > 0 && job.urls.every(u => u.status === 'complete');
+
+            if (allUrlsComplete && !analyzeTriggered && job.status !== 'analyzing' && job.status !== 'complete') {
+                console.log(`✓ All URLs scraped, triggering analyze-job synchronously (attempt ${attempts})`);
+
+                try {
+                    // Call analyze-job SYNCHRONOUSLY (not fire-and-forget)
+                    const analyzeUrl = `${siteUrl}/.netlify/functions/analyze-job`;
+                    const analyzeResponse = await fetch(analyzeUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ jobId }),
+                        signal: AbortSignal.timeout(25000) // 25s timeout (under Netlify's 26s limit)
+                    });
+
+                    if (analyzeResponse.ok) {
+                        const analyzeData = await analyzeResponse.json();
+                        console.log(`✓ Analysis completed successfully: ${analyzeData.result?.status}`);
+                        analyzeTriggered = true;
+
+                        // Re-fetch job to get updated status
+                        const updatedJob = await jobStore.get(jobId, { type: 'json' });
+                        if (updatedJob?.status === 'complete' && updatedJob.finalResult) {
+                            console.log(`✓ Job complete after analysis`);
+                            return updatedJob.finalResult;
+                        }
+                    } else {
+                        const errorText = await analyzeResponse.text().catch(() => 'Unknown error');
+                        console.error(`analyze-job failed: ${analyzeResponse.status} - ${errorText}`);
+                        analyzeTriggered = true; // Don't retry on same poll cycle
+                    }
+                } catch (error) {
+                    // Timeout or network error - analysis might still be running
+                    if (error.name === 'TimeoutError' || error.message.includes('timeout')) {
+                        console.warn(`analyze-job timed out after 25s (likely Groq token wait), will check on next poll`);
+                        analyzeTriggered = true; // Analysis is running in background
+                    } else {
+                        console.error(`analyze-job error: ${error.message}`);
+                        analyzeTriggered = true; // Don't retry on same poll cycle
+                    }
+                }
+            }
+
+            // Wait 2 seconds before next poll
             await new Promise(resolve => setTimeout(resolve, 2000));
 
         } catch (error) {
-            consecutiveFailures++;
-            console.error(`Polling error (attempt ${attempts}):`, error.message);
-            await new Promise(resolve => setTimeout(resolve, lastBackoffDelay));
+            console.error(`Polling error (attempt ${attempts}): ${error.message}`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
     }
 
-    // Timeout - final health check to determine cause
+    // Timeout after max attempts
     const timeoutMinutes = Math.round(maxAttempts * 2 / 60);
-    console.warn(`Job ${jobId} timed out after ${maxAttempts} attempts (~${timeoutMinutes} minutes)`);
+    console.error(`⏱️  Job ${jobId} timed out after ${maxAttempts} attempts (~${timeoutMinutes} minutes)`);
 
-    const renderHealthy = await checkRenderHealth().catch(() => false);
-    if (!renderHealthy) {
-        console.warn('Render service is down/crashed - timeout caused by service unavailability');
-        return {
-            status: 'UNKNOWN',
-            explanation: `EOL check timed out after ${maxAttempts} attempts (~${timeoutMinutes} min). Render scraping service appears to have crashed during processing. This product should be retried.`,
-            successor: { status: 'UNKNOWN', model: null, explanation: '' }
-        };
-    }
-
-    // Render is healthy but job didn't complete - likely stuck or analysis failed
-    console.warn('Render is healthy but job timed out - job may be stuck or analysis failed');
     return {
         status: 'UNKNOWN',
-        explanation: `EOL check timed out after ${maxAttempts} polling attempts (~${timeoutMinutes} min). The scraping completed but analysis may have failed or hung. Check Netlify function logs for analyze-job errors.`,
+        explanation: `EOL check timed out after ${timeoutMinutes} minutes. The job may still be processing. Check Netlify function logs for details.`,
         successor: { status: 'UNKNOWN', model: null, explanation: '' }
     };
 }
@@ -535,41 +510,6 @@ exports.handler = async function(event, context) {
         }
 
         console.log('✓ Slider still enabled, proceeding with EOL check');
-
-        // FIX #6: Check Render service health before executing EOL check (with retry)
-        console.log('Checking Render service health before starting EOL check...');
-        let renderHealthy = false;
-        const maxHealthAttempts = 5;
-
-        for (let healthAttempt = 1; healthAttempt <= maxHealthAttempts; healthAttempt++) {
-            renderHealthy = await checkRenderHealth().catch(() => false);
-
-            if (renderHealthy) {
-                if (healthAttempt > 1) {
-                    console.log(`✓ Render service recovered (attempt ${healthAttempt}/${maxHealthAttempts})`);
-                } else {
-                    console.log('✓ Render service healthy');
-                }
-                break;
-            }
-
-            if (healthAttempt < maxHealthAttempts) {
-                console.warn(`⚠️  Render service unhealthy (attempt ${healthAttempt}/${maxHealthAttempts}), waiting 10s before retry...`);
-                await new Promise(resolve => setTimeout(resolve, 10000));
-            } else {
-                console.error(`❌ Render service still unhealthy after ${maxHealthAttempts} attempts (50s total), stopping chain`);
-            }
-        }
-
-        if (!renderHealthy) {
-            // Don't increment counter - this check should be retried when user restarts
-            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isRunning: false })
-            });
-            return { statusCode: 503, body: 'Render service unavailable after retries' };
-        }
 
         // Execute ONE EOL check
         const success = await executeEOLCheck(product, siteUrl);
