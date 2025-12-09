@@ -536,18 +536,39 @@ exports.handler = async function(event, context) {
 
         console.log('✓ Slider still enabled, proceeding with EOL check');
 
-        // FIX #6: Check Render service health before executing EOL check
-        const renderHealthy = await checkRenderHealth();
+        // FIX #6: Check Render service health before executing EOL check (with retry)
+        console.log('Checking Render service health before starting EOL check...');
+        let renderHealthy = false;
+        const maxHealthAttempts = 5;
+
+        for (let healthAttempt = 1; healthAttempt <= maxHealthAttempts; healthAttempt++) {
+            renderHealthy = await checkRenderHealth().catch(() => false);
+
+            if (renderHealthy) {
+                if (healthAttempt > 1) {
+                    console.log(`✓ Render service recovered (attempt ${healthAttempt}/${maxHealthAttempts})`);
+                } else {
+                    console.log('✓ Render service healthy');
+                }
+                break;
+            }
+
+            if (healthAttempt < maxHealthAttempts) {
+                console.warn(`⚠️  Render service unhealthy (attempt ${healthAttempt}/${maxHealthAttempts}), waiting 10s before retry...`);
+                await new Promise(resolve => setTimeout(resolve, 10000));
+            } else {
+                console.error(`❌ Render service still unhealthy after ${maxHealthAttempts} attempts (50s total), stopping chain`);
+            }
+        }
+
         if (!renderHealthy) {
-            console.warn('⚠️  Render service unhealthy, skipping this check (will retry next cycle)');
-            // Don't increment counter - this check should be retried
-            // Use set-auto-check-state to avoid race condition
+            // Don't increment counter - this check should be retried when user restarts
             await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ isRunning: false })
             });
-            return { statusCode: 200, body: 'Render service unhealthy' };
+            return { statusCode: 503, body: 'Render service unavailable after retries' };
         }
 
         // Execute ONE EOL check
