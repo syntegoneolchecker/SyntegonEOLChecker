@@ -215,15 +215,49 @@ async function executeEOLCheck(product, siteUrl) {
     }
 }
 
-// Helper: Poll job status with improved resilience for Render restarts
+// Helper: Poll job status with proactive Render restart detection
 async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
     const maxAttempts = 90; // 90 attempts = ~3 minutes max (sufficient based on observed data)
     let attempts = 0;
     let consecutiveFailures = 0;
     let lastBackoffDelay = 2000;
+    let renderRestartDetected = false;
 
     while (attempts < maxAttempts) {
         attempts++;
+
+        // PROACTIVE RENDER HEALTH CHECK: Every 10 attempts (~20s), check if Render is restarting
+        // This detects restarts early instead of waiting for timeout
+        if (attempts % 10 === 0) {
+            console.log(`Health check at attempt ${attempts}/90...`);
+            const renderHealthy = await checkRenderHealth().catch(() => false);
+
+            if (!renderHealthy) {
+                console.warn('⚠️  Render service is down/restarting - waiting 30s for recovery...');
+                renderRestartDetected = true;
+
+                // Wait for Render to restart (typically 20-30 seconds based on logs)
+                await new Promise(resolve => setTimeout(resolve, 30000));
+
+                // Verify recovery
+                const renderRecovered = await checkRenderHealth().catch(() => false);
+                if (renderRecovered) {
+                    console.log('✓ Render service recovered, resuming polling');
+                    renderRestartDetected = false;
+                } else {
+                    console.warn('⚠️  Render service still down after 30s, continuing polling with backoff');
+                    // Continue polling but with longer delays
+                    lastBackoffDelay = 5000;
+                }
+
+                // Don't count this as a polling attempt since we were waiting for Render
+                attempts--;
+                continue;
+            } else if (renderRestartDetected) {
+                console.log('✓ Render service healthy again');
+                renderRestartDetected = false;
+            }
+        }
 
         try {
             const statusUrl = `${siteUrl}/.netlify/functions/job-status/${jobId}`;
@@ -233,7 +267,21 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
                 consecutiveFailures++;
                 console.error(`Status check failed: ${statusResponse.status} (${consecutiveFailures} consecutive)`);
 
-                // Exponential backoff on failures (could be restart in progress)
+                // After 3 consecutive failures, check if it's a Render restart
+                if (consecutiveFailures >= 3 && !renderRestartDetected) {
+                    console.log('Multiple failures detected, checking Render health...');
+                    const renderHealthy = await checkRenderHealth().catch(() => false);
+
+                    if (!renderHealthy) {
+                        console.warn('⚠️  Render restart detected mid-polling - waiting 30s...');
+                        renderRestartDetected = true;
+                        await new Promise(resolve => setTimeout(resolve, 30000));
+                        consecutiveFailures = 0; // Reset after waiting
+                        continue;
+                    }
+                }
+
+                // Exponential backoff on failures
                 if (consecutiveFailures >= 3) {
                     lastBackoffDelay = Math.min(lastBackoffDelay * 1.5, 10000); // Cap at 10s
                     console.log(`Backing off to ${lastBackoffDelay}ms due to consecutive failures`);
@@ -270,13 +318,12 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
         }
     }
 
-    // Timeout - check if Render crashed or if job is genuinely stuck
+    // Timeout - final health check to determine cause
     console.warn(`Job ${jobId} timed out after ${maxAttempts} attempts (~${Math.round(maxAttempts * 2.5 / 60)} minutes)`);
 
-    // FIX #3: Try to detect if timeout was caused by Render crash
     const renderHealthy = await checkRenderHealth().catch(() => false);
     if (!renderHealthy) {
-        console.warn('Render service appears to be down/restarting - timeout likely caused by service crash');
+        console.warn('Render service is down/crashed - timeout caused by service unavailability');
         return {
             status: 'UNKNOWN',
             explanation: `EOL check timed out after ${maxAttempts} attempts. Render scraping service appears to have crashed during processing. This product should be retried.`,
@@ -284,10 +331,11 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
         };
     }
 
-    // Render is healthy - job is genuinely stuck or slow
+    // Render is healthy but job didn't complete - likely stuck or analysis failed
+    console.warn('Render is healthy but job timed out - job may be stuck or analysis failed');
     return {
         status: 'UNKNOWN',
-        explanation: `EOL check timed out after ${maxAttempts} polling attempts (~${Math.round(maxAttempts * 2.5 / 60)} minutes). The scraping process may be stuck or taking unusually long.`,
+        explanation: `EOL check timed out after ${maxAttempts} polling attempts (~${Math.round(maxAttempts * 2.5 / 60)} minutes). The scraping completed but analysis may have failed or hung. Check Netlify function logs for analyze-job errors.`,
         successor: { status: 'UNKNOWN', model: null, explanation: '' }
     };
 }

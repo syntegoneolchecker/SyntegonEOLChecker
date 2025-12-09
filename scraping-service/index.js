@@ -253,9 +253,13 @@ async function sendCallback(callbackUrl, payload, maxRetries = 3) {
                 console.error(`Callback returned HTTP ${response.status} on attempt ${attempt}/${maxRetries}:`, errorText);
 
                 if (attempt < maxRetries) {
-                    // Retry on HTTP errors (500, 502, 503, 504, etc.)
-                    const backoffMs = 1000 * Math.pow(2, attempt); // 2s, 4s, 8s
-                    console.log(`Retrying callback in ${backoffMs}ms...`);
+                    // Adaptive retry delay: If we're about to restart (shutting down), use longer delay
+                    // This gives the callback endpoint time to complete any in-flight operations
+                    const isShuttingDown = requestCount >= MAX_REQUESTS_BEFORE_RESTART;
+                    const baseBackoffMs = 1000 * Math.pow(2, attempt); // 2s, 4s, 8s
+                    const backoffMs = isShuttingDown ? baseBackoffMs + 3000 : baseBackoffMs; // Add 3s during shutdown
+
+                    console.log(`Retrying callback in ${backoffMs}ms${isShuttingDown ? ' (restart pending)' : ''}...`);
                     await new Promise(resolve => setTimeout(resolve, backoffMs));
                     continue; // Try again
                 } else {
@@ -273,8 +277,11 @@ async function sendCallback(callbackUrl, payload, maxRetries = 3) {
                 throw callbackError; // Propagate error so scraping endpoint can handle it
             } else {
                 // Wait before retry (exponential backoff)
-                const backoffMs = 1000 * Math.pow(2, attempt); // 2s, 4s, 8s
-                console.log(`Retrying callback in ${backoffMs}ms...`);
+                const isShuttingDown = requestCount >= MAX_REQUESTS_BEFORE_RESTART;
+                const baseBackoffMs = 1000 * Math.pow(2, attempt); // 2s, 4s, 8s
+                const backoffMs = isShuttingDown ? baseBackoffMs + 3000 : baseBackoffMs; // Add 3s during shutdown
+
+                console.log(`Retrying callback in ${backoffMs}ms${isShuttingDown ? ' (restart pending)' : ''}...`);
                 await new Promise(resolve => setTimeout(resolve, backoffMs));
             }
         }
