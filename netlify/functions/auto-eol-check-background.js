@@ -207,9 +207,11 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
     const maxAttempts = 90; // 90 attempts × 2s = 3 minutes max
     let attempts = 0;
     let analyzeTriggered = false;
+    let fetchTriggered = false;
 
     // Get job storage helper
     const { getStore } = require('@netlify/blobs');
+    const { updateJobStatus } = require('./lib/job-storage');
     const jobStore = getStore({
         name: 'eol-jobs',
         siteID: process.env.SITE_ID,
@@ -251,7 +253,50 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
                 };
             }
 
-            // Check if scraping is complete and analysis needs to be triggered
+            // STEP 1: If URLs are ready, trigger fetch-url
+            if (job.status === 'urls_ready' && !fetchTriggered) {
+                console.log(`✓ URLs ready, triggering fetch-url (attempt ${attempts})`);
+
+                // Update status to 'fetching'
+                await updateJobStatus(jobId, 'fetching', null, {});
+
+                // Trigger fetch-url for the first URL
+                const firstUrl = job.urls[0];
+                if (firstUrl) {
+                    try {
+                        const fetchUrl = `${siteUrl}/.netlify/functions/fetch-url`;
+                        const payload = {
+                            jobId,
+                            urlIndex: firstUrl.index,
+                            url: firstUrl.url,
+                            title: firstUrl.title,
+                            snippet: firstUrl.snippet,
+                            scrapingMethod: firstUrl.scrapingMethod
+                        };
+
+                        // Pass model for KEYENCE interactive searches
+                        if (firstUrl.model) {
+                            payload.model = firstUrl.model;
+                        }
+
+                        // Fire-and-forget (Render scraping takes 30-60s, we can't wait)
+                        fetch(fetchUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        }).catch(err => {
+                            console.error(`Failed to trigger fetch-url: ${err.message}`);
+                        });
+
+                        console.log(`✓ fetch-url triggered for ${firstUrl.url}`);
+                        fetchTriggered = true;
+                    } catch (error) {
+                        console.error(`Error triggering fetch-url: ${error.message}`);
+                    }
+                }
+            }
+
+            // STEP 2: Check if scraping is complete and analysis needs to be triggered
             const allUrlsComplete = job.urls && job.urls.length > 0 && job.urls.every(u => u.status === 'complete');
 
             if (allUrlsComplete && !analyzeTriggered && job.status !== 'analyzing' && job.status !== 'complete') {
