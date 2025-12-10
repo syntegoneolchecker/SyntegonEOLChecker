@@ -525,7 +525,6 @@ exports.handler = async function(event, context) {
                     'anelva.canon',
                     'takabel.com',
                     'ysol.co.jp',
-                    'manualslib.com',
                     'digikey.jp',
                     'rs-components.com',
                     'fa-ubon.jp',
