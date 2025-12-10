@@ -604,7 +604,8 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY 
                     if (errorText.includes('tokens per day (TPD)')) {
                         // Extract retry time from error message (e.g., "Please try again in 7m54.336s")
                         let retryTimeMsg = '';
-                        const retryMatch = errorText.match(/Please try again in ([^.]+)/);
+                        // Match time patterns like: "7m54.336s", "54.336s", "2h30m15s", etc.
+                        const retryMatch = errorText.match(/Please try again in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s))/);
                         if (retryMatch) {
                             retryTimeMsg = ` Tokens will recover in approximately ${retryMatch[1]}.`;
                         }
