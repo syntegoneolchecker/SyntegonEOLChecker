@@ -94,6 +94,24 @@ exports.handler = async function(event, context) {
 
         try {
             const { jobId } = JSON.parse(event.body);
+
+            // For daily limit errors, we want to update the job status but NOT save any analysis
+            // This ensures no database changes are made for this product
+            if (error.isDailyLimit) {
+                await updateJobStatus(jobId, 'error', error.message, context);
+
+                // Return immediately with a clear message - no retries, no timeouts
+                return {
+                    statusCode: 429,
+                    body: JSON.stringify({
+                        error: error.message,
+                        isDailyLimit: true,
+                        message: 'Daily Groq token limit reached (rolling 24h window). Analysis cancelled. Tokens gradually recover as they age out of the 24-hour window.'
+                    })
+                };
+            }
+
+            // For other errors, update status as normal
             await updateJobStatus(jobId, 'error', error.message, context);
         } catch (e) {
             // Ignore
@@ -582,7 +600,34 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY 
                 console.error(`Groq API error (attempt ${attempt}):`, errorText);
 
                 if (groqResponse.status === 429) {
-                    // Rate limit - extract reset time from headers and wait
+                    // Check if this is a daily token limit (TPD) error
+                    if (errorText.includes('tokens per day (TPD)')) {
+                        // Extract retry time from error message (e.g., "Please try again in 7m54.336s")
+                        let retryTimeMsg = '';
+                        const retryMatch = errorText.match(/Please try again in ([^.]+)/);
+                        if (retryMatch) {
+                            retryTimeMsg = ` Tokens will recover in approximately ${retryMatch[1]}.`;
+                        }
+
+                        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                        console.error('🚫 GROQ DAILY TOKEN LIMIT REACHED');
+                        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                        console.error('The daily token limit of 200,000 tokens has been reached.');
+                        console.error('Groq uses a rolling 24-hour window - tokens gradually recover as they age out.');
+                        if (retryTimeMsg) {
+                            console.error(retryTimeMsg);
+                        }
+                        console.error('EOL check cancelled - no database changes will be made.');
+                        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+                        // Throw a specific error type that we can catch and handle differently
+                        const errorMsg = `Daily token limit reached (rolling 24h window). Analysis cancelled to avoid timeout.${retryTimeMsg}`;
+                        const dailyLimitError = new Error(errorMsg);
+                        dailyLimitError.isDailyLimit = true;
+                        throw dailyLimitError;
+                    }
+
+                    // Rate limit - extract reset time from headers and wait (for per-minute limits)
                     const resetTokens = groqResponse.headers.get('x-ratelimit-reset-tokens');
                     let resetSeconds = 60; // Default to 60s if not provided
 
@@ -621,6 +666,11 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY 
         } catch (error) {
             lastError = error;
             console.error(`Groq API attempt ${attempt} failed:`, error.message);
+
+            // If it's a daily limit error, throw immediately without retrying
+            if (error.isDailyLimit) {
+                throw error;
+            }
 
             if (attempt < MAX_RETRIES) {
                 const backoffMs = 2000 * Math.pow(2, attempt - 1);
