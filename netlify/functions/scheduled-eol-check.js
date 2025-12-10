@@ -47,6 +47,8 @@ function getCurrentDeploymentUrl() {
 
 const handler = async (event, context) => {
     console.log('Scheduled EOL check triggered at:', new Date().toISOString());
+    console.log('Context object:', JSON.stringify(context, null, 2));
+    console.log('Event object:', JSON.stringify(event, null, 2));
 
     try {
         const siteUrl = getCurrentDeploymentUrl();
