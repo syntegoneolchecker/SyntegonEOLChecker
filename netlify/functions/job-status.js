@@ -43,7 +43,9 @@ exports.handler = async function(event, context) {
             urls: job.urls || [], // Include URLs array for frontend workflow orchestration
             error: job.error,
             createdAt: job.createdAt,
-            completedAt: job.completedAt
+            completedAt: job.completedAt,
+            isDailyLimit: job.isDailyLimit || false,
+            retrySeconds: job.retrySeconds || null
         };
 
         // If complete, include final result
