@@ -114,6 +114,7 @@ const handler = async (event, context) => {
         // Trigger the background function
         const backgroundUrl = `${siteUrl}/.netlify/functions/auto-eol-check-background`;
         console.log(`Triggering background function at: ${backgroundUrl}`);
+        console.log(`Environment: DEPLOY_PRIME_URL=${process.env.DEPLOY_PRIME_URL}, DEPLOY_URL=${process.env.DEPLOY_URL}, URL=${process.env.URL}`);
 
         const triggerResponse = await fetch(backgroundUrl, {
             method: 'POST',
@@ -125,6 +126,10 @@ const handler = async (event, context) => {
         });
 
         console.log('Background function triggered, status:', triggerResponse.status);
+        if (!triggerResponse.ok) {
+            const errorText = await triggerResponse.text();
+            console.error('Background function error response:', errorText);
+        }
 
         return {
             statusCode: 200,
