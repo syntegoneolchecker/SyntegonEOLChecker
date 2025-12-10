@@ -1,5 +1,6 @@
-// SIMPLIFIED: Read-only job status endpoint (for debugging)
-// All orchestration now happens in auto-eol-check-background's polling loop
+// Read-only job status endpoint
+// Used by frontend for polling manual EOL check progress
+// (Auto-checks poll Blobs directly in auto-eol-check-background)
 const { getJob } = require('./lib/job-storage');
 
 exports.handler = async function(event, context) {
