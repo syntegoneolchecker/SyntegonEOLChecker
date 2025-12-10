@@ -384,6 +384,11 @@ async function pollJobStatus(jobId, manufacturer, model, checkButton) {
             }
 
             if (statusData.status === 'error') {
+                // Check if this is a daily limit error with countdown info
+                if (statusData.isDailyLimit && statusData.retrySeconds) {
+                    console.log(`Daily limit hit, starting countdown for ${statusData.retrySeconds}s`);
+                    startGroqCountdown(statusData.retrySeconds);
+                }
                 throw new Error(statusData.error || 'Job failed');
             }
 

@@ -63,7 +63,7 @@ async function getJob(jobId, context) {
 }
 
 // Update job status
-async function updateJobStatus(jobId, status, error, context) {
+async function updateJobStatus(jobId, status, error, context, metadata = {}) {
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
@@ -74,6 +74,11 @@ async function updateJobStatus(jobId, status, error, context) {
     job.status = status;
     if (error) {
         job.error = error;
+    }
+
+    // Add any additional metadata (e.g., retrySeconds for rate limits)
+    if (metadata && Object.keys(metadata).length > 0) {
+        Object.assign(job, metadata);
     }
 
     await store.setJSON(jobId, job);

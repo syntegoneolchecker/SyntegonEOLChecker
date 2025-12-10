@@ -42,6 +42,31 @@ async function checkGroqTokenAvailability() {
     }
 }
 
+// Parse time string (e.g., "7m54.336s", "2h30m15s") to seconds
+function parseTimeToSeconds(timeStr) {
+    let totalSeconds = 0;
+
+    // Extract hours
+    const hoursMatch = timeStr.match(/(\d+)h/);
+    if (hoursMatch) {
+        totalSeconds += parseInt(hoursMatch[1]) * 3600;
+    }
+
+    // Extract minutes
+    const minutesMatch = timeStr.match(/(\d+)m/);
+    if (minutesMatch) {
+        totalSeconds += parseInt(minutesMatch[1]) * 60;
+    }
+
+    // Extract seconds (with optional decimal)
+    const secondsMatch = timeStr.match(/([\d.]+)s/);
+    if (secondsMatch) {
+        totalSeconds += parseFloat(secondsMatch[1]);
+    }
+
+    return totalSeconds;
+}
+
 exports.handler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, body: 'Method Not Allowed' };
@@ -98,7 +123,11 @@ exports.handler = async function(event, context) {
             // For daily limit errors, we want to update the job status but NOT save any analysis
             // This ensures no database changes are made for this product
             if (error.isDailyLimit) {
-                await updateJobStatus(jobId, 'error', error.message, context);
+                // Store retrySeconds in job metadata so frontend can show countdown
+                await updateJobStatus(jobId, 'error', error.message, context, {
+                    isDailyLimit: true,
+                    retrySeconds: error.retrySeconds || null
+                });
 
                 // Return immediately with a clear message - no retries, no timeouts
                 return {
@@ -106,6 +135,7 @@ exports.handler = async function(event, context) {
                     body: JSON.stringify({
                         error: error.message,
                         isDailyLimit: true,
+                        retrySeconds: error.retrySeconds || null,
                         message: 'Daily Groq token limit reached (rolling 24h window). Analysis cancelled. Tokens gradually recover as they age out of the 24-hour window.'
                     })
                 };
@@ -604,10 +634,15 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY 
                     if (errorText.includes('tokens per day (TPD)')) {
                         // Extract retry time from error message (e.g., "Please try again in 7m54.336s")
                         let retryTimeMsg = '';
+                        let retrySeconds = null;
                         // Match time patterns like: "7m54.336s", "54.336s", "2h30m15s", etc.
                         const retryMatch = errorText.match(/Please try again in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s))/);
                         if (retryMatch) {
-                            retryTimeMsg = ` Tokens will recover in approximately ${retryMatch[1]}.`;
+                            const timeStr = retryMatch[1];
+                            retryTimeMsg = ` Tokens will recover in approximately ${timeStr}.`;
+
+                            // Convert time string to seconds (e.g., "7m54.336s" -> 474.336)
+                            retrySeconds = parseTimeToSeconds(timeStr);
                         }
 
                         console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -625,6 +660,7 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY 
                         const errorMsg = `Daily token limit reached (rolling 24h window). Analysis cancelled to avoid timeout.${retryTimeMsg}`;
                         const dailyLimitError = new Error(errorMsg);
                         dailyLimitError.isDailyLimit = true;
+                        dailyLimitError.retrySeconds = retrySeconds;
                         throw dailyLimitError;
                     }
 
