@@ -350,6 +350,8 @@ async function checkEOL(rowIndex) {
 async function pollJobStatus(jobId, manufacturer, model, checkButton) {
     const maxAttempts = 60; // 60 attempts * 2s = 2 min max
     let attempts = 0;
+    let fetchTriggered = false;
+    let analyzeTriggered = false;
 
     while (attempts < maxAttempts) {
         attempts++;
@@ -383,6 +385,69 @@ async function pollJobStatus(jobId, manufacturer, model, checkButton) {
 
             if (statusData.status === 'error') {
                 throw new Error(statusData.error || 'Job failed');
+            }
+
+            // STEP 1: If URLs are ready, trigger fetch-url
+            if (statusData.status === 'urls_ready' && !fetchTriggered) {
+                console.log(`✓ URLs ready, triggering fetch-url (attempt ${attempts})`);
+
+                // Trigger fetch-url for the first URL
+                if (statusData.urls && statusData.urls.length > 0) {
+                    const firstUrl = statusData.urls[0];
+                    try {
+                        const payload = {
+                            jobId,
+                            urlIndex: firstUrl.index,
+                            url: firstUrl.url,
+                            title: firstUrl.title,
+                            snippet: firstUrl.snippet,
+                            scrapingMethod: firstUrl.scrapingMethod
+                        };
+
+                        // Pass model for KEYENCE interactive searches
+                        if (firstUrl.model) {
+                            payload.model = firstUrl.model;
+                        }
+
+                        // Fire-and-forget (Render scraping takes 30-60s, we can't wait)
+                        fetch('/.netlify/functions/fetch-url', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        }).catch(err => {
+                            console.error(`Failed to trigger fetch-url: ${err.message}`);
+                        });
+
+                        console.log(`✓ fetch-url triggered for ${firstUrl.url}`);
+                        fetchTriggered = true;
+                    } catch (error) {
+                        console.error(`Error triggering fetch-url: ${error.message}`);
+                    }
+                }
+            }
+
+            // STEP 2: Check if scraping is complete and analysis needs to be triggered
+            const allUrlsComplete = statusData.urls && statusData.urls.length > 0 &&
+                                     statusData.urls.every(u => u.status === 'complete');
+
+            if (allUrlsComplete && !analyzeTriggered && statusData.status !== 'analyzing' && statusData.status !== 'complete') {
+                console.log(`✓ All URLs scraped, triggering analyze-job (attempt ${attempts})`);
+
+                try {
+                    // Call analyze-job (fire-and-forget)
+                    fetch('/.netlify/functions/analyze-job', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ jobId })
+                    }).catch(err => {
+                        console.error(`Failed to trigger analyze-job: ${err.message}`);
+                    });
+
+                    console.log(`✓ analyze-job triggered`);
+                    analyzeTriggered = true;
+                } catch (error) {
+                    console.error(`Error triggering analyze-job: ${error.message}`);
+                }
             }
 
             // Still processing - wait 2 seconds before next poll
