@@ -1112,6 +1112,7 @@ function enableAllCheckEOLButtons() {
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
         button.style.display = '';
+        button.textContent = 'Check EOL'; // Reset text to default
     });
     console.log('All Check EOL buttons re-enabled (manual check complete)');
 }
