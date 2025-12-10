@@ -11,12 +11,45 @@ function getGMT9Date() {
     return gmt9Time.toISOString().split('T')[0]; // YYYY-MM-DD
 }
 
+// Helper: Detect current deployment URL for scheduled functions
+function getCurrentDeploymentUrl() {
+    // For scheduled functions, DEPLOY_PRIME_URL and DEPLOY_URL are often undefined
+    // We need to construct the URL based on available environment variables
+
+    // Check if we have explicit deployment URLs (HTTP-triggered functions have these)
+    if (process.env.DEPLOY_PRIME_URL) {
+        return process.env.DEPLOY_PRIME_URL;
+    }
+    if (process.env.DEPLOY_URL) {
+        return process.env.DEPLOY_URL;
+    }
+
+    // For scheduled functions, check CONTEXT to determine deployment type
+    const context = process.env.CONTEXT; // Can be: "production", "deploy-preview", "branch-deploy"
+    const branch = process.env.BRANCH || process.env.HEAD; // Branch name
+    const url = process.env.URL; // Production URL
+
+    console.log(`Deployment context: CONTEXT=${context}, BRANCH=${branch}, URL=${url}`);
+
+    // If we're on a branch deploy, construct the branch URL
+    if (context === 'branch-deploy' && branch && branch !== 'main' && url) {
+        // Extract site name from production URL
+        // e.g., https://syntegoneolchecker.netlify.app → syntegoneolchecker
+        const siteName = url.replace('https://', '').replace('.netlify.app', '');
+        const branchUrl = `https://${branch}--${siteName}.netlify.app`;
+        console.log(`Constructed branch deploy URL: ${branchUrl}`);
+        return branchUrl;
+    }
+
+    // Default to production URL
+    return url || 'https://syntegoneolchecker.netlify.app';
+}
+
 const handler = async (event, context) => {
     console.log('Scheduled EOL check triggered at:', new Date().toISOString());
 
     try {
-        // Use DEPLOY_PRIME_URL for branch deploys, URL for production
-        const siteUrl = process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || 'https://develop--syntegoneolchecker.netlify.app';
+        const siteUrl = getCurrentDeploymentUrl();
         console.log(`Using site URL: ${siteUrl}`);
 
         const store = getStore({
