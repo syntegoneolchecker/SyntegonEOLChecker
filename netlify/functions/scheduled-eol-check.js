@@ -12,21 +12,54 @@ function getGMT9Date() {
 }
 
 // Helper: Detect current deployment URL for scheduled functions
-function getCurrentDeploymentUrl() {
-    // WORKAROUND: Scheduled functions in Netlify only run on production and don't have
-    // access to deployment context variables (CONTEXT, BRANCH, etc.).
-    //
-    // Solution: Use an environment variable to explicitly specify the target deployment URL
-    // This allows testing on branch deploys by setting SCHEDULED_FUNCTION_TARGET_URL
-    // in Netlify's environment variables for that specific deployment.
+function getCurrentDeploymentUrl(event, context) {
+    // Scheduled functions have the deployment URL in the event object, not environment variables!
+    // Priority order:
+    // 1. Extract from event.rawUrl (most reliable)
+    // 2. Extract from event.headers.host
+    // 3. Decode from context.clientContext.custom.netlify
+    // 4. Fall back to environment variables
 
-    // Priority 1: Explicit override for testing (set in Netlify dashboard per deployment)
+    // Priority 1: Extract from rawUrl (e.g., "https://develop--site.netlify.app/.netlify/functions/...")
+    if (event && event.rawUrl) {
+        try {
+            const url = new URL(event.rawUrl);
+            const siteUrl = `${url.protocol}//${url.host}`;
+            console.log(`Detected site URL from event.rawUrl: ${siteUrl}`);
+            return siteUrl;
+        } catch (error) {
+            console.warn('Failed to parse event.rawUrl:', error.message);
+        }
+    }
+
+    // Priority 2: Extract from headers.host
+    if (event && event.headers && event.headers.host) {
+        const protocol = event.headers['x-forwarded-proto'] || 'https';
+        const siteUrl = `${protocol}://${event.headers.host}`;
+        console.log(`Detected site URL from event.headers.host: ${siteUrl}`);
+        return siteUrl;
+    }
+
+    // Priority 3: Decode from context.clientContext.custom.netlify (base64-encoded JSON)
+    if (context && context.clientContext && context.clientContext.custom && context.clientContext.custom.netlify) {
+        try {
+            const decoded = Buffer.from(context.clientContext.custom.netlify, 'base64').toString('utf-8');
+            const data = JSON.parse(decoded);
+            if (data.site_url) {
+                console.log(`Detected site URL from context.clientContext: ${data.site_url}`);
+                return data.site_url;
+            }
+        } catch (error) {
+            console.warn('Failed to decode context.clientContext.custom.netlify:', error.message);
+        }
+    }
+
+    // Priority 4: Fallback to environment variables (rarely available for scheduled functions)
     if (process.env.SCHEDULED_FUNCTION_TARGET_URL) {
         console.log(`Using explicit target URL: ${process.env.SCHEDULED_FUNCTION_TARGET_URL}`);
         return process.env.SCHEDULED_FUNCTION_TARGET_URL;
     }
 
-    // Priority 2: Standard deployment URLs (available for HTTP-triggered functions)
     if (process.env.DEPLOY_PRIME_URL) {
         return process.env.DEPLOY_PRIME_URL;
     }
@@ -34,32 +67,17 @@ function getCurrentDeploymentUrl() {
         return process.env.DEPLOY_URL;
     }
 
-    // Priority 3: Check deployment context (often undefined for scheduled functions)
-    const context = process.env.CONTEXT;
-    const branch = process.env.BRANCH || process.env.HEAD;
-    const url = process.env.URL;
-
-    console.log(`Deployment context: CONTEXT=${context}, BRANCH=${branch}, URL=${url}`);
-
-    // If we're on a branch deploy, try to construct the branch URL
-    if (context === 'branch-deploy' && branch && branch !== 'main' && url) {
-        const siteName = url.replace('https://', '').replace('.netlify.app', '');
-        const branchUrl = `https://${branch}--${siteName}.netlify.app`;
-        console.log(`Constructed branch deploy URL: ${branchUrl}`);
-        return branchUrl;
-    }
-
-    // Priority 4: Default to production URL
-    return url || 'https://syntegoneolchecker.netlify.app';
+    // Priority 5: Default to production URL
+    const fallbackUrl = process.env.URL || 'https://syntegoneolchecker.netlify.app';
+    console.log(`Using fallback URL: ${fallbackUrl}`);
+    return fallbackUrl;
 }
 
 const handler = async (event, context) => {
     console.log('Scheduled EOL check triggered at:', new Date().toISOString());
-    console.log('Context object:', JSON.stringify(context, null, 2));
-    console.log('Event object:', JSON.stringify(event, null, 2));
 
     try {
-        const siteUrl = getCurrentDeploymentUrl();
+        const siteUrl = getCurrentDeploymentUrl(event, context);
         console.log(`Using site URL: ${siteUrl}`);
 
         const store = getStore({
