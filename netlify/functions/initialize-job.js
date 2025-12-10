@@ -522,7 +522,6 @@ exports.handler = async function(event, context) {
                     'tps.co.jp/eol/',
                     'ccs-inc.co.jp',
                     'shinkoh-faulhaber.jp',
-                    'misumi-ec.com',
                     'anelva.canon',
                     'takabel.com',
                     'ysol.co.jp',
