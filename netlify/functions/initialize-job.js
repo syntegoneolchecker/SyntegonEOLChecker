@@ -62,6 +62,12 @@ function getManufacturerUrl(maker, model) {
                 requires404Check: true // Check if page is 404 (contains "Page not found")
             };
 
+        case 'MURR':
+            return {
+                url: `https://shop.murrinc.com/index.php?lang=1&cl=search&searchparam=${encodedModel}`,
+                scrapingMethod: 'render'
+            };
+
         default:
             return null; // No direct URL strategy - use Tavily search
     }
