@@ -203,6 +203,41 @@ async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
             console.log(`Polling attempt ${attempts}/${maxAttempts} (~${Math.round(attempts * 2 / 60)} min elapsed)...`);
         }
 
+        // RENDER HEALTH CHECK: At attempt 15 (~30 seconds), check if Render crashed
+        // This saves ~90 seconds compared to waiting for full timeout (60 attempts = 2 minutes)
+        if (attempts === 15) {
+            console.log('Polling attempt 15/60 (~30s elapsed) - checking Render service health...');
+            try {
+                const renderHealthUrl = 'https://eolscrapingservice.onrender.com/health';
+                const healthResponse = await fetch(renderHealthUrl, {
+                    signal: AbortSignal.timeout(5000) // 5s timeout
+                });
+
+                if (!healthResponse.ok) {
+                    console.error(`⚠️  Render service unhealthy at attempt 15 (HTTP ${healthResponse.status})`);
+                    console.log('Likely cause: Render crashed during scraping. Skipping this check to save time.');
+
+                    return {
+                        status: 'UNKNOWN',
+                        explanation: 'EOL check skipped - scraping service crashed during processing (detected at 30s). This product will be retried on the next check cycle.',
+                        successor: { status: 'UNKNOWN', model: null, explanation: '' }
+                    };
+                }
+
+                const healthData = await healthResponse.json();
+                console.log(`✓ Render service healthy (memory: ${healthData.memory?.rss || 'N/A'}MB, requests: ${healthData.requestCount || 'N/A'})`);
+            } catch (healthError) {
+                console.error(`⚠️  Render health check failed at attempt 15: ${healthError.message}`);
+                console.log('Assuming Render crashed. Skipping this check to save time.');
+
+                return {
+                    status: 'UNKNOWN',
+                    explanation: 'EOL check skipped - scraping service appears to have crashed (health check failed at 30s). This product will be retried on the next check cycle.',
+                    successor: { status: 'UNKNOWN', model: null, explanation: '' }
+                };
+            }
+        }
+
         try {
             // Poll Blobs directly
             const job = await jobStore.get(jobId, { type: 'json' });
