@@ -13,10 +13,20 @@ function getGMT9Date() {
 
 // Helper: Detect current deployment URL for scheduled functions
 function getCurrentDeploymentUrl() {
-    // For scheduled functions, DEPLOY_PRIME_URL and DEPLOY_URL are often undefined
-    // We need to construct the URL based on available environment variables
+    // WORKAROUND: Scheduled functions in Netlify only run on production and don't have
+    // access to deployment context variables (CONTEXT, BRANCH, etc.).
+    //
+    // Solution: Use an environment variable to explicitly specify the target deployment URL
+    // This allows testing on branch deploys by setting SCHEDULED_FUNCTION_TARGET_URL
+    // in Netlify's environment variables for that specific deployment.
 
-    // Check if we have explicit deployment URLs (HTTP-triggered functions have these)
+    // Priority 1: Explicit override for testing (set in Netlify dashboard per deployment)
+    if (process.env.SCHEDULED_FUNCTION_TARGET_URL) {
+        console.log(`Using explicit target URL: ${process.env.SCHEDULED_FUNCTION_TARGET_URL}`);
+        return process.env.SCHEDULED_FUNCTION_TARGET_URL;
+    }
+
+    // Priority 2: Standard deployment URLs (available for HTTP-triggered functions)
     if (process.env.DEPLOY_PRIME_URL) {
         return process.env.DEPLOY_PRIME_URL;
     }
@@ -24,29 +34,29 @@ function getCurrentDeploymentUrl() {
         return process.env.DEPLOY_URL;
     }
 
-    // For scheduled functions, check CONTEXT to determine deployment type
-    const context = process.env.CONTEXT; // Can be: "production", "deploy-preview", "branch-deploy"
-    const branch = process.env.BRANCH || process.env.HEAD; // Branch name
-    const url = process.env.URL; // Production URL
+    // Priority 3: Check deployment context (often undefined for scheduled functions)
+    const context = process.env.CONTEXT;
+    const branch = process.env.BRANCH || process.env.HEAD;
+    const url = process.env.URL;
 
     console.log(`Deployment context: CONTEXT=${context}, BRANCH=${branch}, URL=${url}`);
 
-    // If we're on a branch deploy, construct the branch URL
+    // If we're on a branch deploy, try to construct the branch URL
     if (context === 'branch-deploy' && branch && branch !== 'main' && url) {
-        // Extract site name from production URL
-        // e.g., https://syntegoneolchecker.netlify.app → syntegoneolchecker
         const siteName = url.replace('https://', '').replace('.netlify.app', '');
         const branchUrl = `https://${branch}--${siteName}.netlify.app`;
         console.log(`Constructed branch deploy URL: ${branchUrl}`);
         return branchUrl;
     }
 
-    // Default to production URL
+    // Priority 4: Default to production URL
     return url || 'https://syntegoneolchecker.netlify.app';
 }
 
 const handler = async (event, context) => {
     console.log('Scheduled EOL check triggered at:', new Date().toISOString());
+    console.log('Context object:', JSON.stringify(context, null, 2));
+    console.log('Event object:', JSON.stringify(event, null, 2));
 
     try {
         const siteUrl = getCurrentDeploymentUrl();
