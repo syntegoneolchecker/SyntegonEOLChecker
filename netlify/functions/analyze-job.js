@@ -106,7 +106,7 @@ exports.handler = async function(event, context) {
                     body: JSON.stringify({
                         error: error.message,
                         isDailyLimit: true,
-                        message: 'Daily Groq token limit reached. Analysis cancelled. The limit will reset in 24 hours from first usage today.'
+                        message: 'Daily Groq token limit reached (rolling 24h window). Analysis cancelled. Tokens gradually recover as they age out of the 24-hour window.'
                     })
                 };
             }
@@ -602,16 +602,27 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY 
                 if (groqResponse.status === 429) {
                     // Check if this is a daily token limit (TPD) error
                     if (errorText.includes('tokens per day (TPD)')) {
+                        // Extract retry time from error message (e.g., "Please try again in 7m54.336s")
+                        let retryTimeMsg = '';
+                        const retryMatch = errorText.match(/Please try again in ([^.]+)/);
+                        if (retryMatch) {
+                            retryTimeMsg = ` Tokens will recover in approximately ${retryMatch[1]}.`;
+                        }
+
                         console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
                         console.error('🚫 GROQ DAILY TOKEN LIMIT REACHED');
                         console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
                         console.error('The daily token limit of 200,000 tokens has been reached.');
-                        console.error('This limit will fully reset in 24 hours from the first token usage today.');
+                        console.error('Groq uses a rolling 24-hour window - tokens gradually recover as they age out.');
+                        if (retryTimeMsg) {
+                            console.error(retryTimeMsg);
+                        }
                         console.error('EOL check cancelled - no database changes will be made.');
                         console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
                         // Throw a specific error type that we can catch and handle differently
-                        const dailyLimitError = new Error('Daily token limit reached. Analysis cancelled to avoid timeout. Please try again in 24 hours.');
+                        const errorMsg = `Daily token limit reached (rolling 24h window). Analysis cancelled to avoid timeout.${retryTimeMsg}`;
+                        const dailyLimitError = new Error(errorMsg);
                         dailyLimitError.isDailyLimit = true;
                         throw dailyLimitError;
                     }
