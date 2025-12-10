@@ -144,5 +144,4 @@ const handler = async (event, context) => {
 };
 
 // Schedule to run daily at 12:00 UTC (21:00 GMT+9)
-// exports.handler = schedule('0 12 * * *', handler);
-exports.handler = schedule('30 6 * * *', handler);
+exports.handler = schedule('0 12 * * *', handler);
