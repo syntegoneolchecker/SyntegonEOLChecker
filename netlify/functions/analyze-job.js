@@ -508,7 +508,7 @@ ANALYSIS RULES:
 
 5. SUCCESSOR IDENTIFICATION
    - If discontinued: Search all content for explicit successor mentions
-     ("replaced by X", "successor: X", "recommended replacement: X")
+     ("replaced by X", "successor: X", "recommended replacement: X", or any equivalent statements)
    - If active: No successor needed
    - Only report if explicitly stated for this exact product
 
