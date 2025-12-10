@@ -487,6 +487,7 @@ ANALYSIS RULES:
    - Available for purchase (not auction/secondhand sites)
    - Listed as a replacement/successor for other products
    - Has recent documentation, pricing, or specifications listed
+   - When provided with a product specification page with no indication of discontinuation, assume that the product is ACTIVE
    - **CRITICAL: If there is a price or a delivery date provided for "${model}", then the product is ACTIVE**
    - **CRITICAL: If "${model}" is listed as the REPLACEMENT/SUCCESSOR for a discontinued product, then "${model}" is ACTIVE**
 
