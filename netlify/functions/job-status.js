@@ -39,6 +39,7 @@ exports.handler = async function(event, context) {
             model: job.model,
             urlCount: job.urls ? job.urls.length : 0,
             completedUrls: job.urls ? job.urls.filter(u => u.status === 'complete').length : 0,
+            urls: job.urls || [], // Include URLs array for frontend workflow orchestration
             error: job.error,
             createdAt: job.createdAt,
             completedAt: job.completedAt
