@@ -39,64 +39,6 @@ function validateInitializeJob(input) {
 }
 
 /**
- * Validate URL input
- * @param {string} url - URL to validate
- * @returns {Object} - { valid: boolean, error: string|null }
- */
-function validateUrl(url) {
-    if (!url || typeof url !== 'string') {
-        return { valid: false, error: 'URL is required and must be a string' };
-    }
-
-    if (url.trim().length === 0) {
-        return { valid: false, error: 'URL cannot be empty' };
-    }
-
-    if (url.length > 2000) {
-        return { valid: false, error: 'URL too long (max 2000 characters)' };
-    }
-
-    // Basic URL format validation
-    try {
-        const parsed = new URL(url);
-        if (!['http:', 'https:'].includes(parsed.protocol)) {
-            return { valid: false, error: 'URL must use HTTP or HTTPS protocol' };
-        }
-    } catch (e) {
-        return { valid: false, error: 'Invalid URL format' };
-    }
-
-    return { valid: true, error: null };
-}
-
-/**
- * Validate jobId
- * @param {string} jobId - Job ID to validate
- * @returns {Object} - { valid: boolean, error: string|null }
- */
-function validateJobId(jobId) {
-    if (!jobId || typeof jobId !== 'string') {
-        return { valid: false, error: 'Job ID is required and must be a string' };
-    }
-
-    if (jobId.trim().length === 0) {
-        return { valid: false, error: 'Job ID cannot be empty' };
-    }
-
-    // Job IDs should be reasonable length (generated IDs are typically 20-50 chars)
-    if (jobId.length > 100) {
-        return { valid: false, error: 'Job ID too long' };
-    }
-
-    // Basic alphanumeric + dash/underscore validation
-    if (!/^[a-zA-Z0-9_-]+$/.test(jobId)) {
-        return { valid: false, error: 'Job ID contains invalid characters' };
-    }
-
-    return { valid: true, error: null };
-}
-
-/**
  * Validate CSV data array
  * @param {Array} data - CSV data to validate
  * @returns {Object} - { valid: boolean, error: string|null }
@@ -162,8 +104,6 @@ function sanitizeString(input, maxLength = 1000) {
 
 module.exports = {
     validateInitializeJob,
-    validateUrl,
-    validateJobId,
     validateCsvData,
     sanitizeString
 };
