@@ -1,6 +1,7 @@
 // Initialize EOL check job - Search with Tavily and save URLs
 const { createJob, saveJobUrls, saveFinalResult, saveUrlResult } = require('./lib/job-storage');
 const { validateInitializeJob, sanitizeString } = require('./lib/validators');
+const { tavily } = require('@tavily/core');
 
 /**
  * Get manufacturer-specific direct URL if available
@@ -484,18 +485,17 @@ exports.handler = async function(event, context) {
         // Perform Tavily search (URLs only - no raw_content)
         const searchQuery = `${maker} ${model}`;
 
-        const tavilyResponse = await fetch('https://api.tavily.com/search', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                api_key: process.env.TAVILY_API_KEY,
-                query: searchQuery,
-                search_depth: 'advanced',
-                max_results: 2,  // 2 URLs to stay within token limits
-                // NOTE: Removed include_raw_content - we'll scrape with Render instead
-                include_domains: [
+        // Initialize Tavily client
+        const tavilyClient = tavily({ apiKey: process.env.TAVILY_API_KEY });
+
+        // Perform search using SDK
+        let tavilyData;
+        try {
+            tavilyData = await tavilyClient.search(searchQuery, {
+                searchDepth: 'advanced',
+                maxResults: 2,  // 2 URLs to stay within token limits
+                // NOTE: No includeRawContent - we'll scrape with Render instead
+                includeDomains: [
                     'ccs-grp.com',
                     'automationdirect.com',
                     'takigen.co.jp',
@@ -559,23 +559,19 @@ exports.handler = async function(event, context) {
                     'omron.co.jp',
                     'ntn.co.jp'
                 ]
-            })
-        });
-
-        if (!tavilyResponse.ok) {
-            const errorText = await tavilyResponse.text();
-            console.error('Tavily API error:', errorText);
+            });
+        } catch (error) {
+            console.error('Tavily API error:', error);
             return {
                 statusCode: 500,
                 headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    error: `Tavily API failed: ${tavilyResponse.status}`,
-                    details: errorText
+                    error: 'Tavily API failed',
+                    details: error.message
                 })
             };
         }
 
-        const tavilyData = await tavilyResponse.json();
         console.log(`Tavily returned ${tavilyData.results?.length || 0} results`);
 
         if (!tavilyData.results || tavilyData.results.length === 0) {
