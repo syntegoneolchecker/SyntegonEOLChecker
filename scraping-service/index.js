@@ -196,7 +196,7 @@ async function extractPDFText(pdfBuffer, url) {
 
         if (fullText.length === 0) {
             console.warn(`PDF parsed but extracted 0 characters from ${url}`);
-            return `[PDF contains no extractable text - may be image-based PDF]`;
+            return `[PDF contains no extractable text - may be encrypted, password-protected, or image-based. Please review this product manually.]`;
         }
 
         console.log(`✓ Successfully extracted ${fullText.length} chars from PDF (${Math.min(5, data.numpages)} pages)`);
@@ -205,6 +205,12 @@ async function extractPDFText(pdfBuffer, url) {
 
     } catch (error) {
         console.error(`PDF extraction error from ${url}:`, error.message);
+
+        // Check if error is related to encryption
+        if (error.message.includes('Crypt') || error.message.includes('encrypt') || error.message.includes('password')) {
+            return `[PDF is encrypted or password-protected and cannot be read. Please review this product manually.]`;
+        }
+
         return `[PDF extraction failed: ${error.message}]`;
     }
 }
@@ -243,6 +249,25 @@ async function tryFastFetch(url, timeout = 5000) {
         // Handle PDF files
         if (contentType.includes('application/pdf') || isPDF) {
             console.log(`Detected PDF (Content-Type: ${contentType}), extracting text: ${url}`);
+
+            // Check PDF size limit (20 MB = 20,971,520 bytes)
+            const contentLength = response.headers.get('content-length');
+            const MAX_PDF_SIZE = 20 * 1024 * 1024; // 20 MB
+
+            if (contentLength) {
+                const sizeBytes = parseInt(contentLength, 10);
+                const sizeMB = (sizeBytes / 1024 / 1024).toFixed(2);
+
+                if (sizeBytes > MAX_PDF_SIZE) {
+                    console.warn(`⚠️  PDF too large (${sizeMB} MB > 20 MB), skipping: ${url}`);
+                    return `[PDF file is too large (${sizeMB} MB). Files over 20 MB cannot be processed due to memory constraints. Please review this product manually.]`;
+                }
+
+                console.log(`PDF size: ${sizeMB} MB (within 20 MB limit)`);
+            } else {
+                console.warn(`⚠️  No Content-Length header for PDF, proceeding with caution: ${url}`);
+            }
+
             const pdfBuffer = Buffer.from(await response.arrayBuffer());
             return await extractPDFText(pdfBuffer, url);
         }
