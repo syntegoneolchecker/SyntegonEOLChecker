@@ -71,13 +71,7 @@ function isAutoCheckEnabled(row) {
     const autoCheckValue = (row[12] || '').trim().toUpperCase();
 
     // Auto Check column (column 12):
-    // - "YES" or blank/whitespace: enabled (process this product)
     // - "NO": disabled (skip this product)
-
-    if (autoCheckValue === '' || autoCheckValue === 'YES') {
-        return true;
-    }
-
     if (autoCheckValue === 'NO') {
         return false;
     }
