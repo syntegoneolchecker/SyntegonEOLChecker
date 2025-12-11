@@ -117,6 +117,23 @@ function sortTable(columnIndex) {
     const rows = data.slice(1);
 
     rows.sort((a, b) => {
+        // Special handling for Information Date column (column 11)
+        if (columnIndex === 11) {
+            const aVal = a[columnIndex] || '';
+            const bVal = b[columnIndex] || '';
+
+            // Parse dates - handle empty values
+            const aDate = aVal ? new Date(aVal) : new Date(0); // Epoch for empty dates
+            const bDate = bVal ? new Date(bVal) : new Date(0);
+
+            if (currentSort.direction === 'asc') {
+                return aDate - bDate; // Oldest to newest
+            } else {
+                return bDate - aDate; // Newest to oldest
+            }
+        }
+
+        // Default lexicographical sorting for all other columns
         const aVal = (a[columnIndex] || '').toString().toLowerCase();
         const bVal = (b[columnIndex] || '').toString().toLowerCase();
 
