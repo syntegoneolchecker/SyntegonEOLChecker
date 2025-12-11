@@ -561,7 +561,8 @@ exports.handler = async function(event, context) {
                     'sony.co.jp',
                     'orientalmotor.co.jp',
                     'keyence.co.jp',
-                    'omron.co.jp',
+                    'fa.omron.co.jp',
+                    'tme.com/jp',
                     'ntn.co.jp'
                 ]
             });
