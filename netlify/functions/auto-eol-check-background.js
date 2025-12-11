@@ -10,6 +10,13 @@ function getGMT9Date() {
     return gmt9Time.toISOString().split('T')[0];
 }
 
+// Helper: Get current date and time in GMT+9 timezone (formatted like manual checks)
+function getGMT9DateTime() {
+    const now = new Date();
+    // Use Asia/Tokyo timezone to match GMT+9
+    return now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' });
+}
+
 // Helper: Wake up Render scraping service (cold start)
 async function wakeRenderService() {
     console.log('Waking up Render scraping service...');
@@ -433,7 +440,7 @@ async function updateProduct(sapNumber, result) {
         row[6] = result.explanation || ''; // Status Comment
         row[7] = result.successor?.model || ''; // Successor Model
         row[8] = result.successor?.explanation || ''; // Successor Comment
-        row[11] = new Date().toLocaleString(); // Information Date
+        row[11] = getGMT9DateTime(); // Information Date (GMT+9 to match manual checks)
 
         // Convert back to CSV using shared utility
         const updatedCsv = toCSV(data);
