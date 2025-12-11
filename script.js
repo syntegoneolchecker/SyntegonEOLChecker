@@ -910,7 +910,7 @@ async function checkRenderHealth() {
         console.error('Render health check failed:', error);
 
         if (error.name === 'AbortError') {
-            renderStatusElement.textContent = 'Timeout (>60s)';
+            renderStatusElement.textContent = 'Timeout (>60s), please reload the page';
         } else {
             renderStatusElement.textContent = `Offline (${error.message})`;
         }
