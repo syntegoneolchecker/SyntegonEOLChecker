@@ -689,6 +689,11 @@ async function saveToServer() {
     }
 }
 
+async function manualSaveDatabase() {
+    showStatus('Saving database...');
+    await saveToServer();
+}
+
 async function loadFromServer() {
     try {
         const response = await fetch('/.netlify/functions/get-csv');
