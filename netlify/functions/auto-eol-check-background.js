@@ -59,6 +59,26 @@ async function checkGroqTokens(siteUrl) {
     }
 }
 
+// Helper: Check if Auto Check is enabled for a product row
+function isAutoCheckEnabled(row) {
+    const autoCheckValue = (row[12] || '').trim().toUpperCase();
+
+    // Auto Check column (column 12):
+    // - "YES" or blank/whitespace: enabled (process this product)
+    // - "NO": disabled (skip this product)
+
+    if (autoCheckValue === '' || autoCheckValue === 'YES') {
+        return true;
+    }
+
+    if (autoCheckValue === 'NO') {
+        return false;
+    }
+
+    // For any other value, default to enabled
+    return true;
+}
+
 // Helper: Find next product to check
 async function findNextProduct() {
     try {
@@ -85,15 +105,25 @@ async function findNextProduct() {
 
         const rows = data.slice(1); // Skip header
 
+        // Filter out products with Auto Check = NO
+        const autoCheckEnabledRows = rows.filter(row => isAutoCheckEnabled(row));
+
+        if (autoCheckEnabledRows.length === 0) {
+            console.log('No products with Auto Check enabled');
+            return null;
+        }
+
+        console.log(`Total products: ${rows.length}, Auto Check enabled: ${autoCheckEnabledRows.length}, Auto Check disabled: ${rows.length - autoCheckEnabledRows.length}`);
+
         // Priority 1: Products with empty Information Date (column 11)
-        const unchecked = rows.filter(row => !row[11] || row[11].trim() === '');
+        const unchecked = autoCheckEnabledRows.filter(row => !row[11] || row[11].trim() === '');
         if (unchecked.length > 0) {
-            console.log(`Found ${unchecked.length} unchecked products, selecting first`);
+            console.log(`Found ${unchecked.length} unchecked products (with Auto Check enabled), selecting first`);
             return unchecked[0];
         }
 
         // Priority 2: Product with oldest Information Date
-        const checked = rows.filter(row => row[11] && row[11].trim() !== '');
+        const checked = autoCheckEnabledRows.filter(row => row[11] && row[11].trim() !== '');
         if (checked.length === 0) {
             console.log('All products checked, no oldest found');
             return null;
@@ -106,7 +136,7 @@ async function findNextProduct() {
             return dateA - dateB;
         });
 
-        console.log(`Found ${checked.length} checked products, selecting oldest: ${checked[0][11]}`);
+        console.log(`Found ${checked.length} checked products (with Auto Check enabled), selecting oldest: ${checked[0][11]}`);
         return checked[0];
 
     } catch (error) {
