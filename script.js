@@ -274,6 +274,16 @@ async function checkEOL(rowIndex) {
         showStatus(`Waking up scraping service...`, 'info', false);
         await checkRenderHealth();
 
+        // Check if health check failed or timed out
+        const renderStatusElement = document.getElementById('render-status');
+        const renderStatusText = renderStatusElement.textContent;
+
+        if (renderStatusText.includes('Timeout') || renderStatusText.includes('Offline') || renderStatusText.includes('Error')) {
+            showStatus(`Error: Render Scraping Service is not available (${renderStatusText}). Please reload the page and try again.`, 'error');
+            enableAllCheckEOLButtons();
+            return; // Abort the EOL check
+        }
+
         checkButton.textContent = 'Initializing...';
         showStatus(`Initializing EOL check for ${manufacturer} ${model}...`, 'info', false);
 
