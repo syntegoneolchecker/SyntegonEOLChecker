@@ -525,6 +525,7 @@ exports.handler = async function(event, context) {
                     'nbk1560.com',
                     'habasit.com',
                     'nagoya.sc',
+                    'amazon.co.jp',
                     'tps.co.jp/eol/',
                     'ccs-inc.co.jp',
                     'shinkoh-faulhaber.jp',
