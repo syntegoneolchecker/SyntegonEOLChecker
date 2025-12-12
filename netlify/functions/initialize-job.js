@@ -277,6 +277,7 @@ function extractTakigenProductUrl(html) {
 /**
  * Scrape IDEC search results and extract exact product URL using BrowserQL
  * IDEC website uses JavaScript (Vue.js) to render search results, so we need browser execution
+ * IMPORTANT: IDEC Japan website redirects to US site if accessed from non-JP locations
  * Returns the product URL path (e.g., "/idec-jp/ja/JPY/.../p/HW7D-B111111WB") or null if not found
  */
 async function scrapeIdecProductUrl(searchUrl, model) {
@@ -286,34 +287,37 @@ async function scrapeIdecProductUrl(searchUrl, model) {
         throw new Error('BROWSERQL_API_KEY environment variable not set');
     }
 
-    console.log(`Scraping IDEC search results with BrowserQL: ${searchUrl}`);
+    console.log(`Scraping IDEC search results with BrowserQL (JP proxy): ${searchUrl}`);
 
     // BrowserQL query that extracts product URLs directly in the browser
+    // Uses Japanese proxy to avoid redirect to US site
     const query = `
         mutation ScrapeIdecSearch {
+            proxy(url: "*", country: JP, sticky: true) {
+                time
+            }
             goto(
                 url: "${searchUrl}"
-                waitUntil: networkIdle
+                waitUntil: firstContentfulPaint
             ) {
                 status
             }
-
+            waitForSelector(selector: ".listing__elements", timeout: 10000, visible: true) {
+                selector
+            }
             productUrl: evaluate(content: """
                 (() => {
                     try {
                         const model = "${model}";
                         const expectedSuffix = '/p/' + model;
 
-                        // Find all item-box divs within listing__elements
                         const listingDiv = document.querySelector('.listing__elements');
                         if (!listingDiv) {
                             return JSON.stringify({ url: null, error: 'listing__elements not found' });
                         }
 
                         const itemBoxes = listingDiv.querySelectorAll('.item-box.row.no-gutters.bumper');
-                        console.log('Found ' + itemBoxes.length + ' IDEC search results');
 
-                        // Check each search result for exact match
                         for (const itemBox of itemBoxes) {
                             const imageDiv = itemBox.querySelector('.item-box__image');
                             if (!imageDiv) continue;
@@ -324,11 +328,7 @@ async function scrapeIdecProductUrl(searchUrl, model) {
                             const href = link.getAttribute('href');
                             if (!href) continue;
 
-                            console.log('Checking href: ' + href);
-
-                            // Check if this href ends with /p/{exact_model_name}
                             if (href.endsWith(expectedSuffix)) {
-                                console.log('Found exact match: ' + href);
                                 return JSON.stringify({ url: href, error: null });
                             }
                         }
