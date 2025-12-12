@@ -68,6 +68,14 @@ function getManufacturerUrl(maker, model) {
                 scrapingMethod: 'render'
             };
 
+        case 'IDEC':
+            return {
+                url: `https://jp.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`,
+                scrapingMethod: 'render',
+                requiresValidation: true,
+                requiresExtraction: true // Extract product URL from search results
+            };
+
         default:
             return null; // No direct URL strategy - use Tavily search
     }
@@ -266,6 +274,71 @@ function extractTakigenProductUrl(html) {
     }
 }
 
+/**
+ * Extract exact product URL from IDEC search results HTML
+ * Returns the product URL path (e.g., "/idec-jp/ja/JPY/.../p/HW7D-B111111WB") or null if not found
+ * Only returns a URL if it exactly matches the model name after /p/
+ */
+function extractIdecProductUrl(html, model) {
+    if (!html || !model) return null;
+
+    try {
+        // Find the listing__elements div content
+        const listingStartPattern = /<div class="listing__elements">/;
+        const listingStartMatch = html.match(listingStartPattern);
+
+        if (!listingStartMatch) {
+            console.log('IDEC listing__elements div not found in HTML');
+            return null;
+        }
+
+        // Get the content starting from listing__elements
+        const listingContent = html.substring(listingStartMatch.index);
+
+        // Find all item-box divs with class "item-box row no-gutters bumper "
+        // Note: The class name has a trailing space which is important
+        // Use a simpler pattern that just finds the opening tag
+        const itemBoxPattern = /<div class="item-box row no-gutters bumper ">/g;
+        const itemBoxMatches = [...listingContent.matchAll(itemBoxPattern)];
+
+        console.log(`Found ${itemBoxMatches.length} IDEC search results to check`);
+
+        // Check each search result for exact match
+        for (const itemBoxMatch of itemBoxMatches) {
+            // Extract a reasonable chunk of content after the item-box opening tag
+            const startIndex = itemBoxMatch.index;
+            const chunk = listingContent.substring(startIndex, startIndex + 2000);
+
+            // Find the item-box__image div containing the product link
+            const imageDivPattern = /<div class="item-box__image col-xs-3 p-0">.*?<a href="([^"]+)"/s;
+            const imageDivMatch = chunk.match(imageDivPattern);
+
+            if (!imageDivMatch) {
+                console.log('No href found in this item-box');
+                continue;
+            }
+
+            const href = imageDivMatch[1];
+
+            // Check if this href ends with /p/{exact_model_name}
+            const expectedSuffix = `/p/${model}`;
+            if (href.endsWith(expectedSuffix)) {
+                console.log(`Found exact IDEC product match: ${href}`);
+                return href;
+            } else {
+                console.log(`IDEC product href does not match exactly: ${href} (expected to end with ${expectedSuffix})`);
+            }
+        }
+
+        console.log(`No exact IDEC product match found for model: ${model}`);
+        return null;
+
+    } catch (error) {
+        console.error(`Error extracting IDEC product URL: ${error.message}`);
+        return null;
+    }
+}
+
 exports.handler = async function(event, context) {
     console.log('Initialize job request');
 
@@ -322,23 +395,35 @@ exports.handler = async function(event, context) {
                 console.log(`URL requires validation for ${maker}: ${manufacturerStrategy.url}`);
 
                 try {
-                    // Special handling for Takigen - extract product URL from search results
+                    // Special handling for Takigen and IDEC - extract product URL from search results
                     if (manufacturerStrategy.requiresExtraction) {
-                        console.log(`Extracting product URL from Takigen search results`);
+                        console.log(`Extracting product URL from ${maker} search results`);
 
                         // Fetch the search results HTML
                         const searchHtml = await fetchHtml(manufacturerStrategy.url);
 
-                        // Extract the first product URL
-                        const productPath = extractTakigenProductUrl(searchHtml);
+                        // Extract the product URL based on manufacturer
+                        let productPath = null;
+                        let baseUrl = '';
+                        let strategyName = '';
+
+                        if (maker === 'タキゲン') {
+                            productPath = extractTakigenProductUrl(searchHtml);
+                            baseUrl = 'https://www.takigen.co.jp';
+                            strategyName = 'takigen_extracted_url';
+                        } else if (maker === 'IDEC') {
+                            productPath = extractIdecProductUrl(searchHtml, model);
+                            baseUrl = 'https://jp.idec.com';
+                            strategyName = 'idec_extracted_url';
+                        }
 
                         if (!productPath) {
-                            console.log(`No product found in Takigen search results, falling back to Tavily search`);
+                            console.log(`No product found in ${maker} search results, falling back to Tavily search`);
                             // Fall through to Tavily search below
                         } else {
                             // Build the full product URL
-                            const productUrl = `https://www.takigen.co.jp${productPath}`;
-                            console.log(`Extracted Takigen product URL: ${productUrl}`);
+                            const productUrl = `${baseUrl}${productPath}`;
+                            console.log(`Extracted ${maker} product URL: ${productUrl}`);
 
                             // Save this URL for scraping
                             const urls = [{
@@ -351,7 +436,7 @@ exports.handler = async function(event, context) {
 
                             await saveJobUrls(jobId, urls, context);
 
-                            console.log(`Job ${jobId} initialized with extracted Takigen product URL`);
+                            console.log(`Job ${jobId} initialized with extracted ${maker} product URL`);
 
                             return {
                                 statusCode: 200,
@@ -360,7 +445,7 @@ exports.handler = async function(event, context) {
                                     jobId,
                                     status: 'urls_ready',
                                     urlCount: 1,
-                                    strategy: 'takigen_extracted_url',
+                                    strategy: strategyName,
                                     extractedUrl: productUrl
                                 })
                             };
