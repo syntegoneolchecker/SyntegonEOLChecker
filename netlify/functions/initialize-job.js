@@ -302,7 +302,7 @@ async function scrapeIdecProductUrl(searchUrl, model) {
             ) {
                 status
             }
-            waitForSelector(selector: ".listing__elements", timeout: 10000, visible: true) {
+            waitForSelector(selector: ".listing__elements", timeout: 30000, visible: true) {
                 selector
             }
             productUrl: evaluate(content: """
