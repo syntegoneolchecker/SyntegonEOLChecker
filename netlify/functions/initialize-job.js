@@ -275,68 +275,106 @@ function extractTakigenProductUrl(html) {
 }
 
 /**
- * Extract exact product URL from IDEC search results HTML
+ * Scrape IDEC search results and extract exact product URL using BrowserQL
+ * IDEC website uses JavaScript (Vue.js) to render search results, so we need browser execution
+ * IMPORTANT: IDEC Japan website redirects to US site if accessed from non-JP locations
  * Returns the product URL path (e.g., "/idec-jp/ja/JPY/.../p/HW7D-B111111WB") or null if not found
- * Only returns a URL if it exactly matches the model name after /p/
  */
-function extractIdecProductUrl(html, model) {
-    if (!html || !model) return null;
+async function scrapeIdecProductUrl(searchUrl, model) {
+    const browserqlApiKey = process.env.BROWSERQL_API_KEY;
 
-    try {
-        // Find the listing__elements div content
-        const listingStartPattern = /<div class="listing__elements">/;
-        const listingStartMatch = html.match(listingStartPattern);
+    if (!browserqlApiKey) {
+        throw new Error('BROWSERQL_API_KEY environment variable not set');
+    }
 
-        if (!listingStartMatch) {
-            console.log('IDEC listing__elements div not found in HTML');
-            return null;
-        }
+    console.log(`Scraping IDEC search results with BrowserQL (JP proxy): ${searchUrl}`);
 
-        // Get the content starting from listing__elements
-        const listingContent = html.substring(listingStartMatch.index);
-
-        // Find all item-box divs with class "item-box row no-gutters bumper "
-        // Note: The class name has a trailing space which is important
-        // Use a simpler pattern that just finds the opening tag
-        const itemBoxPattern = /<div class="item-box row no-gutters bumper ">/g;
-        const itemBoxMatches = [...listingContent.matchAll(itemBoxPattern)];
-
-        console.log(`Found ${itemBoxMatches.length} IDEC search results to check`);
-
-        // Check each search result for exact match
-        for (const itemBoxMatch of itemBoxMatches) {
-            // Extract a reasonable chunk of content after the item-box opening tag
-            const startIndex = itemBoxMatch.index;
-            const chunk = listingContent.substring(startIndex, startIndex + 2000);
-
-            // Find the item-box__image div containing the product link
-            const imageDivPattern = /<div class="item-box__image col-xs-3 p-0">.*?<a href="([^"]+)"/s;
-            const imageDivMatch = chunk.match(imageDivPattern);
-
-            if (!imageDivMatch) {
-                console.log('No href found in this item-box');
-                continue;
+    // BrowserQL query that extracts product URLs directly in the browser
+    // Uses Japanese proxy to avoid redirect to US site
+    const query = `
+        mutation ScrapeIdecSearch {
+            proxy(url: "*", country: JP, sticky: true) {
+                time
             }
+            goto(
+                url: "${searchUrl}"
+                waitUntil: firstContentfulPaint
+            ) {
+                status
+            }
+            waitForSelector(selector: ".listing__elements", timeout: 10000, visible: true) {
+                selector
+            }
+            productUrl: evaluate(content: """
+                (() => {
+                    try {
+                        const model = "${model}";
+                        const expectedSuffix = '/p/' + model;
 
-            const href = imageDivMatch[1];
+                        const listingDiv = document.querySelector('.listing__elements');
+                        if (!listingDiv) {
+                            return JSON.stringify({ url: null, error: 'listing__elements not found' });
+                        }
 
-            // Check if this href ends with /p/{exact_model_name}
-            const expectedSuffix = `/p/${model}`;
-            if (href.endsWith(expectedSuffix)) {
-                console.log(`Found exact IDEC product match: ${href}`);
-                return href;
-            } else {
-                console.log(`IDEC product href does not match exactly: ${href} (expected to end with ${expectedSuffix})`);
+                        const itemBoxes = listingDiv.querySelectorAll('.item-box.row.no-gutters.bumper');
+
+                        for (const itemBox of itemBoxes) {
+                            const imageDiv = itemBox.querySelector('.item-box__image');
+                            if (!imageDiv) continue;
+
+                            const link = imageDiv.querySelector('a');
+                            if (!link) continue;
+
+                            const href = link.getAttribute('href');
+                            if (!href) continue;
+
+                            if (href.endsWith(expectedSuffix)) {
+                                return JSON.stringify({ url: href, error: null });
+                            }
+                        }
+
+                        return JSON.stringify({ url: null, error: 'No exact match found for model: ' + model });
+                    } catch (e) {
+                        return JSON.stringify({ url: null, error: e?.message ?? String(e) });
+                    }
+                })()
+            """) {
+                value
             }
         }
+    `;
 
-        console.log(`No exact IDEC product match found for model: ${model}`);
-        return null;
+    const response = await fetch(`https://production-sfo.browserless.io/stealth/bql?token=${browserqlApiKey}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query })
+    });
 
-    } catch (error) {
-        console.error(`Error extracting IDEC product URL: ${error.message}`);
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`BrowserQL API error: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+
+    if (result.errors) {
+        throw new Error(`BrowserQL GraphQL errors: ${JSON.stringify(result.errors)}`);
+    }
+
+    if (!result.data || !result.data.productUrl) {
+        throw new Error('BrowserQL returned no data');
+    }
+
+    const evaluateResult = JSON.parse(result.data.productUrl.value);
+
+    if (evaluateResult.error && !evaluateResult.url) {
+        console.log(`IDEC product extraction error: ${evaluateResult.error}`);
         return null;
     }
+
+    return evaluateResult.url;
 }
 
 exports.handler = async function(event, context) {
@@ -399,20 +437,20 @@ exports.handler = async function(event, context) {
                     if (manufacturerStrategy.requiresExtraction) {
                         console.log(`Extracting product URL from ${maker} search results`);
 
-                        // Fetch the search results HTML
-                        const searchHtml = await fetchHtml(manufacturerStrategy.url);
-
                         // Extract the product URL based on manufacturer
                         let productPath = null;
                         let baseUrl = '';
                         let strategyName = '';
 
                         if (maker === 'タキゲン') {
+                            // Takigen uses server-side rendering, so fetchHtml is sufficient
+                            const searchHtml = await fetchHtml(manufacturerStrategy.url);
                             productPath = extractTakigenProductUrl(searchHtml);
                             baseUrl = 'https://www.takigen.co.jp';
                             strategyName = 'takigen_extracted_url';
                         } else if (maker === 'IDEC') {
-                            productPath = extractIdecProductUrl(searchHtml, model);
+                            // IDEC uses JavaScript rendering (Vue.js), so we need BrowserQL to execute JS and extract URL
+                            productPath = await scrapeIdecProductUrl(manufacturerStrategy.url, model);
                             baseUrl = 'https://jp.idec.com';
                             strategyName = 'idec_extracted_url';
                         }
