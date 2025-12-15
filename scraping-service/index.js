@@ -640,79 +640,86 @@ app.post('/scrape', async (req, res) => {
                 for (const proxy of proxies) {
                     if (productUrl) break; // Found a match, stop trying proxies
 
-                    console.log(`Trying ${proxy.name} proxy for IDEC search...`);
-                    const proxyConfig = parseProxyUrl(proxy.url);
-
-                    if (!proxyConfig) {
-                        console.error(`Failed to parse ${proxy.name} proxy URL, skipping`);
-                        continue;
-                    }
-
-                    // Launch browser with proxy
-                    const launchArgs = [
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-accelerated-2d-canvas',
-                        '--no-first-run',
-                        '--no-zygote',
-                        '--disable-gpu',
-                        '--disable-software-rasterizer',
-                        '--disable-background-networking',
-                        '--disable-default-apps',
-                        '--disable-sync',
-                        '--disable-extensions',
-                        '--disable-blink-features=AutomationControlled',
-                        '--single-process',
-                        '--disable-features=site-per-process',
-                        '--js-flags=--max-old-space-size=256',
-                        '--disable-web-security',
-                        '--disable-features=IsolateOrigins',
-                        '--disable-site-isolation-trials',
-                        `--proxy-server=${proxyConfig.server}`
-                    ];
-
-                    browser = await puppeteer.launch({
-                        headless: 'new',
-                        args: launchArgs,
-                        timeout: 120000
-                    });
-
-                    const page = await browser.newPage();
-
-                    // Set up proxy authentication if credentials exist
-                    if (proxyConfig.username && proxyConfig.password) {
-                        await page.authenticate({
-                            username: proxyConfig.username,
-                            password: proxyConfig.password
-                        });
-                        console.log(`Proxy authentication configured for ${proxy.name} proxy`);
-                    }
-
-                    await page.setUserAgent(
-                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                    );
-
-                    await page.setViewport({ width: 1280, height: 720 });
-
-                    // Enable resource blocking to save memory
-                    await page.setRequestInterception(true);
-                    page.on('request', (request) => {
-                        const resourceType = request.resourceType();
-                        if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
-                            request.abort();
-                        } else {
-                            request.continue();
-                        }
-                    });
+                    let searchBrowser = null; // Use local variable for each iteration
 
                     try {
+                        console.log(`Trying ${proxy.name} proxy for IDEC search...`);
+                        const proxyConfig = parseProxyUrl(proxy.url);
+
+                        if (!proxyConfig) {
+                            console.error(`Failed to parse ${proxy.name} proxy URL, skipping`);
+                            continue;
+                        }
+
+                        console.log(`${proxy.name} proxy config: server=${proxyConfig.server}, hasAuth=${!!(proxyConfig.username && proxyConfig.password)}`);
+
+                        // Launch browser with proxy
+                        const launchArgs = [
+                            '--no-sandbox',
+                            '--disable-setuid-sandbox',
+                            '--disable-dev-shm-usage',
+                            '--disable-accelerated-2d-canvas',
+                            '--no-first-run',
+                            '--no-zygote',
+                            '--disable-gpu',
+                            '--disable-software-rasterizer',
+                            '--disable-background-networking',
+                            '--disable-default-apps',
+                            '--disable-sync',
+                            '--disable-extensions',
+                            '--disable-blink-features=AutomationControlled',
+                            '--single-process',
+                            '--disable-features=site-per-process',
+                            '--js-flags=--max-old-space-size=256',
+                            '--disable-web-security',
+                            '--disable-features=IsolateOrigins',
+                            '--disable-site-isolation-trials',
+                            `--proxy-server=${proxyConfig.server}`
+                        ];
+
+                        console.log(`Launching browser with ${proxy.name} proxy...`);
+                        searchBrowser = await puppeteer.launch({
+                            headless: 'new',
+                            args: launchArgs,
+                            timeout: 120000
+                        });
+                        console.log(`Browser launched successfully with ${proxy.name} proxy`);
+
+                        const page = await searchBrowser.newPage();
+
+                        // Set up proxy authentication if credentials exist
+                        if (proxyConfig.username && proxyConfig.password) {
+                            await page.authenticate({
+                                username: proxyConfig.username,
+                                password: proxyConfig.password
+                            });
+                            console.log(`Proxy authentication configured for ${proxy.name} proxy`);
+                        }
+
+                        await page.setUserAgent(
+                            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        );
+
+                        await page.setViewport({ width: 1280, height: 720 });
+
+                        // Enable resource blocking to save memory
+                        await page.setRequestInterception(true);
+                        page.on('request', (request) => {
+                            const resourceType = request.resourceType();
+                            if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                                request.abort();
+                            } else {
+                                request.continue();
+                            }
+                        });
+
                         // Navigate to IDEC search page
                         console.log(`Navigating to IDEC search page with ${proxy.name} proxy: ${url}`);
                         await page.goto(url, {
                             waitUntil: 'networkidle2',
                             timeout: 30000
                         });
+                        console.log(`Navigation completed with ${proxy.name} proxy`);
 
                         // Extract product URL
                         const extractionResult = await extractIdecProductUrl(page, model);
@@ -727,13 +734,22 @@ app.post('/scrape', async (req, res) => {
                         } else {
                             console.log(`No match found with ${proxy.name} proxy: ${extractionResult.error}`);
                         }
-                    } catch (navError) {
-                        console.error(`Navigation failed with ${proxy.name} proxy: ${navError.message}`);
+                    } catch (proxyError) {
+                        console.error(`Error with ${proxy.name} proxy: ${proxyError.message}`);
+                        console.error(`Stack trace: ${proxyError.stack}`);
+                    } finally {
+                        // Always close browser for this proxy attempt
+                        if (searchBrowser) {
+                            try {
+                                console.log(`Closing browser for ${proxy.name} proxy...`);
+                                await searchBrowser.close();
+                                console.log(`Browser closed for ${proxy.name} proxy`);
+                            } catch (closeError) {
+                                console.error(`Failed to close browser for ${proxy.name} proxy: ${closeError.message}`);
+                            }
+                            searchBrowser = null;
+                        }
                     }
-
-                    // Close browser before trying next proxy
-                    await browser.close();
-                    browser = null;
                 }
 
                 // Check if we found a product URL
