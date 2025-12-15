@@ -71,9 +71,8 @@ function getManufacturerUrl(maker, model) {
         case 'IDEC':
             return {
                 url: `https://jp.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`,
-                scrapingMethod: 'render',
-                requiresValidation: true,
-                requiresExtraction: true // Extract product URL from search results
+                scrapingMethod: 'idec_search_extraction',
+                model: model // Pass model for extraction matching
             };
 
         default:
@@ -274,109 +273,6 @@ function extractTakigenProductUrl(html) {
     }
 }
 
-/**
- * Scrape IDEC search results and extract exact product URL using BrowserQL
- * IDEC website uses JavaScript (Vue.js) to render search results, so we need browser execution
- * IMPORTANT: IDEC Japan website redirects to US site if accessed from non-JP locations
- * Returns the product URL path (e.g., "/idec-jp/ja/JPY/.../p/HW7D-B111111WB") or null if not found
- */
-async function scrapeIdecProductUrl(searchUrl, model) {
-    const browserqlApiKey = process.env.BROWSERQL_API_KEY;
-
-    if (!browserqlApiKey) {
-        throw new Error('BROWSERQL_API_KEY environment variable not set');
-    }
-
-    console.log(`Scraping IDEC search results with BrowserQL (JP proxy): ${searchUrl}`);
-
-    // BrowserQL query that extracts product URLs directly in the browser
-    // Uses Japanese proxy to avoid redirect to US site
-    const query = `
-        mutation ScrapeIdecSearch {
-            proxy(url: "*", country: JP, sticky: true) {
-                time
-            }
-            goto(
-                url: "${searchUrl}"
-                waitUntil: firstContentfulPaint
-            ) {
-                status
-            }
-            waitForSelector(selector: ".listing__elements", timeout: 10000, visible: true) {
-                selector
-            }
-            productUrl: evaluate(content: """
-                (() => {
-                    try {
-                        const model = "${model}";
-                        const expectedSuffix = '/p/' + model;
-
-                        const listingDiv = document.querySelector('.listing__elements');
-                        if (!listingDiv) {
-                            return JSON.stringify({ url: null, error: 'listing__elements not found' });
-                        }
-
-                        const itemBoxes = listingDiv.querySelectorAll('.item-box.row.no-gutters.bumper');
-
-                        for (const itemBox of itemBoxes) {
-                            const imageDiv = itemBox.querySelector('.item-box__image');
-                            if (!imageDiv) continue;
-
-                            const link = imageDiv.querySelector('a');
-                            if (!link) continue;
-
-                            const href = link.getAttribute('href');
-                            if (!href) continue;
-
-                            if (href.endsWith(expectedSuffix)) {
-                                return JSON.stringify({ url: href, error: null });
-                            }
-                        }
-
-                        return JSON.stringify({ url: null, error: 'No exact match found for model: ' + model });
-                    } catch (e) {
-                        return JSON.stringify({ url: null, error: e?.message ?? String(e) });
-                    }
-                })()
-            """) {
-                value
-            }
-        }
-    `;
-
-    const response = await fetch(`https://production-sfo.browserless.io/stealth/bql?token=${browserqlApiKey}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ query })
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`BrowserQL API error: ${response.status} - ${errorText}`);
-    }
-
-    const result = await response.json();
-
-    if (result.errors) {
-        throw new Error(`BrowserQL GraphQL errors: ${JSON.stringify(result.errors)}`);
-    }
-
-    if (!result.data || !result.data.productUrl) {
-        throw new Error('BrowserQL returned no data');
-    }
-
-    const evaluateResult = JSON.parse(result.data.productUrl.value);
-
-    if (evaluateResult.error && !evaluateResult.url) {
-        console.log(`IDEC product extraction error: ${evaluateResult.error}`);
-        return null;
-    }
-
-    return evaluateResult.url;
-}
-
 exports.handler = async function(event, context) {
     console.log('Initialize job request');
 
@@ -433,34 +329,20 @@ exports.handler = async function(event, context) {
                 console.log(`URL requires validation for ${maker}: ${manufacturerStrategy.url}`);
 
                 try {
-                    // Special handling for Takigen and IDEC - extract product URL from search results
+                    // Special handling for Takigen - extract product URL from search results
                     if (manufacturerStrategy.requiresExtraction) {
                         console.log(`Extracting product URL from ${maker} search results`);
 
-                        // Extract the product URL based on manufacturer
-                        let productPath = null;
-                        let baseUrl = '';
-                        let strategyName = '';
-
-                        if (maker === 'タキゲン') {
-                            // Takigen uses server-side rendering, so fetchHtml is sufficient
-                            const searchHtml = await fetchHtml(manufacturerStrategy.url);
-                            productPath = extractTakigenProductUrl(searchHtml);
-                            baseUrl = 'https://www.takigen.co.jp';
-                            strategyName = 'takigen_extracted_url';
-                        } else if (maker === 'IDEC') {
-                            // IDEC uses JavaScript rendering (Vue.js), so we need BrowserQL to execute JS and extract URL
-                            productPath = await scrapeIdecProductUrl(manufacturerStrategy.url, model);
-                            baseUrl = 'https://jp.idec.com';
-                            strategyName = 'idec_extracted_url';
-                        }
+                        // Takigen uses server-side rendering, so fetchHtml is sufficient
+                        const searchHtml = await fetchHtml(manufacturerStrategy.url);
+                        const productPath = extractTakigenProductUrl(searchHtml);
 
                         if (!productPath) {
                             console.log(`No product found in ${maker} search results, falling back to Tavily search`);
                             // Fall through to Tavily search below
                         } else {
                             // Build the full product URL
-                            const productUrl = `${baseUrl}${productPath}`;
+                            const productUrl = `https://www.takigen.co.jp${productPath}`;
                             console.log(`Extracted ${maker} product URL: ${productUrl}`);
 
                             // Save this URL for scraping
@@ -483,7 +365,7 @@ exports.handler = async function(event, context) {
                                     jobId,
                                     status: 'urls_ready',
                                     urlCount: 1,
-                                    strategy: strategyName,
+                                    strategy: 'takigen_extracted_url',
                                     extractedUrl: productUrl
                                 })
                             };

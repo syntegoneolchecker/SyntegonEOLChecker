@@ -508,7 +508,7 @@ app.use((req, res, next) => {
 
 // Main scraping endpoint
 app.post('/scrape', async (req, res) => {
-    const { url, callbackUrl, jobId, urlIndex, title, snippet } = req.body;
+    const { url, callbackUrl, jobId, urlIndex, title, snippet, extractionMode, model, jpProxyUrl, usProxyUrl } = req.body;
 
     // Check shutdown state before processing
     if (isShuttingDown) {
@@ -555,6 +555,368 @@ app.post('/scrape', async (req, res) => {
     console.log(`[${new Date().toISOString()}] Scraping URL: ${url}`);
     if (callbackUrl) {
         console.log(`Callback URL provided: ${callbackUrl}`);
+    }
+
+    // IDEC extraction mode - search, extract, and scrape product page
+    if (extractionMode === 'idec') {
+        console.log(`[IDEC EXTRACTION MODE] Searching for model: ${model}`);
+
+        // Helper function to parse proxy URL and extract credentials
+        function parseProxyUrl(proxyUrl) {
+            try {
+                const url = new URL(proxyUrl);
+                return {
+                    server: `${url.hostname}:${url.port}`,
+                    username: url.username || null,
+                    password: url.password || null
+                };
+            } catch (error) {
+                console.error(`Failed to parse proxy URL: ${error.message}`);
+                return null;
+            }
+        }
+
+        // Helper function to extract IDEC product URL from search results
+        async function extractIdecProductUrl(page, model) {
+            try {
+                // Wait for search results to load
+                await page.waitForSelector('.listing__elements', { timeout: 10000, visible: true });
+                console.log('IDEC search results loaded, extracting product URLs...');
+
+                // Extract product URL matching the model
+                const result = await page.evaluate((searchModel) => {
+                    try {
+                        const expectedSuffix = '/p/' + searchModel;
+                        const listingDiv = document.querySelector('.listing__elements');
+
+                        if (!listingDiv) {
+                            return { url: null, error: 'listing__elements not found' };
+                        }
+
+                        const itemBoxes = listingDiv.querySelectorAll('.item-box.row.no-gutters.bumper');
+
+                        for (const itemBox of itemBoxes) {
+                            const imageDiv = itemBox.querySelector('.item-box__image');
+                            if (!imageDiv) continue;
+
+                            const link = imageDiv.querySelector('a');
+                            if (!link) continue;
+
+                            const href = link.getAttribute('href');
+                            if (!href) continue;
+
+                            if (href.endsWith(expectedSuffix)) {
+                                return { url: href, error: null };
+                            }
+                        }
+
+                        return { url: null, error: 'No exact match found for model: ' + searchModel };
+                    } catch (e) {
+                        return { url: null, error: e?.message ?? String(e) };
+                    }
+                }, model);
+
+                return result;
+            } catch (error) {
+                console.error(`Failed to extract IDEC product URL: ${error.message}`);
+                return { url: null, error: error.message };
+            }
+        }
+
+        // Try JP proxy first, then US proxy
+        const proxies = [
+            { name: 'JP', url: jpProxyUrl },
+            { name: 'US', url: usProxyUrl }
+        ];
+
+        let productUrl = null;
+        let usedProxy = null;
+
+        return enqueuePuppeteerTask(async () => {
+            let browser = null;
+            let callbackSent = false;
+
+            try {
+                for (const proxy of proxies) {
+                    if (productUrl) break; // Found a match, stop trying proxies
+
+                    console.log(`Trying ${proxy.name} proxy for IDEC search...`);
+                    const proxyConfig = parseProxyUrl(proxy.url);
+
+                    if (!proxyConfig) {
+                        console.error(`Failed to parse ${proxy.name} proxy URL, skipping`);
+                        continue;
+                    }
+
+                    // Launch browser with proxy
+                    const launchArgs = [
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-accelerated-2d-canvas',
+                        '--no-first-run',
+                        '--no-zygote',
+                        '--disable-gpu',
+                        '--disable-software-rasterizer',
+                        '--disable-background-networking',
+                        '--disable-default-apps',
+                        '--disable-sync',
+                        '--disable-extensions',
+                        '--disable-blink-features=AutomationControlled',
+                        '--single-process',
+                        '--disable-features=site-per-process',
+                        '--js-flags=--max-old-space-size=256',
+                        '--disable-web-security',
+                        '--disable-features=IsolateOrigins',
+                        '--disable-site-isolation-trials',
+                        `--proxy-server=${proxyConfig.server}`
+                    ];
+
+                    browser = await puppeteer.launch({
+                        headless: 'new',
+                        args: launchArgs,
+                        timeout: 120000
+                    });
+
+                    const page = await browser.newPage();
+
+                    // Set up proxy authentication if credentials exist
+                    if (proxyConfig.username && proxyConfig.password) {
+                        await page.authenticate({
+                            username: proxyConfig.username,
+                            password: proxyConfig.password
+                        });
+                        console.log(`Proxy authentication configured for ${proxy.name} proxy`);
+                    }
+
+                    await page.setUserAgent(
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    );
+
+                    await page.setViewport({ width: 1280, height: 720 });
+
+                    // Enable resource blocking to save memory
+                    await page.setRequestInterception(true);
+                    page.on('request', (request) => {
+                        const resourceType = request.resourceType();
+                        if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                            request.abort();
+                        } else {
+                            request.continue();
+                        }
+                    });
+
+                    try {
+                        // Navigate to IDEC search page
+                        console.log(`Navigating to IDEC search page with ${proxy.name} proxy: ${url}`);
+                        await page.goto(url, {
+                            waitUntil: 'networkidle2',
+                            timeout: 30000
+                        });
+
+                        // Extract product URL
+                        const extractionResult = await extractIdecProductUrl(page, model);
+
+                        if (extractionResult.url) {
+                            // Found exact match!
+                            productUrl = extractionResult.url.startsWith('http')
+                                ? extractionResult.url
+                                : `https://jp.idec.com${extractionResult.url}`;
+                            usedProxy = proxy.name;
+                            console.log(`✓ Found exact match with ${proxy.name} proxy: ${productUrl}`);
+                        } else {
+                            console.log(`No match found with ${proxy.name} proxy: ${extractionResult.error}`);
+                        }
+                    } catch (navError) {
+                        console.error(`Navigation failed with ${proxy.name} proxy: ${navError.message}`);
+                    }
+
+                    // Close browser before trying next proxy
+                    await browser.close();
+                    browser = null;
+                }
+
+                // Check if we found a product URL
+                if (!productUrl) {
+                    console.log('No exact match found with any proxy, returning error for Tavily fallback');
+
+                    // Send error callback to trigger Tavily fallback
+                    await sendCallback(callbackUrl, {
+                        jobId,
+                        urlIndex,
+                        content: '[No exact IDEC product match found - falling back to Tavily search]',
+                        title: null,
+                        snippet,
+                        url
+                    });
+                    callbackSent = true;
+
+                    // Schedule restart if needed
+                    scheduleRestartIfNeeded();
+
+                    return res.json({
+                        success: false,
+                        error: 'No exact IDEC product match found',
+                        method: 'idec_extraction_no_match'
+                    });
+                }
+
+                // Found product URL - now scrape the product page
+                console.log(`Scraping IDEC product page with ${usedProxy} proxy: ${productUrl}`);
+
+                // Parse proxy config again for product page scraping
+                const proxyForProduct = usedProxy === 'JP' ? jpProxyUrl : usProxyUrl;
+                const proxyConfig = parseProxyUrl(proxyForProduct);
+
+                const launchArgs = [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    '--disable-background-networking',
+                    '--disable-default-apps',
+                    '--disable-sync',
+                    '--disable-extensions',
+                    '--disable-blink-features=AutomationControlled',
+                    '--single-process',
+                    '--disable-features=site-per-process',
+                    '--js-flags=--max-old-space-size=256',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins',
+                    '--disable-site-isolation-trials',
+                    `--proxy-server=${proxyConfig.server}`
+                ];
+
+                browser = await puppeteer.launch({
+                    headless: 'new',
+                    args: launchArgs,
+                    timeout: 120000
+                });
+
+                const page = await browser.newPage();
+
+                // Set up proxy authentication if credentials exist
+                if (proxyConfig.username && proxyConfig.password) {
+                    await page.authenticate({
+                        username: proxyConfig.username,
+                        password: proxyConfig.password
+                    });
+                }
+
+                await page.setUserAgent(
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                );
+
+                await page.setViewport({ width: 1280, height: 720 });
+
+                // Enable resource blocking to save memory
+                await page.setRequestInterception(true);
+                page.on('request', (request) => {
+                    const resourceType = request.resourceType();
+                    if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                        request.abort();
+                    } else {
+                        request.continue();
+                    }
+                });
+
+                // Navigate to product page
+                await page.goto(productUrl, {
+                    waitUntil: 'networkidle2',
+                    timeout: 45000
+                });
+
+                // Wait for content to render
+                await new Promise(resolve => setTimeout(resolve, 3000));
+
+                // Extract content
+                const content = await page.evaluate(() => {
+                    const scripts = document.querySelectorAll('script, style, noscript');
+                    scripts.forEach(script => script.remove());
+                    return document.body.innerText;
+                });
+
+                const pageTitle = await page.title();
+
+                console.log(`✓ IDEC product page scraped: ${content.length} characters`);
+
+                // Close browser immediately
+                await browser.close();
+                browser = null;
+
+                // Send success callback with product page content
+                await sendCallback(callbackUrl, {
+                    jobId,
+                    urlIndex,
+                    content: content,
+                    title: pageTitle,
+                    snippet,
+                    url: productUrl
+                });
+                callbackSent = true;
+
+                // Clean up and schedule restart if needed
+                forceGarbageCollection();
+                trackMemoryUsage(`request_complete_${requestCount}_idec`);
+                scheduleRestartIfNeeded();
+
+                return res.json({
+                    success: true,
+                    url: productUrl,
+                    title: pageTitle,
+                    contentLength: content.length,
+                    method: 'idec_extraction',
+                    proxy: usedProxy,
+                    timestamp: new Date().toISOString()
+                });
+
+            } catch (error) {
+                console.error(`[IDEC EXTRACTION ERROR] ${error.message}`);
+
+                // Send error callback if not already sent
+                if (!callbackSent) {
+                    await sendCallback(callbackUrl, {
+                        jobId,
+                        urlIndex,
+                        content: `[IDEC extraction failed: ${error.message}]`,
+                        title: null,
+                        snippet,
+                        url
+                    });
+                }
+
+                // Close browser if still open
+                if (browser) {
+                    try {
+                        await browser.close();
+                    } catch (closeErr) {
+                        console.error('Failed to close browser:', closeErr.message);
+                    }
+                }
+
+                // Schedule restart if needed
+                scheduleRestartIfNeeded();
+
+                return res.status(500).json({
+                    success: false,
+                    error: `IDEC extraction error: ${error.message}`,
+                    method: 'idec_extraction_failed'
+                });
+            } finally {
+                // Ensure browser is always closed
+                if (browser) {
+                    try {
+                        await browser.close();
+                    } catch (closeErr) {
+                        console.error('Failed to close browser in finally block:', closeErr.message);
+                    }
+                }
+            }
+        });
     }
 
     try {
