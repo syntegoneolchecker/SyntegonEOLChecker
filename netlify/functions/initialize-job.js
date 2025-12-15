@@ -293,54 +293,56 @@ async function scrapeIdecProductUrl(searchUrl, model) {
     // Uses Japanese proxy to avoid redirect to US site
     const query = `
         mutation ScrapeIdecSearch {
-            proxy(url: "*", country: JP, sticky: true) {
-                time
-            }
-            goto(
-                url: "${searchUrl}"
-                waitUntil: firstContentfulPaint
-            ) {
-                status
-            }
-            waitForSelector(selector: ".listing__elements", timeout: 10000, visible: true) {
-                selector
-            }
-            productUrl: evaluate(content: """
-                (() => {
-                    try {
-                        const model = "${model}";
-                        const expectedSuffix = '/p/' + model;
-
-                        const listingDiv = document.querySelector('.listing__elements');
-                        if (!listingDiv) {
-                            return JSON.stringify({ url: null, error: 'listing__elements not found' });
-                        }
-
-                        const itemBoxes = listingDiv.querySelectorAll('.item-box.row.no-gutters.bumper');
-
-                        for (const itemBox of itemBoxes) {
-                            const imageDiv = itemBox.querySelector('.item-box__image');
-                            if (!imageDiv) continue;
-
-                            const link = imageDiv.querySelector('a');
-                            if (!link) continue;
-
-                            const href = link.getAttribute('href');
-                            if (!href) continue;
-
-                            if (href.endsWith(expectedSuffix)) {
-                                return JSON.stringify({ url: href, error: null });
-                            }
-                        }
-
-                        return JSON.stringify({ url: null, error: 'No exact match found for model: ' + model });
-                    } catch (e) {
-                        return JSON.stringify({ url: null, error: e?.message ?? String(e) });
-                    }
-                })()
-            """) {
-                value
-            }
+          proxy(server: "http://vmmwygsi:ujyhp4yqip5j@142.111.67.146:5611" url: "*") {
+            time
+          }
+          goto(
+            url: "https://jp.idec.com/search?text=FB1W-XW1E-TV403Q4MR-Y1&includeDiscontinued=true&type=products&sort=relevance"
+            waitUntil: firstContentfulPaint
+          ) {
+            status
+          }
+          waitForSelector(selector: ".listing__elements", timeout: 10000, visible: true) {
+            selector
+          }
+          productUrl: evaluate(
+            content: """
+            (() => {
+              try {
+                const model = "FB1W-XW1E-TV403Q4MR-Y1";
+                const expectedSuffix = '/p/' + model;
+            
+                const listingDiv = document.querySelector('.listing__elements');
+                if (!listingDiv) {
+                  return JSON.stringify({ url: null, error: 'listing__elements not found' });
+                }
+            
+                const itemBoxes = listingDiv.querySelectorAll('.item-box.row.no-gutters.bumper');
+            
+                for (const itemBox of itemBoxes) {
+                  const imageDiv = itemBox.querySelector('.item-box__image');
+                  if (!imageDiv) continue;
+            
+                  const link = imageDiv.querySelector('a');
+                  if (!link) continue;
+            
+                  const href = link.getAttribute('href');
+                  if (!href) continue;
+            
+                  if (href.endsWith(expectedSuffix)) {
+                    return JSON.stringify({ url: href, error: null });
+                  }
+                }
+            
+                return JSON.stringify({ url: null, error: 'No exact match found for model: ' + model });
+              } catch (e) {
+                return JSON.stringify({ url: null, error: e?.message ?? String(e) });
+              }
+            })()
+            """
+          ) {
+            value
+          }
         }
     `;
 
