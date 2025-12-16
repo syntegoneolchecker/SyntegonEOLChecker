@@ -779,9 +779,20 @@ app.post('/scrape', async (req, res) => {
                     });
                 }
 
-                // If extractOnly mode, return the product URL without scraping
+                // If extractOnly mode, send callback with the product URL without scraping
                 if (extractOnly) {
                     console.log(`✓ IDEC product URL extracted (extractOnly mode): ${productUrl}`);
+
+                    // Send callback with extracted URL
+                    await sendCallback(callbackUrl, {
+                        jobId,
+                        urlIndex,
+                        content: '', // No content yet - will be scraped later
+                        title: `IDEC Product Page (via ${usedProxy} proxy)`,
+                        snippet,
+                        url: productUrl // The extracted product URL
+                    });
+                    callbackSent = true;
 
                     // Clean up and return
                     forceGarbageCollection();
@@ -790,8 +801,7 @@ app.post('/scrape', async (req, res) => {
 
                     return res.json({
                         success: true,
-                        url: productUrl,
-                        method: 'idec_extraction_url_only',
+                        method: 'idec_extraction_callback_sent',
                         proxy: usedProxy,
                         timestamp: new Date().toISOString()
                     });
