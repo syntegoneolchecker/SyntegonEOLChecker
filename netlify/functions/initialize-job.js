@@ -71,8 +71,10 @@ function getManufacturerUrl(maker, model) {
         case 'IDEC':
             return {
                 url: `https://jp.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`,
-                scrapingMethod: 'idec_search_extraction',
-                model: model // Pass model for extraction matching
+                scrapingMethod: 'render',
+                model: model,
+                requiresValidation: true,
+                requiresIdecExtraction: true
             };
 
         default:
@@ -407,6 +409,83 @@ exports.handler = async function(event, context) {
                                     strategy: 'nissin_validated_url'
                                 })
                             };
+                        }
+                    } else if (manufacturerStrategy.requiresIdecExtraction) {
+                        // Special handling for IDEC - extract product URL using proxies via Render
+                        console.log(`Extracting IDEC product URL for ${maker} ${model}`);
+
+                        const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
+
+                        // Get proxy URLs from environment variables
+                        const jpProxyUrl = process.env.IDEC_JP_PROXY;
+                        const usProxyUrl = process.env.IDEC_US_PROXY;
+
+                        if (!jpProxyUrl || !usProxyUrl) {
+                            console.error('IDEC proxy environment variables not set, falling back to Tavily search');
+                            // Fall through to Tavily search below
+                        } else {
+                            try {
+                                // Call Render with extractOnly mode (no callback needed)
+                                const idecPayload = {
+                                    url: manufacturerStrategy.url,
+                                    extractionMode: 'idec',
+                                    model: manufacturerStrategy.model,
+                                    jpProxyUrl: jpProxyUrl,
+                                    usProxyUrl: usProxyUrl,
+                                    extractOnly: true
+                                };
+
+                                console.log(`Calling Render for IDEC URL extraction: ${scrapingServiceUrl}/scrape`);
+
+                                const response = await fetch(`${scrapingServiceUrl}/scrape`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(idecPayload)
+                                });
+
+                                if (!response.ok) {
+                                    const errorText = await response.text();
+                                    console.error(`Render IDEC extraction failed: ${response.status} - ${errorText}`);
+                                    // Fall through to Tavily search below
+                                } else {
+                                    const result = await response.json();
+
+                                    if (result.success && result.url) {
+                                        // Successfully extracted product URL!
+                                        console.log(`✓ IDEC product URL extracted: ${result.url}`);
+
+                                        const urls = [{
+                                            index: 0,
+                                            url: result.url,
+                                            title: `${maker} ${model} Product Page`,
+                                            snippet: `Direct product page for ${maker} ${model}`,
+                                            scrapingMethod: manufacturerStrategy.scrapingMethod
+                                        }];
+
+                                        await saveJobUrls(jobId, urls, context);
+
+                                        console.log(`Job ${jobId} initialized with extracted IDEC product URL`);
+
+                                        return {
+                                            statusCode: 200,
+                                            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                                jobId,
+                                                status: 'urls_ready',
+                                                urlCount: 1,
+                                                strategy: 'idec_extracted_url',
+                                                extractedUrl: result.url
+                                            })
+                                        };
+                                    } else {
+                                        console.log(`IDEC extraction returned no product URL, falling back to Tavily search`);
+                                        // Fall through to Tavily search below
+                                    }
+                                }
+                            } catch (error) {
+                                console.error(`IDEC extraction error: ${error.message}, falling back to Tavily search`);
+                                // Fall through to Tavily search below
+                            }
                         }
                     } else {
                         // Standard validation (e.g., NTN) - scrape and check for results
