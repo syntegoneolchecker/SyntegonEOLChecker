@@ -264,9 +264,9 @@ exports.handler = async function(event, context) {
             };
         }
 
-        if (scrapingMethod === 'idec_validation') {
-            // IDEC validation with product URL extraction (async with callback)
-            console.log(`Using IDEC validation for model: ${model}`);
+        if (scrapingMethod === 'idec_dual_site') {
+            // IDEC dual-site search: JP site first, then US site fallback
+            console.log(`Using IDEC dual-site search for model: ${model}`);
 
             const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
             const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
@@ -277,12 +277,12 @@ exports.handler = async function(event, context) {
 
             if (!jpProxyUrl || !usProxyUrl) {
                 console.error('IDEC proxy environment variables not set');
-                // Save error and trigger Tavily fallback via callback
+                // Save error result
                 const allDone = await saveUrlResult(jobId, urlIndex, {
                     url,
                     title: null,
                     snippet,
-                    fullContent: '[IDEC_VALIDATION_FAILED]'
+                    fullContent: '[IDEC proxy configuration error - environment variables not set]'
                 }, context);
 
                 if (allDone) {
@@ -299,21 +299,25 @@ exports.handler = async function(event, context) {
                 };
             }
 
+            // Extract jpUrl and usUrl from the URL info
+            const jpUrl = JSON.parse(event.body).jpUrl;
+            const usUrl = JSON.parse(event.body).usUrl;
+
             const idecPayload = {
-                url,
                 callbackUrl,
                 jobId,
                 urlIndex,
                 title,
                 snippet,
-                extractionMode: 'idec',
+                extractionMode: 'idec_dual_site',
                 model: model,
                 jpProxyUrl: jpProxyUrl,
                 usProxyUrl: usProxyUrl,
-                extractOnly: true // Extract URL only, don't scrape content
+                jpUrl: jpUrl,
+                usUrl: usUrl
             };
 
-            console.log(`Calling IDEC validation service: ${scrapingServiceUrl}/scrape`);
+            console.log(`Calling IDEC dual-site service: ${scrapingServiceUrl}/scrape-idec-dual`);
 
             // Retry logic for Render invocation
             const maxRetries = 3;
@@ -321,14 +325,14 @@ exports.handler = async function(event, context) {
             let isRenderRestarting = false;
 
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                console.log(`IDEC validation attempt ${attempt}/${maxRetries}`);
+                console.log(`IDEC dual-site attempt ${attempt}/${maxRetries}`);
 
                 try {
                     const timeoutPromise = new Promise((resolve) =>
                         setTimeout(() => resolve({ timedOut: true }), 10000)
                     );
 
-                    const fetchPromise = fetch(`${scrapingServiceUrl}/scrape`, {
+                    const fetchPromise = fetch(`${scrapingServiceUrl}/scrape-idec-dual`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(idecPayload)
@@ -337,29 +341,29 @@ exports.handler = async function(event, context) {
                     const result = await Promise.race([fetchPromise, timeoutPromise]);
 
                     if (result.timedOut) {
-                        console.log(`IDEC validation call - timeout after 10s (Render processing in background)`);
+                        console.log(`IDEC dual-site call - timeout after 10s (Render processing in background)`);
                         break;
                     } else {
                         const response = result;
-                        console.log(`IDEC validation call responded with status: ${response.status}`);
+                        console.log(`IDEC dual-site call responded with status: ${response.status}`);
 
                         if (!response.ok) {
                             const text = await response.text();
-                            console.error(`IDEC validation error response on attempt ${attempt}: ${response.status} - ${text}`);
+                            console.error(`IDEC dual-site error response on attempt ${attempt}: ${response.status} - ${text}`);
 
                             if (response.status === 503) {
                                 isRenderRestarting = true;
                                 console.warn(`⚠️  Render service is restarting (503 response)`);
                             }
 
-                            lastError = new Error(`IDEC validation returned error: ${response.status} - ${text}`);
+                            lastError = new Error(`IDEC dual-site returned error: ${response.status} - ${text}`);
                         } else {
-                            console.log(`IDEC validation successfully invoked on attempt ${attempt}`);
+                            console.log(`IDEC dual-site successfully invoked on attempt ${attempt}`);
                             break;
                         }
                     }
                 } catch (error) {
-                    console.error(`IDEC validation call failed on attempt ${attempt}:`, error.message);
+                    console.error(`IDEC dual-site call failed on attempt ${attempt}:`, error.message);
                     lastError = error;
                 }
 
@@ -371,24 +375,23 @@ exports.handler = async function(event, context) {
                     } else {
                         backoffMs = Math.pow(2, attempt) * 500;
                     }
-                    console.log(`Retrying IDEC validation call in ${backoffMs}ms...`);
+                    console.log(`Retrying IDEC dual-site call in ${backoffMs}ms...`);
                     await new Promise(resolve => setTimeout(resolve, backoffMs));
                 }
             }
 
             if (lastError) {
-                console.error(`All ${maxRetries} IDEC validation attempts failed`);
-                console.log(`Saving error result - Tavily fallback will be triggered in callback`);
+                console.error(`All ${maxRetries} IDEC dual-site attempts failed`);
+                console.log(`Saving error result and continuing pipeline`);
 
-                // Save special error marker for callback to detect
                 const allDone = await saveUrlResult(jobId, urlIndex, {
                     url,
                     title: null,
                     snippet,
-                    fullContent: '[IDEC_VALIDATION_FAILED]'
+                    fullContent: `[IDEC dual-site search failed after ${maxRetries} attempts: ${lastError.message}]`
                 }, context);
 
-                console.log(`Error result saved for IDEC validation URL ${urlIndex}. All done: ${allDone}`);
+                console.log(`Error result saved for IDEC URL ${urlIndex}. All done: ${allDone}`);
 
                 if (allDone) {
                     const job = await getJob(jobId, context);
@@ -401,7 +404,7 @@ exports.handler = async function(event, context) {
                     if (job) {
                         const nextUrl = job.urls.find(u => u.status === 'pending');
                         if (nextUrl) {
-                            console.log(`Triggering next URL ${nextUrl.index} after IDEC validation error`);
+                            console.log(`Triggering next URL ${nextUrl.index} after IDEC error`);
                             await triggerFetch(jobId, nextUrl, baseUrl);
                         }
                     }
@@ -411,8 +414,8 @@ exports.handler = async function(event, context) {
                     statusCode: 500,
                     body: JSON.stringify({
                         success: false,
-                        error: `IDEC validation failed after ${maxRetries} attempts: ${lastError.message}`,
-                        method: 'idec_validation_failed',
+                        error: `IDEC dual-site failed after ${maxRetries} attempts: ${lastError.message}`,
+                        method: 'idec_dual_site_failed',
                         pipelineContinued: true
                     })
                 };
@@ -420,7 +423,7 @@ exports.handler = async function(event, context) {
 
             return {
                 statusCode: 202,
-                body: JSON.stringify({ success: true, method: 'idec_validation_pending' })
+                body: JSON.stringify({ success: true, method: 'idec_dual_site_pending' })
             };
         }
 
@@ -724,6 +727,14 @@ async function triggerFetch(jobId, urlInfo, baseUrl) {
         // Pass model for interactive searches (KEYENCE)
         if (urlInfo.model) {
             payload.model = urlInfo.model;
+        }
+
+        // Pass jpUrl and usUrl for IDEC dual-site
+        if (urlInfo.jpUrl) {
+            payload.jpUrl = urlInfo.jpUrl;
+        }
+        if (urlInfo.usUrl) {
+            payload.usUrl = urlInfo.usUrl;
         }
 
         await fetch(`${baseUrl}/.netlify/functions/fetch-url`, {

@@ -1,6 +1,5 @@
 // Receive results from Render scraping service and save them
-const { saveUrlResult, getJob, replaceJobUrls } = require('./lib/job-storage');
-const { tavily } = require('@tavily/core');
+const { saveUrlResult, getJob } = require('./lib/job-storage');
 
 /**
  * Trigger fetch-url for the next pending URL
@@ -32,133 +31,6 @@ async function triggerFetch(jobId, urlInfo, baseUrl) {
     }
 }
 
-/**
- * Perform Tavily search for IDEC fallback
- */
-async function performTavilySearch(maker, model) {
-    console.log(`Performing Tavily search for ${maker} ${model}`);
-
-    const searchQuery = `${maker} ${model}`;
-    const tavilyClient = tavily({ apiKey: process.env.TAVILY_API_KEY });
-
-    try {
-        const tavilyData = await tavilyClient.search(searchQuery, {
-            searchDepth: 'advanced',
-            maxResults: 2,
-            includeDomains: [
-                'ccs-grp.com',
-                'automationdirect.com',
-                'takigen.co.jp',
-                'mitsubishielectric.co.jp',
-                'sentei.nissei-gtr.co.jp',
-                'tamron.com',
-                'search.sugatsune.co.jp',
-                'sanwa.co.jp',
-                'jp.idec.com',
-                'jp.misumi-ec.com',
-                'mitsubishielectric.com',
-                'kvm-switches-online.com',
-                'daitron.co.jp',
-                'kdwan.co.jp',
-                'hewtech.co.jp',
-                'directindustry.com',
-                'printerland.co.uk',
-                'orimvexta.co.jp',
-                'sankyo-seisakusho.co.jp',
-                'tsubakimoto.co.jp',
-                'nbk1560.com',
-                'habasit.com',
-                'nagoya.sc',
-                'amazon.co.jp',
-                'tps.co.jp/eol/',
-                'ccs-inc.co.jp',
-                'shinkoh-faulhaber.jp',
-                'anelva.canon',
-                'takabel.com',
-                'ysol.co.jp',
-                'digikey.jp',
-                'rs-components.com',
-                'fa-ubon.jp',
-                'monotaro.com',
-                'fujitsu.com',
-                'hubbell.com',
-                'adlinktech.com',
-                'touchsystems.com',
-                'elotouch.com',
-                'aten.com',
-                'canon.com',
-                'axiomtek.com',
-                'apc.com',
-                'hp.com',
-                'fujielectric.co.jp',
-                'panasonic.jp',
-                'wago.com',
-                'schmersal.com',
-                'apiste.co.jp',
-                'tdklamda.com',
-                'phoenixcontact.com',
-                'idec.com',
-                'patlite.co.jp',
-                'smcworld.com',
-                'sanyodenki.co.jp',
-                'nissin-ele.co.jp',
-                'sony.co.jp',
-                'orientalmotor.co.jp',
-                'keyence.co.jp',
-                'fa.omron.co.jp',
-                'tme.com/jp',
-                'ntn.co.jp'
-            ]
-        });
-
-        console.log(`Tavily returned ${tavilyData.results?.length || 0} results`);
-
-        if (!tavilyData.results || tavilyData.results.length === 0) {
-            return null;
-        }
-
-        return tavilyData.results.map((result, index) => ({
-            index: index,
-            url: result.url,
-            title: result.title,
-            snippet: result.content || '',
-            scrapingMethod: 'render'
-        }));
-
-    } catch (error) {
-        console.error('Tavily search error:', error);
-        return null;
-    }
-}
-
-/**
- * Check if this is an IDEC validation callback
- */
-function isIdecValidationCallback(job, urlIndex, url, content) {
-    if (!job || !job.urls || !job.urls[urlIndex]) {
-        return false;
-    }
-
-    const urlInfo = job.urls[urlIndex];
-
-    // Check if URL is IDEC search page
-    const isIdecSearch = url && url.includes('jp.idec.com/search');
-
-    // Check for IDEC validation failure marker
-    const isValidationFailed = content && (
-        content.includes('[IDEC_VALIDATION_FAILED]') ||
-        content.includes('[No exact IDEC product match found')
-    );
-
-    return isIdecSearch && isValidationFailed;
-}
-
-/**
- * Check if this callback contains an IDEC product URL
- */
-function isIdecProductUrl(url) {
-    return url && url.includes('jp.idec.com') && url.includes('/p/');
-}
 
 /**
  * Retry helper for Blobs operations with exponential backoff
@@ -256,78 +128,9 @@ exports.handler = async function(event, context) {
 
         console.log(`Result saved. All URLs done: ${allDone}`);
 
-        // Get job for IDEC validation detection
+        // Get job for next URL triggering
         const job = await getJob(jobId, context);
 
-        // ===== IDEC VALIDATION HANDLING =====
-        // Check if this is an IDEC validation callback
-        if (isIdecValidationCallback(job, urlIndex, url, content)) {
-            console.log(`[IDEC VALIDATION FAILED] Triggering Tavily fallback for job ${jobId}`);
-
-            // Perform Tavily search
-            const tavilyUrls = await performTavilySearch(job.maker, job.model);
-
-            if (tavilyUrls && tavilyUrls.length > 0) {
-                console.log(`✓ Tavily returned ${tavilyUrls.length} URLs for IDEC fallback`);
-
-                // Replace IDEC search URL with Tavily URLs
-                await replaceJobUrls(jobId, tavilyUrls, context);
-
-                // Trigger fetch for first Tavily URL
-                console.log(`Triggering fetch for first Tavily URL: ${tavilyUrls[0].url}`);
-                await triggerFetch(jobId, tavilyUrls[0], baseUrl);
-
-                console.log(`[IDEC FALLBACK COMPLETE] Switched to Tavily URLs`);
-
-                const duration = Date.now() - startTime;
-                console.log(`[CALLBACK END] Job ${jobId}, URL ${urlIndex} - IDEC fallback in ${duration}ms`);
-
-                return {
-                    statusCode: 200,
-                    body: JSON.stringify({ success: true, fallback: 'tavily' })
-                };
-            } else {
-                console.error(`Tavily search returned no results for IDEC fallback`);
-                // Continue with normal flow (job will complete with error)
-            }
-        }
-
-        // Check if this is an IDEC product URL (validation succeeded)
-        else if (isIdecProductUrl(url)) {
-            console.log(`[IDEC VALIDATION SUCCESS] Product URL found: ${url}`);
-
-            // The URL in the callback is already the product URL from Render's extractOnly mode
-            // Replace the search URL with the product URL
-            await replaceJobUrls(jobId, [{
-                index: 0,
-                url: url,
-                title: title || `IDEC Product Page`,
-                snippet: snippet || `Direct product page`,
-                scrapingMethod: 'render'
-            }], context);
-
-            // Trigger fetch for the product URL
-            console.log(`Triggering fetch for IDEC product URL: ${url}`);
-            await triggerFetch(jobId, {
-                index: 0,
-                url: url,
-                title: title || `IDEC Product Page`,
-                snippet: snippet || `Direct product page`,
-                scrapingMethod: 'render'
-            }, baseUrl);
-
-            console.log(`[IDEC VALIDATION COMPLETE] Switched to product URL`);
-
-            const duration = Date.now() - startTime;
-            console.log(`[CALLBACK END] Job ${jobId}, URL ${urlIndex} - IDEC success in ${duration}ms`);
-
-            return {
-                statusCode: 200,
-                body: JSON.stringify({ success: true, validation: 'idec_product_url' })
-            };
-        }
-
-        // ===== NORMAL PIPELINE CONTINUATION =====
         // Continue pipeline: trigger next URL or let polling loop handle analysis
         if (allDone) {
             // All URLs complete - let polling loop detect and trigger analysis
