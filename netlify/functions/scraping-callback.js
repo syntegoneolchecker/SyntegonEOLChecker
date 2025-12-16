@@ -162,9 +162,9 @@ function isIdecProductUrl(url) {
 
 /**
  * Retry helper for Blobs operations with exponential backoff
- * Handles transient network errors (socket closures, timeouts, etc.)
+ * Handles transient network errors and blob storage propagation delays
  */
-async function retryBlobsOperation(operationName, operation, maxRetries = 3) {
+async function retryBlobsOperation(operationName, operation, maxRetries = 5) {
     let lastError = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -182,14 +182,18 @@ async function retryBlobsOperation(operationName, operation, maxRetries = 3) {
                                  error.message?.includes('ECONNRESET') ||
                                  error.message?.includes('ETIMEDOUT');
 
+            // Also retry on "Job not found" errors (blob storage propagation delay)
+            const isJobNotFound = error.message?.includes('Job') && error.message?.includes('not found');
+
             console.error(`${operationName} failed on attempt ${attempt}/${maxRetries}:`, {
                 message: error.message,
                 code: error.code,
-                isSocketError
+                isSocketError,
+                isJobNotFound
             });
 
-            if (attempt < maxRetries) {
-                const backoffMs = Math.pow(2, attempt) * 500; // 1s, 2s, 4s
+            if (attempt < maxRetries && (isSocketError || isJobNotFound)) {
+                const backoffMs = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
                 console.log(`Retrying ${operationName} in ${backoffMs}ms...`);
                 await new Promise(resolve => setTimeout(resolve, backoffMs));
             }
