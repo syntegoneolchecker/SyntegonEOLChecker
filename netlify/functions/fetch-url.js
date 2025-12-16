@@ -264,6 +264,166 @@ exports.handler = async function(event, context) {
             };
         }
 
+        if (scrapingMethod === 'idec_validation') {
+            // IDEC validation with product URL extraction (async with callback)
+            console.log(`Using IDEC validation for model: ${model}`);
+
+            const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
+            const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
+
+            // Get proxy URLs from environment variables
+            const jpProxyUrl = process.env.IDEC_JP_PROXY;
+            const usProxyUrl = process.env.IDEC_US_PROXY;
+
+            if (!jpProxyUrl || !usProxyUrl) {
+                console.error('IDEC proxy environment variables not set');
+                // Save error and trigger Tavily fallback via callback
+                const allDone = await saveUrlResult(jobId, urlIndex, {
+                    url,
+                    title: null,
+                    snippet,
+                    fullContent: '[IDEC_VALIDATION_FAILED]'
+                }, context);
+
+                if (allDone) {
+                    await triggerAnalysis(jobId, baseUrl);
+                }
+
+                return {
+                    statusCode: 500,
+                    body: JSON.stringify({
+                        success: false,
+                        error: 'IDEC proxy environment variables not set',
+                        method: 'idec_config_error'
+                    })
+                };
+            }
+
+            const idecPayload = {
+                url,
+                callbackUrl,
+                jobId,
+                urlIndex,
+                title,
+                snippet,
+                extractionMode: 'idec',
+                model: model,
+                jpProxyUrl: jpProxyUrl,
+                usProxyUrl: usProxyUrl,
+                extractOnly: true // Extract URL only, don't scrape content
+            };
+
+            console.log(`Calling IDEC validation service: ${scrapingServiceUrl}/scrape`);
+
+            // Retry logic for Render invocation
+            const maxRetries = 3;
+            let lastError = null;
+            let isRenderRestarting = false;
+
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                console.log(`IDEC validation attempt ${attempt}/${maxRetries}`);
+
+                try {
+                    const timeoutPromise = new Promise((resolve) =>
+                        setTimeout(() => resolve({ timedOut: true }), 10000)
+                    );
+
+                    const fetchPromise = fetch(`${scrapingServiceUrl}/scrape`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(idecPayload)
+                    });
+
+                    const result = await Promise.race([fetchPromise, timeoutPromise]);
+
+                    if (result.timedOut) {
+                        console.log(`IDEC validation call - timeout after 10s (Render processing in background)`);
+                        break;
+                    } else {
+                        const response = result;
+                        console.log(`IDEC validation call responded with status: ${response.status}`);
+
+                        if (!response.ok) {
+                            const text = await response.text();
+                            console.error(`IDEC validation error response on attempt ${attempt}: ${response.status} - ${text}`);
+
+                            if (response.status === 503) {
+                                isRenderRestarting = true;
+                                console.warn(`⚠️  Render service is restarting (503 response)`);
+                            }
+
+                            lastError = new Error(`IDEC validation returned error: ${response.status} - ${text}`);
+                        } else {
+                            console.log(`IDEC validation successfully invoked on attempt ${attempt}`);
+                            break;
+                        }
+                    }
+                } catch (error) {
+                    console.error(`IDEC validation call failed on attempt ${attempt}:`, error.message);
+                    lastError = error;
+                }
+
+                if (attempt < maxRetries) {
+                    let backoffMs;
+                    if (isRenderRestarting) {
+                        backoffMs = attempt === 1 ? 15000 : 30000;
+                        console.log(`Render is restarting, using longer backoff: ${backoffMs}ms (attempt ${attempt})`);
+                    } else {
+                        backoffMs = Math.pow(2, attempt) * 500;
+                    }
+                    console.log(`Retrying IDEC validation call in ${backoffMs}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                }
+            }
+
+            if (lastError) {
+                console.error(`All ${maxRetries} IDEC validation attempts failed`);
+                console.log(`Saving error result - Tavily fallback will be triggered in callback`);
+
+                // Save special error marker for callback to detect
+                const allDone = await saveUrlResult(jobId, urlIndex, {
+                    url,
+                    title: null,
+                    snippet,
+                    fullContent: '[IDEC_VALIDATION_FAILED]'
+                }, context);
+
+                console.log(`Error result saved for IDEC validation URL ${urlIndex}. All done: ${allDone}`);
+
+                if (allDone) {
+                    const job = await getJob(jobId, context);
+                    if (job && job.status !== 'analyzing' && job.status !== 'complete') {
+                        console.log(`All URLs complete (with errors) for job ${jobId}, triggering analysis`);
+                        await triggerAnalysis(jobId, baseUrl);
+                    }
+                } else {
+                    const job = await getJob(jobId, context);
+                    if (job) {
+                        const nextUrl = job.urls.find(u => u.status === 'pending');
+                        if (nextUrl) {
+                            console.log(`Triggering next URL ${nextUrl.index} after IDEC validation error`);
+                            await triggerFetch(jobId, nextUrl, baseUrl);
+                        }
+                    }
+                }
+
+                return {
+                    statusCode: 500,
+                    body: JSON.stringify({
+                        success: false,
+                        error: `IDEC validation failed after ${maxRetries} attempts: ${lastError.message}`,
+                        method: 'idec_validation_failed',
+                        pipelineContinued: true
+                    })
+                };
+            }
+
+            return {
+                statusCode: 202,
+                body: JSON.stringify({ success: true, method: 'idec_validation_pending' })
+            };
+        }
+
         if (scrapingMethod === 'browserql') {
             // Use BrowserQL for Cloudflare-protected sites (synchronous)
             console.log(`Using BrowserQL for URL ${urlIndex}`);

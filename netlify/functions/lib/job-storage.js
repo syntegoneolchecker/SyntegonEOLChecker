@@ -145,6 +145,65 @@ async function saveFinalResult(jobId, result, context) {
     console.log(`Saved final result for job ${jobId}`);
 }
 
+/**
+ * Replace all URLs in a job (used for Tavily fallback)
+ */
+async function replaceJobUrls(jobId, newUrls, context) {
+    const store = getJobStore();
+    const key = `job:${jobId}`;
+
+    const blob = await store.get(key, { type: 'json' });
+
+    if (!blob) {
+        throw new Error(`Job ${jobId} not found`);
+    }
+
+    const job = blob;
+
+    // Replace URLs and reset urlResults
+    job.urls = newUrls.map((url, index) => ({
+        ...url,
+        index,
+        status: url.status || 'pending'
+    }));
+
+    job.urlResults = {};
+
+    await store.setJSON(key, job);
+
+    console.log(`Replaced URLs for job ${jobId}: ${newUrls.length} new URLs`);
+}
+
+/**
+ * Add a single URL to a job (used when IDEC validation succeeds)
+ */
+async function addUrlToJob(jobId, urlData, context) {
+    const store = getJobStore();
+    const key = `job:${jobId}`;
+
+    const blob = await store.get(key, { type: 'json' });
+
+    if (!blob) {
+        throw new Error(`Job ${jobId} not found`);
+    }
+
+    const job = blob;
+
+    // Add new URL with next index
+    const newIndex = job.urls.length;
+    job.urls.push({
+        ...urlData,
+        index: newIndex,
+        status: urlData.status || 'pending'
+    });
+
+    await store.setJSON(key, job);
+
+    console.log(`Added URL to job ${jobId}: ${urlData.url}`);
+
+    return newIndex;
+}
+
 module.exports = {
     createJob,
     saveJobUrls,
@@ -152,5 +211,7 @@ module.exports = {
     updateJobStatus,
     markUrlFetching,
     saveUrlResult,
-    saveFinalResult
+    saveFinalResult,
+    replaceJobUrls,
+    addUrlToJob
 };
