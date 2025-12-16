@@ -716,10 +716,13 @@ app.post('/scrape', async (req, res) => {
                         // Navigate to IDEC search page
                         console.log(`Navigating to IDEC search page with ${proxy.name} proxy: ${url}`);
                         await page.goto(url, {
-                            waitUntil: 'networkidle2',
-                            timeout: 30000
+                            waitUntil: 'domcontentloaded',
+                            timeout: 15000
                         });
                         console.log(`Navigation completed with ${proxy.name} proxy`);
+
+                        // Wait for JavaScript to render search results
+                        await new Promise(resolve => setTimeout(resolve, 3000));
 
                         // Extract product URL
                         const extractionResult = await extractIdecProductUrl(page, model);

@@ -482,7 +482,7 @@ function formatResults(job) {
         resultSection += `RESULT #${index + 1}:\n`;
         resultSection += `========================================\n`;
         resultSection += `Title: ${urlInfo.title}\n`;
-        resultSection += `URL: ${urlInfo.url}\n`;
+        resultSection += `URL: ${result?.url || urlInfo.url}\n`;
         resultSection += `Snippet: ${urlInfo.snippet}\n`;
 
         if (result && result.fullContent) {
