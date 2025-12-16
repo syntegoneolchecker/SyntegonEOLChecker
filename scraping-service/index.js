@@ -508,7 +508,7 @@ app.use((req, res, next) => {
 
 // Main scraping endpoint
 app.post('/scrape', async (req, res) => {
-    const { url, callbackUrl, jobId, urlIndex, title, snippet, extractionMode, model, jpProxyUrl, usProxyUrl } = req.body;
+    const { url, callbackUrl, jobId, urlIndex, title, snippet, extractionMode, model, jpProxyUrl, usProxyUrl, extractOnly } = req.body;
 
     // Check shutdown state before processing
     if (isShuttingDown) {
@@ -579,8 +579,8 @@ app.post('/scrape', async (req, res) => {
         // Helper function to extract IDEC product URL from search results
         async function extractIdecProductUrl(page, model) {
             try {
-                // Wait for search results to load
-                await page.waitForSelector('.listing__elements', { timeout: 10000, visible: true });
+                // Wait for search results to load (reduced timeout since networkidle2 already completed)
+                await page.waitForSelector('.listing__elements', { timeout: 5000, visible: true });
                 console.log('IDEC search results loaded, extracting product URLs...');
 
                 // Extract product URL matching the model
@@ -716,13 +716,10 @@ app.post('/scrape', async (req, res) => {
                         // Navigate to IDEC search page
                         console.log(`Navigating to IDEC search page with ${proxy.name} proxy: ${url}`);
                         await page.goto(url, {
-                            waitUntil: 'domcontentloaded',
-                            timeout: 15000
+                            waitUntil: 'networkidle2',
+                            timeout: 60000
                         });
                         console.log(`Navigation completed with ${proxy.name} proxy`);
-
-                        // Wait for JavaScript to render search results
-                        await new Promise(resolve => setTimeout(resolve, 3000));
 
                         // Extract product URL
                         const extractionResult = await extractIdecProductUrl(page, model);
@@ -759,16 +756,18 @@ app.post('/scrape', async (req, res) => {
                 if (!productUrl) {
                     console.log('No exact match found with any proxy, returning error for Tavily fallback');
 
-                    // Send error callback to trigger Tavily fallback
-                    await sendCallback(callbackUrl, {
-                        jobId,
-                        urlIndex,
-                        content: '[No exact IDEC product match found - falling back to Tavily search]',
-                        title: null,
-                        snippet,
-                        url
-                    });
-                    callbackSent = true;
+                    // Send error callback to trigger Tavily fallback (only if callback provided)
+                    if (callbackUrl) {
+                        await sendCallback(callbackUrl, {
+                            jobId,
+                            urlIndex,
+                            content: '[No exact IDEC product match found - falling back to Tavily search]',
+                            title: null,
+                            snippet,
+                            url
+                        });
+                        callbackSent = true;
+                    }
 
                     // Schedule restart if needed
                     scheduleRestartIfNeeded();
@@ -777,6 +776,24 @@ app.post('/scrape', async (req, res) => {
                         success: false,
                         error: 'No exact IDEC product match found',
                         method: 'idec_extraction_no_match'
+                    });
+                }
+
+                // If extractOnly mode, return the product URL without scraping
+                if (extractOnly) {
+                    console.log(`✓ IDEC product URL extracted (extractOnly mode): ${productUrl}`);
+
+                    // Clean up and return
+                    forceGarbageCollection();
+                    trackMemoryUsage(`request_complete_${requestCount}_idec_extract_only`);
+                    scheduleRestartIfNeeded();
+
+                    return res.json({
+                        success: true,
+                        url: productUrl,
+                        method: 'idec_extraction_url_only',
+                        proxy: usedProxy,
+                        timestamp: new Date().toISOString()
                     });
                 }
 
