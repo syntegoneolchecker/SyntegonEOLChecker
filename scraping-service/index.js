@@ -410,7 +410,6 @@ async function sendCallback(callbackUrl, payload, maxRetries = 3) {
                 if (attempt < maxRetries) {
                     // Adaptive retry delay: If we're about to restart (shutting down), use longer delay
                     // This gives the callback endpoint time to complete any in-flight operations
-                    const isShuttingDown = requestCount >= MAX_REQUESTS_BEFORE_RESTART;
                     const baseBackoffMs = 1000 * Math.pow(2, attempt); // 2s, 4s, 8s
                     const backoffMs = isShuttingDown ? baseBackoffMs + 3000 : baseBackoffMs; // Add 3s during shutdown
 
@@ -432,7 +431,6 @@ async function sendCallback(callbackUrl, payload, maxRetries = 3) {
                 throw callbackError; // Propagate error so scraping endpoint can handle it
             } else {
                 // Wait before retry (exponential backoff)
-                const isShuttingDown = requestCount >= MAX_REQUESTS_BEFORE_RESTART;
                 const baseBackoffMs = 1000 * Math.pow(2, attempt); // 2s, 4s, 8s
                 const backoffMs = isShuttingDown ? baseBackoffMs + 3000 : baseBackoffMs; // Add 3s during shutdown
 
@@ -486,10 +484,12 @@ app.get('/health', (req, res) => {
 
 // Status endpoint (includes shutdown state)
 app.get('/status', (req, res) => {
+    const memory = getMemoryUsageMB();
     res.json({
         status: isShuttingDown ? 'shutting_down' : 'ok',
         requestCount: requestCount,
-        maxRequests: MAX_REQUESTS_BEFORE_RESTART,
+        memoryMB: memory.rss,
+        memoryLimitMB: MEMORY_LIMIT_MB,
         timestamp: new Date().toISOString()
     });
 });
@@ -1698,7 +1698,7 @@ app.post('/scrape-keyence', async (req, res) => {
 
             // Force restart after KEYENCE check (even on error - uses more memory than normal checks)
             console.log('KEYENCE check failed - forcing restart to free memory');
-            requestCount = MAX_REQUESTS_BEFORE_RESTART;
+            isShuttingDown = true;
             scheduleRestartIfNeeded();
 
             return res.status(500).json({
