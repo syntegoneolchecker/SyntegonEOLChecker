@@ -112,7 +112,7 @@ exports.handler = async function(event, context) {
     }
 
     try {
-        const { jobId, urlIndex, url, title, snippet, scrapingMethod, model } = JSON.parse(event.body);
+        const { jobId, urlIndex, url, title, snippet, scrapingMethod, model, jpUrl, usUrl } = JSON.parse(event.body);
 
         console.log(`Fetching URL ${urlIndex} for job ${jobId}: ${url} (method: ${scrapingMethod || 'render'})`);
 
@@ -299,10 +299,6 @@ exports.handler = async function(event, context) {
                 };
             }
 
-            // Extract jpUrl and usUrl from the URL info
-            const jpUrl = JSON.parse(event.body).jpUrl;
-            const usUrl = JSON.parse(event.body).usUrl;
-
             const idecPayload = {
                 callbackUrl,
                 jobId,
@@ -318,6 +314,7 @@ exports.handler = async function(event, context) {
             };
 
             console.log(`Calling IDEC dual-site service: ${scrapingServiceUrl}/scrape-idec-dual`);
+            console.log(`IDEC payload: model=${model}, jpUrl=${jpUrl}, usUrl=${usUrl}, hasJpProxy=${!!jpProxyUrl}, hasUsProxy=${!!usProxyUrl}`);
 
             // Retry logic for Render invocation
             const maxRetries = 3;
