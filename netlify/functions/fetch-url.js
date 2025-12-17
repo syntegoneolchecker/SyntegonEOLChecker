@@ -1,5 +1,6 @@
 // Fetch a single URL - trigger Render scraping with callback OR use BrowserQL for Cloudflare-protected sites
 const { markUrlFetching, saveUrlResult, getJob } = require('./lib/job-storage');
+const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 
 /**
  * Check if Render scraping service is healthy
@@ -14,96 +15,6 @@ async function checkRenderHealth(scrapingServiceUrl) {
         console.error('Render health check failed:', error.message);
         return false;
     }
-}
-
-/**
- * Scrape URL using BrowserQL (for Cloudflare-protected sites)
- * This is a synchronous scraping method that returns content directly
- */
-async function scrapeWithBrowserQL(url) {
-    const browserqlApiKey = process.env.BROWSERQL_API_KEY;
-
-    if (!browserqlApiKey) {
-        throw new Error('BROWSERQL_API_KEY environment variable not set');
-    }
-
-    console.log(`Scraping with BrowserQL: ${url}`);
-
-    // BrowserQL GraphQL mutation using evaluate() to match Render's extraction
-    // This uses the exact same JavaScript code as the Render scraping service
-    // Note: waitUntil is an enum (not quoted), url is a string (quoted)
-    const query = `
-        mutation ScrapeUrl {
-            goto(
-                url: "${url}"
-                waitUntil: networkIdle
-            ) {
-                status
-            }
-
-            pageContent: evaluate(content: """
-                (() => {
-                    try {
-                        const scripts = document.querySelectorAll('script, style, noscript');
-                        scripts.forEach(el => el.remove());
-                        return JSON.stringify({ text: document.body.innerText, error: null });
-                    } catch (e) {
-                        return JSON.stringify({ text: null, error: e?.message ?? String(e) });
-                    }
-                })()
-            """) {
-                value
-            }
-        }
-    `;
-
-    // Use stealth endpoint with token as query parameter (not Authorization header)
-    const response = await fetch(`https://production-sfo.browserless.io/stealth/bql?token=${browserqlApiKey}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            query
-        })
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`BrowserQL API error: ${response.status} - ${errorText}`);
-    }
-
-    const result = await response.json();
-
-    if (result.errors) {
-        throw new Error(`BrowserQL GraphQL errors: ${JSON.stringify(result.errors)}`);
-    }
-
-    if (!result.data || !result.data.pageContent) {
-        throw new Error('BrowserQL returned no data');
-    }
-
-    // Parse the JSON-wrapped response from evaluate()
-    const evaluateResult = JSON.parse(result.data.pageContent.value);
-
-    if (evaluateResult.error) {
-        throw new Error(`BrowserQL evaluation error: ${evaluateResult.error}`);
-    }
-
-    const content = evaluateResult.text;
-    const title = null; // Can extract title separately if needed
-
-    if (!content) {
-        throw new Error('BrowserQL returned empty content');
-    }
-
-    console.log(`BrowserQL scraped successfully: ${content.length} characters`);
-
-    return {
-        content,
-        title,
-        success: true
-    };
 }
 
 /**

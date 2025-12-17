@@ -68,20 +68,23 @@ function render() {
 
     // Update Check EOL buttons state after rendering
     // Check if auto-check OR manual check is running
-    if (isManualCheckRunning) {
-        // Manual check in progress - hide all buttons immediately
-        updateCheckEOLButtons(true);
-    } else {
-        // Check if auto-check state needs to disable buttons
-        fetch('/.netlify/functions/get-auto-check-state')
-            .then(r => r.ok ? r.json() : null)
-            .then(state => {
-                if (state && typeof updateCheckEOLButtons === 'function') {
-                    updateCheckEOLButtons(state.isRunning);
-                }
-            })
-            .catch(() => {}); // Silently fail if state service not available
-    }
+    // CRITICAL: Always fetch auto-check state to avoid race condition
+    fetch('/.netlify/functions/get-auto-check-state')
+        .then(r => r.ok ? r.json() : null)
+        .then(state => {
+            // Disable buttons if EITHER manual check OR auto-check is running
+            const shouldDisable = isManualCheckRunning || (state && state.isRunning);
+            if (typeof updateCheckEOLButtons === 'function') {
+                updateCheckEOLButtons(shouldDisable);
+            }
+        })
+        .catch(error => {
+            // If state fetch fails, still respect manual check flag
+            console.warn('Failed to fetch auto-check state:', error);
+            if (isManualCheckRunning) {
+                updateCheckEOLButtons(true);
+            }
+        });
 }
 
 // Three-state sorting: null → asc → desc → null

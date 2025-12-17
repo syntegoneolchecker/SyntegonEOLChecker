@@ -3,45 +3,107 @@
  * Handles quoted fields properly (e.g., "field with, comma")
  *
  * @param {string} csvContent - Raw CSV content as string
- * @returns {Array<Array<string>>} - Parsed data as 2D array
+ * @returns {Object} - {success: boolean, data: Array<Array<string>>, error: string|null}
+ * @throws {Error} If CSV is malformed beyond recovery
  */
 function parseCSV(csvContent) {
-    if (!csvContent) {
-        return [];
-    }
+    try {
+        if (!csvContent) {
+            return { success: true, data: [], error: null };
+        }
 
-    const lines = csvContent.split('\n').filter(line => line.trim());
+        if (typeof csvContent !== 'string') {
+            return {
+                success: false,
+                data: [],
+                error: `Invalid CSV content type: expected string, got ${typeof csvContent}`
+            };
+        }
 
-    // Parse CSV data - handle quoted fields properly
-    const data = lines.map(line => {
-        const cells = [];
-        let current = '';
-        let inQuotes = false;
+        const lines = csvContent.split('\n').filter(line => line.trim());
 
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            const nextChar = line[i + 1];
+        if (lines.length === 0) {
+            return { success: true, data: [], error: null };
+        }
 
-            if (char === '"' && !inQuotes) {
-                inQuotes = true;
-            } else if (char === '"' && inQuotes && nextChar === '"') {
-                current += '"';
-                i++; // Skip next quote
-            } else if (char === '"' && inQuotes) {
-                inQuotes = false;
-            } else if (char === ',' && !inQuotes) {
-                cells.push(current.trim());
-                current = '';
-            } else {
-                current += char;
+        // Parse CSV data - handle quoted fields properly
+        const data = [];
+        const errors = [];
+
+        for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+            const line = lines[lineNum];
+            const cells = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                const nextChar = line[i + 1];
+
+                if (char === '"' && !inQuotes) {
+                    inQuotes = true;
+                } else if (char === '"' && inQuotes && nextChar === '"') {
+                    current += '"';
+                    i++; // Skip next quote
+                } else if (char === '"' && inQuotes) {
+                    inQuotes = false;
+                } else if (char === ',' && !inQuotes) {
+                    cells.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            cells.push(current.trim()); // Add last cell
+
+            // Check for unclosed quotes
+            if (inQuotes) {
+                errors.push(`Line ${lineNum + 1}: Unclosed quote detected`);
+                // Continue parsing, treating as closed quote
+            }
+
+            data.push(cells);
+        }
+
+        // Validate column consistency (all rows should have same number of columns)
+        if (data.length > 1) {
+            const expectedColumns = data[0].length;
+            const inconsistentRows = [];
+
+            for (let i = 1; i < data.length; i++) {
+                if (data[i].length !== expectedColumns) {
+                    inconsistentRows.push(i + 1);
+                }
+            }
+
+            if (inconsistentRows.length > 0) {
+                errors.push(
+                    `Column count mismatch: Expected ${expectedColumns} columns, ` +
+                    `but rows [${inconsistentRows.join(', ')}] have different counts`
+                );
             }
         }
-        cells.push(current.trim()); // Add last cell
 
-        return cells;
-    });
+        // Return with warnings if there were non-fatal errors
+        if (errors.length > 0) {
+            console.warn('CSV parsing warnings:', errors);
+            return {
+                success: true, // Still return data, but with warnings
+                data: data,
+                error: errors.join('; ')
+            };
+        }
 
-    return data;
+        return { success: true, data: data, error: null };
+
+    } catch (error) {
+        console.error('CSV parsing error:', error);
+        return {
+            success: false,
+            data: [],
+            error: `CSV parsing failed: ${error.message}`
+        };
+    }
 }
 
 /**
