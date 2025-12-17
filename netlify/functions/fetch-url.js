@@ -112,9 +112,13 @@ exports.handler = async function(event, context) {
     }
 
     try {
-        const { jobId, urlIndex, url, title, snippet, scrapingMethod, model, jpUrl, usUrl } = JSON.parse(event.body);
+        const requestBody = JSON.parse(event.body);
+        console.log(`[FETCH-URL DEBUG] Raw request body:`, JSON.stringify(requestBody, null, 2));
+
+        const { jobId, urlIndex, url, title, snippet, scrapingMethod, model, jpUrl, usUrl } = requestBody;
 
         console.log(`Fetching URL ${urlIndex} for job ${jobId}: ${url} (method: ${scrapingMethod || 'render'})`);
+        console.log(`[FETCH-URL DEBUG] Extracted values: jpUrl=${jpUrl}, usUrl=${usUrl}, model=${model}`);
 
         // Construct base URL from request headers
         const protocol = event.headers['x-forwarded-proto'] || 'https';
