@@ -1740,8 +1740,15 @@ app.post('/scrape-nbk', async (req, res) => {
         console.log(`Callback URL provided: ${callbackUrl}`);
     }
 
-    // Enqueue this Puppeteer task to prevent concurrent browser instances
-    return enqueuePuppeteerTask(async () => {
+    // CRITICAL: Respond immediately with HTTP 200 to prevent timeout
+    res.status(200).json({
+        success: true,
+        message: 'NBK scraping started',
+        model: model
+    });
+
+    // NOW enqueue the Puppeteer task to run asynchronously (after response sent)
+    enqueuePuppeteerTask(async () => {
         let browser = null;
         let callbackSent = false;
 
@@ -1827,7 +1834,38 @@ app.post('/scrape-nbk', async (req, res) => {
                 timeout: 60000
             });
 
-            console.log('NBK: Search page loaded, checking for results...');
+            console.log('NBK: Search page loaded (networkidle2), checking for results...');
+
+            // DEBUGGING: Wait additional time to see if content loads after networkidle2
+            console.log('NBK: Waiting additional 3 seconds for dynamic content...');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
+            // DEBUG: Log FULL HTML to see actual page structure (bot detection check)
+            const fullHTML = await page.evaluate(() => document.documentElement.outerHTML);
+            console.log('NBK: ===== FULL HTML START =====');
+            console.log(fullHTML);
+            console.log('NBK: ===== FULL HTML END =====');
+
+            // DEBUG: Log page structure to understand what selectors are available
+            const pageDebugInfo = await page.evaluate(() => {
+                // Check various potential selectors
+                const selectors = {
+                    'topListSection-body': !!document.querySelector('.topListSection-body'),
+                    'productNameCardList': !!document.querySelector('.productNameCardList'),
+                    '_item': document.querySelectorAll('._item').length,
+                    'productNameCard': document.querySelectorAll('.productNameCard').length,
+                    'pageTitle': document.title,
+                    'bodyClasses': document.body.className,
+                    'mainContainerClasses': document.querySelector('main')?.className || 'no main element'
+                };
+
+                // Get a sample of the body HTML (first 2000 chars) to see structure
+                const bodyHTML = document.body.innerHTML.substring(0, 2000);
+
+                return { selectors, bodyHTMLSample: bodyHTML };
+            });
+
+            console.log('NBK: Page debug info:', JSON.stringify(pageDebugInfo, null, 2));
 
             // Check if search results exist (._item divs in .topListSection-body)
             const searchResults = await page.evaluate(() => {
@@ -1945,7 +1983,7 @@ app.post('/scrape-nbk', async (req, res) => {
             trackMemoryUsage(`nbk_complete_${requestCount}`);
             scheduleRestartIfNeeded();
 
-            return res.json(nbkResult);
+            console.log('NBK: Task completed successfully');
 
         } catch (error) {
             console.error(`NBK scraping error:`, error);
@@ -1977,12 +2015,6 @@ app.post('/scrape-nbk', async (req, res) => {
             console.log('NBK check failed - forcing restart to free memory');
             isShuttingDown = true;
             scheduleRestartIfNeeded();
-
-            return res.status(500).json({
-                success: false,
-                error: error.message,
-                model: model
-            });
 
         } finally {
             // Ensure browser is always closed
