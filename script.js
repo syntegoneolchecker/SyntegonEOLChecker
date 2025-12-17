@@ -441,6 +441,14 @@ async function pollJobStatus(jobId, manufacturer, model, checkButton) {
                             payload.model = firstUrl.model;
                         }
 
+                        // Pass jpUrl and usUrl for IDEC dual-site
+                        if (firstUrl.jpUrl) {
+                            payload.jpUrl = firstUrl.jpUrl;
+                        }
+                        if (firstUrl.usUrl) {
+                            payload.usUrl = firstUrl.usUrl;
+                        }
+
                         // Fire-and-forget (Render scraping takes 30-60s, we can't wait)
                         fetch('/.netlify/functions/fetch-url', {
                             method: 'POST',
