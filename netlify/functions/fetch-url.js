@@ -108,7 +108,8 @@ async function scrapeWithBrowserQL(url) {
 
 /**
  * Scrape NBK search page using BrowserQL to extract product URL
- * Step 1 of 2-step hybrid process: BrowserQL search (bypasses Cloudflare) → Render with proxy (avoids geo-redirect)
+ * Step 1 of 2-step hybrid process: BrowserQL search (bypasses Cloudflare) → Render with language parameter (forces Japanese site)
+ * Appends ?SelectedLanguage=ja-JP to force Japanese content
  */
 async function scrapeNBKSearchWithBrowserQL(model) {
     const browserqlApiKey = process.env.BROWSERQL_API_KEY;
@@ -203,9 +204,16 @@ async function scrapeNBKSearchWithBrowserQL(model) {
         throw new Error(`NBK search page evaluation error: ${searchInfo.error}`);
     }
 
+    // Append language parameter to force Japanese site
+    let productUrl = searchInfo.productUrl;
+    if (productUrl) {
+        productUrl = productUrl + '?SelectedLanguage=ja-JP';
+        console.log(`NBK BrowserQL: Added language parameter to URL: ${productUrl}`);
+    }
+
     return {
         hasResults: searchInfo.hasResults,
-        productUrl: searchInfo.productUrl,
+        productUrl: productUrl,
         preprocessedModel: preprocessedModel
     };
 }
@@ -533,7 +541,7 @@ exports.handler = async function(event, context) {
         }
 
         if (scrapingMethod === 'nbk_interactive') {
-            // NBK hybrid scraping: BrowserQL search (bypasses Cloudflare) → Render with JP proxy (avoids geo-redirect)
+            // NBK hybrid scraping: BrowserQL search (bypasses Cloudflare) → Render with language parameter (forces Japanese site)
             console.log(`Using NBK hybrid scraping for model: ${model}`);
 
             try {
@@ -565,35 +573,11 @@ exports.handler = async function(event, context) {
                     };
                 }
 
-                // Step 2: Call Render service with JP proxy to scrape product page
-                console.log(`NBK: Product URL found, calling Render with JP proxy: ${searchResult.productUrl}`);
+                // Step 2: Call Render service to scrape product page (with language parameter)
+                console.log(`NBK: Product URL found, calling Render to scrape: ${searchResult.productUrl}`);
 
                 const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
                 const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
-                const jpProxyUrl = process.env.NBK_JP_PROXY;
-
-                if (!jpProxyUrl) {
-                    console.error('NBK_JP_PROXY environment variable not set');
-                    const allDone = await saveUrlResult(jobId, urlIndex, {
-                        url: searchResult.productUrl,
-                        title: null,
-                        snippet,
-                        fullContent: '[NBK proxy configuration error - NBK_JP_PROXY environment variable not set]'
-                    }, context);
-
-                    if (allDone) {
-                        await triggerAnalysis(jobId, baseUrl);
-                    }
-
-                    return {
-                        statusCode: 500,
-                        body: JSON.stringify({
-                            success: false,
-                            error: 'NBK_JP_PROXY environment variable not set',
-                            method: 'nbk_config_error'
-                        })
-                    };
-                }
 
                 const nbkPayload = {
                     callbackUrl,
@@ -601,8 +585,7 @@ exports.handler = async function(event, context) {
                     urlIndex,
                     title,
                     snippet,
-                    productUrl: searchResult.productUrl,
-                    jpProxyUrl: jpProxyUrl
+                    productUrl: searchResult.productUrl
                 };
 
                 console.log(`Calling NBK scraping service: ${scrapingServiceUrl}/scrape-nbk`);
