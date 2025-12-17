@@ -107,10 +107,10 @@ async function scrapeWithBrowserQL(url) {
 }
 
 /**
- * Scrape NBK product page using BrowserQL (two-step: search → product)
- * This handles NBK's Cloudflare protection and multi-step navigation
+ * Scrape NBK search page using BrowserQL to extract product URL
+ * Step 1 of 2-step hybrid process: BrowserQL search (bypasses Cloudflare) → Render with proxy (avoids geo-redirect)
  */
-async function scrapeNBKWithBrowserQL(model) {
+async function scrapeNBKSearchWithBrowserQL(model) {
     const browserqlApiKey = process.env.BROWSERQL_API_KEY;
 
     if (!browserqlApiKey) {
@@ -124,11 +124,11 @@ async function scrapeNBKWithBrowserQL(model) {
     const encodedModel = encodeURIComponent(preprocessedModel);
     const searchUrl = `https://www.nbk1560.com/search/?q=${encodedModel}&SelectedLanguage=ja-JP&page=1&imgsize=1&doctype=all&sort=0&pagemax=10&htmlLang=ja`;
 
-    console.log(`NBK BrowserQL: Step 1 - Searching at ${searchUrl}`);
+    console.log(`NBK BrowserQL: Searching at ${searchUrl}`);
 
-    // Step 1: Search page mutation (extract product URL)
+    // BrowserQL mutation to search page (extract product URL only)
     const searchQuery = `
-        mutation NBKTwoStepScrape($searchUrl: String!) {
+        mutation NBKSearch($searchUrl: String!) {
             goto(url: $searchUrl, waitUntil: networkIdle) {
                 status
             }
@@ -203,67 +203,10 @@ async function scrapeNBKWithBrowserQL(model) {
         throw new Error(`NBK search page evaluation error: ${searchInfo.error}`);
     }
 
-    if (!searchInfo.hasResults || !searchInfo.productUrl) {
-        console.log(`NBK BrowserQL: No results found for model ${model}`);
-        return {
-            content: `[NBK Search: No results found for model "${model}". Preprocessed search term: "${preprocessedModel}"]`,
-            title: 'NBK Search - No Results',
-            success: true,
-            noResults: true
-        };
-    }
-
-    console.log(`NBK BrowserQL: Step 2 - Fetching product page: ${searchInfo.productUrl}`);
-
-    // Step 2: Product page mutation (extract content)
-    const productQuery = `
-        mutation NBKProductContent($productUrl: String!) {
-            goto(url: $productUrl, waitUntil: networkIdle) {
-                status
-            }
-            productContent: text(selector: "body") {
-                text
-            }
-        }
-    `;
-
-    const productResponse = await fetch(`https://production-sfo.browserless.io/stealth/bql?token=${browserqlApiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            query: productQuery,
-            variables: { productUrl: searchInfo.productUrl }
-        })
-    });
-
-    if (!productResponse.ok) {
-        const errorText = await productResponse.text();
-        throw new Error(`NBK BrowserQL product page failed: ${productResponse.status} - ${errorText}`);
-    }
-
-    const productResult = await productResponse.json();
-
-    if (productResult.errors) {
-        throw new Error(`NBK BrowserQL product errors: ${JSON.stringify(productResult.errors)}`);
-    }
-
-    if (!productResult.data || !productResult.data.productContent) {
-        throw new Error('NBK BrowserQL product page returned no data');
-    }
-
-    const content = productResult.data.productContent.text;
-
-    if (!content) {
-        throw new Error('NBK BrowserQL returned empty content');
-    }
-
-    console.log(`NBK BrowserQL: Successfully scraped product page (${content.length} characters)`);
-
     return {
-        content,
-        title: `NBK Product`,
-        success: true,
-        productUrl: searchInfo.productUrl
+        hasResults: searchInfo.hasResults,
+        productUrl: searchInfo.productUrl,
+        preprocessedModel: preprocessedModel
     };
 }
 
@@ -590,78 +533,179 @@ exports.handler = async function(event, context) {
         }
 
         if (scrapingMethod === 'nbk_interactive') {
-            // NBK two-step BrowserQL scraping (search → product page)
-            console.log(`Using NBK BrowserQL for model: ${model}`);
+            // NBK hybrid scraping: BrowserQL search (bypasses Cloudflare) → Render with JP proxy (avoids geo-redirect)
+            console.log(`Using NBK hybrid scraping for model: ${model}`);
 
             try {
-                const result = await scrapeNBKWithBrowserQL(model);
+                // Step 1: BrowserQL search to get product URL
+                const searchResult = await scrapeNBKSearchWithBrowserQL(model);
 
-                // Save result directly (synchronous, no callback needed)
-                const allDone = await saveUrlResult(jobId, urlIndex, {
-                    url: result.productUrl || url,
-                    title: result.title,
+                if (!searchResult.hasResults || !searchResult.productUrl) {
+                    // No results found - save immediately and complete
+                    console.log(`NBK: No results found for model ${model}`);
+
+                    const allDone = await saveUrlResult(jobId, urlIndex, {
+                        url,
+                        title: 'NBK Search - No Results',
+                        snippet,
+                        fullContent: `[NBK Search: No results found for model "${model}". Preprocessed search term: "${searchResult.preprocessedModel}"]`
+                    }, context);
+
+                    if (allDone) {
+                        await triggerAnalysis(jobId, baseUrl);
+                    }
+
+                    return {
+                        statusCode: 200,
+                        body: JSON.stringify({
+                            success: true,
+                            method: 'nbk_no_results',
+                            noResults: true
+                        })
+                    };
+                }
+
+                // Step 2: Call Render service with JP proxy to scrape product page
+                console.log(`NBK: Product URL found, calling Render with JP proxy: ${searchResult.productUrl}`);
+
+                const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
+                const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
+                const jpProxyUrl = process.env.NBK_JP_PROXY;
+
+                if (!jpProxyUrl) {
+                    console.error('NBK_JP_PROXY environment variable not set');
+                    const allDone = await saveUrlResult(jobId, urlIndex, {
+                        url: searchResult.productUrl,
+                        title: null,
+                        snippet,
+                        fullContent: '[NBK proxy configuration error - NBK_JP_PROXY environment variable not set]'
+                    }, context);
+
+                    if (allDone) {
+                        await triggerAnalysis(jobId, baseUrl);
+                    }
+
+                    return {
+                        statusCode: 500,
+                        body: JSON.stringify({
+                            success: false,
+                            error: 'NBK_JP_PROXY environment variable not set',
+                            method: 'nbk_config_error'
+                        })
+                    };
+                }
+
+                const nbkPayload = {
+                    callbackUrl,
+                    jobId,
+                    urlIndex,
+                    title,
                     snippet,
-                    fullContent: result.content
-                }, context);
+                    productUrl: searchResult.productUrl,
+                    jpProxyUrl: jpProxyUrl
+                };
 
-                console.log(`NBK BrowserQL scraping complete for URL ${urlIndex}. All done: ${allDone}`);
+                console.log(`Calling NBK scraping service: ${scrapingServiceUrl}/scrape-nbk`);
 
-                // Continue pipeline: trigger analysis or next URL fetch
-                if (allDone) {
-                    console.log(`All URLs complete for job ${jobId}, triggering analysis`);
-                    await triggerAnalysis(jobId, baseUrl);
-                } else {
-                    console.log(`Checking for next pending URL...`);
-                    const job = await getJob(jobId, context);
+                // Retry logic for Render invocation
+                const maxRetries = 3;
+                let lastError = null;
 
-                    if (job) {
-                        const nextUrl = job.urls.find(u => u.status === 'pending');
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    console.log(`NBK Render invocation attempt ${attempt}/${maxRetries}`);
 
-                        if (nextUrl) {
-                            console.log(`Triggering next URL ${nextUrl.index}: ${nextUrl.url}`);
-                            await triggerFetch(jobId, nextUrl, baseUrl);
-                        } else {
-                            console.log(`No more pending URLs found`);
+                    try {
+                        const timeoutPromise = new Promise((resolve) =>
+                            setTimeout(() => resolve({ timedOut: true }), 10000)
+                        );
+
+                        const fetchPromise = fetch(`${scrapingServiceUrl}/scrape-nbk`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(nbkPayload)
+                        });
+
+                        const result = await Promise.race([fetchPromise, timeoutPromise]);
+
+                        if (result.timedOut) {
+                            console.log(`NBK service timeout on attempt ${attempt}`);
+                            lastError = new Error('Request timeout (10s)');
+                            await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+                            continue;
                         }
+
+                        const response = result;
+
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.log(`NBK service error: ${response.status} - ${errorText}`);
+
+                            if (response.status === 503) {
+                                console.log('NBK service restarting (503), will retry...');
+                                lastError = new Error('Service restarting');
+                                await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
+                                continue;
+                            }
+
+                            lastError = new Error(`HTTP ${response.status}: ${errorText}`);
+                            await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+                            continue;
+                        }
+
+                        console.log(`NBK service accepted the request (attempt ${attempt})`);
+                        break; // Success!
+
+                    } catch (error) {
+                        console.error(`NBK invocation error on attempt ${attempt}:`, error);
+                        lastError = error;
+                        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
                     }
                 }
 
+                // If all retries failed, save error and continue pipeline
+                if (lastError) {
+                    console.error(`All NBK service retries failed:`, lastError);
+
+                    const allDone = await saveUrlResult(jobId, urlIndex, {
+                        url: searchResult.productUrl,
+                        title: null,
+                        snippet,
+                        fullContent: `[NBK product page scraping failed: ${lastError.message}]`
+                    }, context);
+
+                    if (allDone) {
+                        await triggerAnalysis(jobId, baseUrl);
+                    }
+
+                    return {
+                        statusCode: 500,
+                        body: JSON.stringify({
+                            success: false,
+                            error: `NBK scraping failed after ${maxRetries} attempts: ${lastError.message}`,
+                            method: 'nbk_failed',
+                            pipelineContinued: true
+                        })
+                    };
+                }
+
                 return {
-                    statusCode: 200,
-                    body: JSON.stringify({
-                        success: true,
-                        method: 'nbk_browserql',
-                        contentLength: result.content.length,
-                        noResults: result.noResults || false
-                    })
+                    statusCode: 202,
+                    body: JSON.stringify({ success: true, method: 'nbk_pending' })
                 };
 
             } catch (error) {
-                console.error(`NBK BrowserQL scraping failed for URL ${urlIndex}:`, error);
+                console.error(`NBK search failed:`, error);
 
                 // Save error result
                 const allDone = await saveUrlResult(jobId, urlIndex, {
                     url,
                     title: null,
                     snippet,
-                    fullContent: `[NBK BrowserQL scraping failed: ${error.message}]`
+                    fullContent: `[NBK search failed: ${error.message}]`
                 }, context);
 
-                console.log(`NBK BrowserQL error saved for URL ${urlIndex}. All done: ${allDone}`);
-
-                // Continue pipeline even on error
                 if (allDone) {
-                    console.log(`All URLs complete (with errors) for job ${jobId}, triggering analysis`);
                     await triggerAnalysis(jobId, baseUrl);
-                } else {
-                    const job = await getJob(jobId, context);
-                    if (job) {
-                        const nextUrl = job.urls.find(u => u.status === 'pending');
-                        if (nextUrl) {
-                            console.log(`Triggering next URL ${nextUrl.index} after error`);
-                            await triggerFetch(jobId, nextUrl, baseUrl);
-                        }
-                    }
                 }
 
                 return {
@@ -669,7 +713,7 @@ exports.handler = async function(event, context) {
                     body: JSON.stringify({
                         success: false,
                         error: error.message,
-                        method: 'nbk_browserql_failed',
+                        method: 'nbk_search_failed',
                         pipelineContinued: true
                     })
                 };
