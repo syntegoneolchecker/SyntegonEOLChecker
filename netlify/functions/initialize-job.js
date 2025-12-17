@@ -71,9 +71,10 @@ function getManufacturerUrl(maker, model) {
         case 'IDEC':
             return {
                 url: `https://jp.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`,
-                scrapingMethod: 'idec_validation', // Async validation with Tavily fallback
+                scrapingMethod: 'idec_dual_site', // JP site first, US site fallback
                 model: model,
-                maker: maker // Needed for Tavily fallback
+                jpUrl: `https://jp.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`,
+                usUrl: `https://us.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`
             };
 
         default:
@@ -474,6 +475,14 @@ exports.handler = async function(event, context) {
                 // Pass model for interactive searches (KEYENCE)
                 if (manufacturerStrategy.model) {
                     urls[0].model = manufacturerStrategy.model;
+                }
+
+                // Pass jpUrl and usUrl for IDEC dual-site
+                if (manufacturerStrategy.jpUrl) {
+                    urls[0].jpUrl = manufacturerStrategy.jpUrl;
+                }
+                if (manufacturerStrategy.usUrl) {
+                    urls[0].usUrl = manufacturerStrategy.usUrl;
                 }
 
                 await saveJobUrls(jobId, urls, context);
