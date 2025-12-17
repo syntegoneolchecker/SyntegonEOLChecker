@@ -1829,6 +1829,27 @@ app.post('/scrape-nbk', async (req, res) => {
 
             console.log('NBK: Search page loaded, checking for results...');
 
+            // DEBUG: Log page structure to understand what selectors are available
+            const pageDebugInfo = await page.evaluate(() => {
+                // Check various potential selectors
+                const selectors = {
+                    'topListSection-body': !!document.querySelector('.topListSection-body'),
+                    'productNameCardList': !!document.querySelector('.productNameCardList'),
+                    '_item': document.querySelectorAll('._item').length,
+                    'productNameCard': document.querySelectorAll('.productNameCard').length,
+                    'pageTitle': document.title,
+                    'bodyClasses': document.body.className,
+                    'mainContainerClasses': document.querySelector('main')?.className || 'no main element'
+                };
+
+                // Get a sample of the body HTML (first 2000 chars) to see structure
+                const bodyHTML = document.body.innerHTML.substring(0, 2000);
+
+                return { selectors, bodyHTMLSample: bodyHTML };
+            });
+
+            console.log('NBK: Page debug info:', JSON.stringify(pageDebugInfo, null, 2));
+
             // Check if search results exist (._item divs in .topListSection-body)
             const searchResults = await page.evaluate(() => {
                 const bodyDiv = document.querySelector('.topListSection-body');
