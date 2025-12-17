@@ -428,6 +428,114 @@ exports.handler = async function(event, context) {
             };
         }
 
+        if (scrapingMethod === 'nbk_interactive') {
+            // NBK interactive search with product name preprocessing
+            console.log(`Using NBK interactive search for model: ${model}`);
+
+            const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
+            const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
+
+            const nbkPayload = {
+                model: model,
+                callbackUrl,
+                jobId,
+                urlIndex,
+                title,
+                snippet
+            };
+
+            console.log(`Calling NBK scraping service: ${scrapingServiceUrl}/scrape-nbk`);
+
+            // Retry logic for Render invocation (NBK endpoint)
+            const maxRetries = 3;
+            let lastError = null;
+            let isRenderRestarting = false;
+
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                console.log(`NBK invocation attempt ${attempt}/${maxRetries}`);
+
+                try {
+                    const timeoutPromise = new Promise((resolve) =>
+                        setTimeout(() => resolve({ timedOut: true }), 10000)
+                    );
+
+                    const fetchPromise = fetch(`${scrapingServiceUrl}/scrape-nbk`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(nbkPayload)
+                    });
+
+                    const result = await Promise.race([fetchPromise, timeoutPromise]);
+
+                    if (result.timedOut) {
+                        console.log(`NBK service timeout on attempt ${attempt}`);
+                        lastError = new Error('Request timeout (10s)');
+                        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+                        continue;
+                    }
+
+                    const response = result;
+
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.log(`NBK service error: ${response.status} - ${errorText}`);
+
+                        // Check for 503 Service Unavailable (Render restarting)
+                        if (response.status === 503) {
+                            console.log('NBK service restarting (503), will retry...');
+                            isRenderRestarting = true;
+                            lastError = new Error('Service restarting');
+                            await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
+                            continue;
+                        }
+
+                        lastError = new Error(`HTTP ${response.status}: ${errorText}`);
+                        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+                        continue;
+                    }
+
+                    console.log(`NBK service accepted the request (attempt ${attempt})`);
+                    break; // Success!
+
+                } catch (error) {
+                    console.error(`NBK invocation error on attempt ${attempt}:`, error);
+                    lastError = error;
+                    await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+                }
+            }
+
+            // If all retries failed, save error result and continue pipeline
+            if (lastError) {
+                console.error(`All NBK service retries failed:`, lastError);
+
+                const allDone = await saveUrlResult(jobId, urlIndex, {
+                    url,
+                    title: null,
+                    snippet,
+                    fullContent: `[NBK scraping failed: ${lastError.message}]`
+                }, context);
+
+                if (allDone) {
+                    await triggerAnalysis(jobId, baseUrl);
+                }
+
+                return {
+                    statusCode: 500,
+                    body: JSON.stringify({
+                        success: false,
+                        error: `NBK search failed after ${maxRetries} attempts: ${lastError.message}`,
+                        method: 'nbk_interactive_failed',
+                        pipelineContinued: true
+                    })
+                };
+            }
+
+            return {
+                statusCode: 202,
+                body: JSON.stringify({ success: true, method: 'nbk_pending' })
+            };
+        }
+
         if (scrapingMethod === 'browserql') {
             // Use BrowserQL for Cloudflare-protected sites (synchronous)
             console.log(`Using BrowserQL for URL ${urlIndex}`);

@@ -77,6 +77,13 @@ function getManufacturerUrl(maker, model) {
                 usUrl: `https://us.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`
             };
 
+        case 'NBK':
+            return {
+                url: `https://www.nbk1560.com/search/?q=${encodedModel}&SelectedLanguage=ja-JP&page=1&imgsize=1&doctype=all&sort=0&pagemax=10&htmlLang=ja`,
+                scrapingMethod: 'nbk_interactive', // Interactive search with product name preprocessing
+                model: model // Pass model for preprocessing (remove 'x' and '-')
+            };
+
         default:
             return null; // No direct URL strategy - use Tavily search
     }

@@ -1713,6 +1713,291 @@ app.post('/scrape-idec-dual', async (req, res) => {
     }); // End of enqueuePuppeteerTask
 });
 
+// NBK-specific scraping endpoint (interactive search with product name preprocessing)
+app.post('/scrape-nbk', async (req, res) => {
+    const { model, callbackUrl, jobId, urlIndex, title, snippet } = req.body;
+
+    // Check shutdown state before processing
+    if (isShuttingDown) {
+        console.log(`Rejecting /scrape-nbk request during shutdown (current memory: ${getMemoryUsageMB().rss}MB)`);
+        return res.status(503).json({
+            error: 'Service restarting due to memory limit',
+            retryAfter: 30
+        });
+    }
+
+    // Increment request counter and track memory
+    requestCount++;
+    const memBefore = trackMemoryUsage(`nbk_start_${requestCount}`);
+    console.log(`[${new Date().toISOString()}] NBK Search Request #${requestCount} - Memory: ${memBefore.rss}MB RSS`);
+
+    if (!model) {
+        return res.status(400).json({ error: 'Model is required' });
+    }
+
+    console.log(`[${new Date().toISOString()}] NBK: Searching for model: ${model}`);
+    if (callbackUrl) {
+        console.log(`Callback URL provided: ${callbackUrl}`);
+    }
+
+    // Enqueue this Puppeteer task to prevent concurrent browser instances
+    return enqueuePuppeteerTask(async () => {
+        let browser = null;
+        let callbackSent = false;
+
+        try {
+            // Preprocess model name: remove lowercase 'x' and '-'
+            const preprocessedModel = model.replace(/x/g, '').replace(/-/g, '');
+            console.log(`NBK: Preprocessed model name: ${model} -> ${preprocessedModel}`);
+
+            browser = await puppeteer.launch({
+                headless: 'new',
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    '--disable-background-networking',
+                    '--disable-default-apps',
+                    '--disable-sync',
+                    '--disable-extensions',
+                    '--disable-blink-features=AutomationControlled',
+                    '--single-process',
+                    '--disable-features=site-per-process',
+                    '--js-flags=--max-old-space-size=256',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins',
+                    '--disable-site-isolation-trials'
+                ],
+                timeout: 120000
+            });
+
+            const page = await browser.newPage();
+
+            await page.setUserAgent(
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            );
+
+            await page.setViewport({ width: 1280, height: 720 });
+
+            // Enable request interception to block heavy resources
+            await page.setRequestInterception(true);
+
+            const blockedDomains = [
+                'google-analytics.com',
+                'googletagmanager.com',
+                'doubleclick.net',
+                'facebook.net',
+                'clarity.ms'
+            ];
+
+            page.on('request', (request) => {
+                const url = request.url();
+                const resourceType = request.resourceType();
+
+                // Block images, media, and fonts to reduce memory usage
+                if (['image', 'media', 'font'].includes(resourceType)) {
+                    request.abort();
+                    return;
+                }
+
+                // Block third-party analytics/tracking domains
+                const isBlockedDomain = blockedDomains.some(domain => url.includes(domain));
+                if (isBlockedDomain) {
+                    request.abort();
+                    return;
+                }
+
+                // Allow everything else
+                request.continue();
+            });
+            console.log('NBK: Resource blocking enabled (images, media, fonts, analytics blocked)');
+
+            // Navigate to NBK search page with preprocessed model
+            const encodedModel = encodeURIComponent(preprocessedModel);
+            const searchUrl = `https://www.nbk1560.com/search/?q=${encodedModel}&SelectedLanguage=ja-JP&page=1&imgsize=1&doctype=all&sort=0&pagemax=10&htmlLang=ja`;
+
+            console.log(`NBK: Navigating to search page: ${searchUrl}`);
+            await page.goto(searchUrl, {
+                waitUntil: 'networkidle2',
+                timeout: 60000
+            });
+
+            console.log('NBK: Search page loaded, checking for results...');
+
+            // Check if search results exist (._item divs in .topListSection-body)
+            const searchResults = await page.evaluate(() => {
+                const bodyDiv = document.querySelector('.topListSection-body');
+                if (!bodyDiv) {
+                    return { found: false, reason: 'topListSection-body not found' };
+                }
+
+                const items = bodyDiv.querySelectorAll('._item');
+                if (!items || items.length === 0) {
+                    return { found: false, reason: 'No ._item divs found' };
+                }
+
+                // Extract first product link
+                const firstItem = items[0];
+                const linkElement = firstItem.querySelector('a._link');
+                if (!linkElement) {
+                    return { found: false, reason: 'No ._link found in first item' };
+                }
+
+                const href = linkElement.getAttribute('href');
+                const productTitle = firstItem.querySelector('h3._title')?.textContent?.trim() || '';
+
+                return {
+                    found: true,
+                    href: href,
+                    productTitle: productTitle,
+                    totalResults: items.length
+                };
+            });
+
+            console.log(`NBK: Search results:`, searchResults);
+
+            let nbkResult;
+            let finalContent;
+            let finalUrl;
+            let finalTitle;
+
+            if (!searchResults.found) {
+                // No search results found
+                console.log(`NBK: No search results found - ${searchResults.reason}`);
+
+                finalContent = `[NBK Search: No results found for model "${model}". Preprocessed search term: "${preprocessedModel}". Reason: ${searchResults.reason}]`;
+                finalUrl = searchUrl;
+                finalTitle = `NBK Search - No Results`;
+
+                nbkResult = {
+                    success: true,
+                    noResults: true,
+                    model: model,
+                    preprocessedModel: preprocessedModel,
+                    searchUrl: searchUrl,
+                    content: finalContent
+                };
+
+            } else {
+                // Search results found - navigate to product page
+                const productPath = searchResults.href;
+                const productUrl = productPath.startsWith('http')
+                    ? productPath
+                    : `https://www.nbk1560.com${productPath}`;
+
+                console.log(`NBK: Found ${searchResults.totalResults} results. Navigating to first product: ${productUrl}`);
+                console.log(`NBK: Product title: ${searchResults.productTitle}`);
+
+                await page.goto(productUrl, {
+                    waitUntil: 'networkidle2',
+                    timeout: 60000
+                });
+
+                console.log('NBK: Product page loaded, extracting content...');
+
+                // Extract page content
+                const text = await page.evaluate(() => document.body.innerText || '');
+
+                finalContent = text.trim();
+                finalUrl = productUrl;
+                finalTitle = searchResults.productTitle || `NBK Product - ${model}`;
+
+                nbkResult = {
+                    success: true,
+                    model: model,
+                    preprocessedModel: preprocessedModel,
+                    searchUrl: searchUrl,
+                    productUrl: productUrl,
+                    productTitle: searchResults.productTitle,
+                    totalResults: searchResults.totalResults,
+                    contentLength: finalContent.length
+                };
+
+                console.log(`NBK: Successfully scraped product page (${finalContent.length} chars)`);
+            }
+
+            // Close browser before callback
+            await browser.close();
+            browser = null;
+            console.log('NBK: Browser closed, sending callback...');
+
+            // Send callback with results
+            if (callbackUrl) {
+                await sendCallback(callbackUrl, {
+                    jobId,
+                    urlIndex,
+                    content: finalContent,
+                    title: finalTitle,
+                    snippet: snippet || `NBK search result for ${model}`,
+                    url: finalUrl
+                });
+                callbackSent = true;
+            }
+
+            // Memory cleanup
+            finalContent = null;
+            forceGarbageCollection();
+            trackMemoryUsage(`nbk_complete_${requestCount}`);
+            scheduleRestartIfNeeded();
+
+            return res.json(nbkResult);
+
+        } catch (error) {
+            console.error(`NBK scraping error:`, error);
+
+            // Close browser IMMEDIATELY to free memory
+            if (browser) {
+                try {
+                    await browser.close();
+                    browser = null;
+                    console.log('NBK: Browser closed after error');
+                } catch (closeError) {
+                    console.error('Error closing browser after NBK scraping error:', closeError);
+                }
+            }
+
+            // Send error callback if not already sent
+            if (callbackUrl && !callbackSent) {
+                await sendCallback(callbackUrl, {
+                    jobId,
+                    urlIndex,
+                    content: `[NBK search failed: ${error.message}]`,
+                    title: null,
+                    snippet: snippet || '',
+                    url: 'https://www.nbk1560.com/'
+                });
+            }
+
+            // Force restart after error
+            console.log('NBK check failed - forcing restart to free memory');
+            isShuttingDown = true;
+            scheduleRestartIfNeeded();
+
+            return res.status(500).json({
+                success: false,
+                error: error.message,
+                model: model
+            });
+
+        } finally {
+            // Ensure browser is always closed
+            if (browser) {
+                try {
+                    await browser.close();
+                    browser = null;
+                } catch (closeErr) {
+                    console.error('Failed to close browser in finally block:', closeErr.message);
+                }
+            }
+        }
+    }); // End of enqueuePuppeteerTask
+});
+
 // Batch scraping endpoint (multiple URLs)
 app.post('/scrape-batch', async (req, res) => {
     const { urls } = req.body;
