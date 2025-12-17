@@ -1713,9 +1713,9 @@ app.post('/scrape-idec-dual', async (req, res) => {
     }); // End of enqueuePuppeteerTask
 });
 
-// NBK product page scraping endpoint with Japanese proxy
+// NBK product page scraping endpoint (no proxy needed - uses language parameter)
 app.post('/scrape-nbk', async (req, res) => {
-    const { productUrl, callbackUrl, jobId, urlIndex, title, snippet, jpProxyUrl } = req.body;
+    const { productUrl, callbackUrl, jobId, urlIndex, title, snippet } = req.body;
 
     // Check shutdown state before processing
     if (isShuttingDown) {
@@ -1731,8 +1731,8 @@ app.post('/scrape-nbk', async (req, res) => {
     const memBefore = trackMemoryUsage(`nbk_start_${requestCount}`);
     console.log(`[${new Date().toISOString()}] NBK Product Page Request #${requestCount} - Memory: ${memBefore.rss}MB RSS`);
 
-    if (!productUrl || !jpProxyUrl) {
-        return res.status(400).json({ error: 'productUrl and jpProxyUrl are required' });
+    if (!productUrl) {
+        return res.status(400).json({ error: 'productUrl is required' });
     }
 
     console.log(`[${new Date().toISOString()}] NBK: Scraping product page: ${productUrl}`);
@@ -1747,33 +1747,13 @@ app.post('/scrape-nbk', async (req, res) => {
         productUrl: productUrl
     });
 
-    // Helper function to parse proxy URL
-    function parseProxyUrl(proxyUrl) {
-        try {
-            const url = new URL(proxyUrl);
-            return {
-                server: `${url.hostname}:${url.port}`,
-                username: url.username || null,
-                password: url.password || null
-            };
-        } catch (error) {
-            console.error(`Failed to parse proxy URL: ${error.message}`);
-            return null;
-        }
-    }
-
     // Enqueue Puppeteer task to run asynchronously
     enqueuePuppeteerTask(async () => {
         let browser = null;
         let callbackSent = false;
 
         try {
-            const proxyConfig = parseProxyUrl(jpProxyUrl);
-            if (!proxyConfig) {
-                throw new Error('Failed to parse JP proxy URL');
-            }
-
-            console.log(`NBK: Launching browser with JP proxy: ${proxyConfig.server}`);
+            console.log(`NBK: Launching browser (no proxy - using language parameter in URL)`);
 
             browser = await puppeteer.launch({
                 headless: 'new',
@@ -1781,7 +1761,6 @@ app.post('/scrape-nbk', async (req, res) => {
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
-                    `--proxy-server=${proxyConfig.server}`,
                     '--disable-accelerated-2d-canvas',
                     '--no-first-run',
                     '--no-zygote',
@@ -1803,15 +1782,6 @@ app.post('/scrape-nbk', async (req, res) => {
             });
 
             const page = await browser.newPage();
-
-            // Set proxy authentication if provided
-            if (proxyConfig.username && proxyConfig.password) {
-                console.log('NBK: Setting proxy authentication');
-                await page.authenticate({
-                    username: proxyConfig.username,
-                    password: proxyConfig.password
-                });
-            }
 
             await page.setUserAgent(
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
