@@ -1713,9 +1713,204 @@ app.post('/scrape-idec-dual', async (req, res) => {
     }); // End of enqueuePuppeteerTask
 });
 
+// NBK product page scraping endpoint with Japanese proxy
+app.post('/scrape-nbk', async (req, res) => {
+    const { productUrl, callbackUrl, jobId, urlIndex, title, snippet, jpProxyUrl } = req.body;
 
-// NBK scraping is now handled by BrowserQL in Netlify functions (fetch-url.js)
-// The old Puppeteer-based /scrape-nbk endpoint has been removed
+    // Check shutdown state before processing
+    if (isShuttingDown) {
+        console.log(`Rejecting /scrape-nbk request during shutdown (current memory: ${getMemoryUsageMB().rss}MB)`);
+        return res.status(503).json({
+            error: 'Service restarting due to memory limit',
+            retryAfter: 30
+        });
+    }
+
+    // Increment request counter and track memory
+    requestCount++;
+    const memBefore = trackMemoryUsage(`nbk_start_${requestCount}`);
+    console.log(`[${new Date().toISOString()}] NBK Product Page Request #${requestCount} - Memory: ${memBefore.rss}MB RSS`);
+
+    if (!productUrl || !jpProxyUrl) {
+        return res.status(400).json({ error: 'productUrl and jpProxyUrl are required' });
+    }
+
+    console.log(`[${new Date().toISOString()}] NBK: Scraping product page: ${productUrl}`);
+    if (callbackUrl) {
+        console.log(`Callback URL provided: ${callbackUrl}`);
+    }
+
+    // Respond immediately to avoid timeout
+    res.status(200).json({
+        success: true,
+        message: 'NBK product page scraping started',
+        productUrl: productUrl
+    });
+
+    // Helper function to parse proxy URL
+    function parseProxyUrl(proxyUrl) {
+        try {
+            const url = new URL(proxyUrl);
+            return {
+                server: `${url.hostname}:${url.port}`,
+                username: url.username || null,
+                password: url.password || null
+            };
+        } catch (error) {
+            console.error(`Failed to parse proxy URL: ${error.message}`);
+            return null;
+        }
+    }
+
+    // Enqueue Puppeteer task to run asynchronously
+    enqueuePuppeteerTask(async () => {
+        let browser = null;
+        let callbackSent = false;
+
+        try {
+            const proxyConfig = parseProxyUrl(jpProxyUrl);
+            if (!proxyConfig) {
+                throw new Error('Failed to parse JP proxy URL');
+            }
+
+            console.log(`NBK: Launching browser with JP proxy: ${proxyConfig.server}`);
+
+            browser = await puppeteer.launch({
+                headless: 'new',
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    `--proxy-server=${proxyConfig.server}`,
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    '--disable-background-networking',
+                    '--disable-default-apps',
+                    '--disable-sync',
+                    '--disable-extensions',
+                    '--disable-blink-features=AutomationControlled',
+                    '--single-process',
+                    '--disable-features=site-per-process',
+                    '--js-flags=--max-old-space-size=256',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins',
+                    '--disable-site-isolation-trials'
+                ],
+                timeout: 120000
+            });
+
+            const page = await browser.newPage();
+
+            // Set proxy authentication if provided
+            if (proxyConfig.username && proxyConfig.password) {
+                console.log('NBK: Setting proxy authentication');
+                await page.authenticate({
+                    username: proxyConfig.username,
+                    password: proxyConfig.password
+                });
+            }
+
+            await page.setUserAgent(
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            );
+
+            await page.setViewport({ width: 1280, height: 720 });
+
+            // Enable request interception to block heavy resources
+            await page.setRequestInterception(true);
+
+            page.on('request', (request) => {
+                const resourceType = request.resourceType();
+                if (['image', 'media', 'font'].includes(resourceType)) {
+                    request.abort();
+                    return;
+                }
+                request.continue();
+            });
+
+            console.log(`NBK: Navigating to product page: ${productUrl}`);
+            await page.goto(productUrl, {
+                waitUntil: 'networkidle2',
+                timeout: 60000
+            });
+
+            console.log('NBK: Product page loaded, extracting content...');
+
+            // Extract page content
+            const text = await page.evaluate(() => document.body.innerText || '');
+            const finalContent = text.trim();
+
+            console.log(`NBK: Successfully scraped product page (${finalContent.length} characters)`);
+
+            // Close browser before callback
+            await browser.close();
+            browser = null;
+
+            // Send callback with results
+            if (callbackUrl) {
+                console.log('NBK: Sending callback...');
+                await sendCallback(callbackUrl, {
+                    jobId,
+                    urlIndex,
+                    content: finalContent,
+                    title: title || 'NBK Product',
+                    snippet: snippet || 'NBK product page',
+                    url: productUrl
+                });
+                callbackSent = true;
+            }
+
+            // Memory cleanup
+            trackMemoryUsage(`nbk_complete_${requestCount}`);
+            scheduleRestartIfNeeded();
+
+            console.log('NBK: Task completed successfully');
+
+        } catch (error) {
+            console.error(`NBK scraping error:`, error);
+
+            // Close browser IMMEDIATELY to free memory
+            if (browser) {
+                try {
+                    await browser.close();
+                    browser = null;
+                    console.log('NBK: Browser closed after error');
+                } catch (closeError) {
+                    console.error('Error closing browser after NBK scraping error:', closeError);
+                }
+            }
+
+            // Send error callback if not already sent
+            if (callbackUrl && !callbackSent) {
+                await sendCallback(callbackUrl, {
+                    jobId,
+                    urlIndex,
+                    content: `[NBK product page scraping failed: ${error.message}]`,
+                    title: null,
+                    snippet: snippet || '',
+                    url: productUrl
+                });
+            }
+
+            console.log('NBK check failed - scheduling restart');
+            scheduleRestartIfNeeded();
+
+        } finally {
+            // Ensure browser is always closed
+            if (browser) {
+                try {
+                    await browser.close();
+                    browser = null;
+                } catch (closeErr) {
+                    console.error('Failed to close browser in finally block:', closeErr.message);
+                }
+            }
+        }
+    }); // End of enqueuePuppeteerTask
+});
 
 // Batch scraping endpoint (multiple URLs)
 app.post('/scrape-batch', async (req, res) => {
