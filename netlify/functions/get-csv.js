@@ -25,11 +25,30 @@ exports.handler = async function(event, context) {
         }
 
         // Parse CSV data using shared utility
-        const data = parseCSV(csvContent);
+        const parseResult = parseCSV(csvContent);
+
+        if (!parseResult.success) {
+            console.error('CSV parsing failed:', parseResult.error);
+            return {
+                statusCode: 500,
+                body: JSON.stringify({
+                    error: 'CSV parsing failed',
+                    details: parseResult.error
+                })
+            };
+        }
+
+        // Log warnings if present (non-fatal errors)
+        if (parseResult.error) {
+            console.warn('CSV parsing completed with warnings:', parseResult.error);
+        }
 
         return {
             statusCode: 200,
-            body: JSON.stringify({ data: data })
+            body: JSON.stringify({
+                data: parseResult.data,
+                warnings: parseResult.error || null
+            })
         };
     } catch (error) {
         console.error('Error in get-csv function:', error);

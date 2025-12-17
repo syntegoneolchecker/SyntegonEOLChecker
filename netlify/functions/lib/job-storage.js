@@ -10,8 +10,76 @@ function getJobStore() {
     });
 }
 
-// Create a new job
+/**
+ * Delete a job from storage
+ * @param {string} jobId - Job ID to delete
+ * @param {Object} context - Netlify function context (optional)
+ */
+async function deleteJob(jobId, context) {
+    const store = getJobStore();
+    await store.delete(jobId);
+    console.log(`Deleted job ${jobId} from storage`);
+}
+
+/**
+ * Clean up old completed jobs (completed more than 5 minutes ago)
+ * Called automatically on every new job creation to prevent blob storage bloat
+ * @param {Object} context - Netlify function context (optional)
+ */
+async function cleanupOldJobs(context) {
+    try {
+        const store = getJobStore();
+        const { blobs } = await store.list();
+
+        const now = Date.now();
+        const FIVE_MINUTES_MS = 5 * 60 * 1000;
+        let deletedCount = 0;
+
+        for (const blob of blobs) {
+            try {
+                const job = await store.get(blob.key, { type: 'json' });
+
+                if (!job) continue;
+
+                // Delete if job is completed or errored and older than 5 minutes
+                if ((job.status === 'complete' || job.status === 'error') && job.completedAt) {
+                    const completedTime = new Date(job.completedAt).getTime();
+                    const ageMs = now - completedTime;
+
+                    if (ageMs > FIVE_MINUTES_MS) {
+                        await store.delete(blob.key);
+                        deletedCount++;
+                        console.log(`Cleaned up old job ${blob.key} (completed ${Math.round(ageMs / 1000 / 60)}m ago)`);
+                    }
+                }
+            } catch (error) {
+                console.error(`Error processing blob ${blob.key} during cleanup:`, error.message);
+                // Continue with other blobs
+            }
+        }
+
+        if (deletedCount > 0) {
+            console.log(`✓ Cleanup complete: deleted ${deletedCount} old job(s)`);
+        }
+    } catch (error) {
+        // Don't fail job creation if cleanup fails
+        console.error('Job cleanup error (non-fatal):', error.message);
+    }
+}
+
+/**
+ * Create a new job and clean up old completed jobs
+ * @param {string} maker - Manufacturer name
+ * @param {string} model - Product model
+ * @param {Object} context - Netlify function context (optional)
+ * @returns {string} Job ID
+ */
 async function createJob(maker, model, context) {
+    // Clean up old jobs first (fire-and-forget, don't await)
+    cleanupOldJobs(context).catch(err =>
+        console.error('Background cleanup failed:', err.message)
+    );
+
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
     const job = {
@@ -62,18 +130,30 @@ async function getJob(jobId, context) {
     return job;
 }
 
-// Update job status
+/**
+ * Update job status
+ * @param {string} jobId - Job ID
+ * @param {string} status - New status (created, urls_ready, fetching, analyzing, complete, error)
+ * @param {string} error - Error message (optional)
+ * @param {Object} context - Netlify function context (optional)
+ * @param {Object} metadata - Additional metadata to store (optional)
+ */
 async function updateJobStatus(jobId, status, error, context, metadata = {}) {
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
     if (!job) {
-        throw new Error(`Job ${jobId} not found`);
+        throw new Error(`Job ${jobId} not found. Jobs are automatically deleted 5 minutes after completion.`);
     }
 
     job.status = status;
     if (error) {
         job.error = error;
+    }
+
+    // Set completedAt timestamp for final states (enables cleanup)
+    if ((status === 'complete' || status === 'error') && !job.completedAt) {
+        job.completedAt = new Date().toISOString();
     }
 
     // Add any additional metadata (e.g., retrySeconds for rate limits)
@@ -213,5 +293,6 @@ module.exports = {
     saveUrlResult,
     saveFinalResult,
     replaceJobUrls,
-    addUrlToJob
+    addUrlToJob,
+    deleteJob
 };

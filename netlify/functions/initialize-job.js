@@ -1,6 +1,7 @@
 // Initialize EOL check job - Search with Tavily and save URLs
 const { createJob, saveJobUrls, saveFinalResult, saveUrlResult } = require('./lib/job-storage');
 const { validateInitializeJob, sanitizeString } = require('./lib/validators');
+const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { tavily } = require('@tavily/core');
 
 /**
@@ -109,87 +110,6 @@ async function fetchHtml(url) {
     console.log(`Fetched HTML successfully: ${html.length} characters`);
 
     return html;
-}
-
-/**
- * Scrape URL using BrowserQL (for Cloudflare-protected sites)
- * Same implementation as in fetch-url.js
- */
-async function scrapeWithBrowserQL(url) {
-    const browserqlApiKey = process.env.BROWSERQL_API_KEY;
-
-    if (!browserqlApiKey) {
-        throw new Error('BROWSERQL_API_KEY environment variable not set');
-    }
-
-    console.log(`Scraping with BrowserQL: ${url}`);
-
-    const query = `
-        mutation ScrapeUrl {
-            goto(
-                url: "${url}"
-                waitUntil: networkIdle
-            ) {
-                status
-            }
-
-            pageContent: evaluate(content: """
-                (() => {
-                    try {
-                        const scripts = document.querySelectorAll('script, style, noscript');
-                        scripts.forEach(el => el.remove());
-                        return JSON.stringify({ text: document.body.innerText, error: null });
-                    } catch (e) {
-                        return JSON.stringify({ text: null, error: e?.message ?? String(e) });
-                    }
-                })()
-            """) {
-                value
-            }
-        }
-    `;
-
-    const response = await fetch(`https://production-sfo.browserless.io/stealth/bql?token=${browserqlApiKey}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ query })
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`BrowserQL API error: ${response.status} - ${errorText}`);
-    }
-
-    const result = await response.json();
-
-    if (result.errors) {
-        throw new Error(`BrowserQL GraphQL errors: ${JSON.stringify(result.errors)}`);
-    }
-
-    if (!result.data || !result.data.pageContent) {
-        throw new Error('BrowserQL returned no data');
-    }
-
-    const evaluateResult = JSON.parse(result.data.pageContent.value);
-
-    if (evaluateResult.error) {
-        throw new Error(`BrowserQL evaluation error: ${evaluateResult.error}`);
-    }
-
-    const content = evaluateResult.text;
-
-    if (!content) {
-        throw new Error('BrowserQL returned empty content');
-    }
-
-    console.log(`BrowserQL scraped successfully: ${content.length} characters`);
-
-    return {
-        content,
-        success: true
-    };
 }
 
 /**

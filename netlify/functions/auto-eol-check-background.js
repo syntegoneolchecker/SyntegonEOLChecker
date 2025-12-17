@@ -97,7 +97,18 @@ async function findNextProduct() {
         }
 
         // Parse CSV using shared utility
-        const data = parseCSV(csvContent);
+        const parseResult = parseCSV(csvContent);
+
+        if (!parseResult.success) {
+            console.error('CSV parsing failed:', parseResult.error);
+            throw new Error(`CSV parsing failed: ${parseResult.error}`);
+        }
+
+        if (parseResult.error) {
+            console.warn('CSV parsing warnings:', parseResult.error);
+        }
+
+        const data = parseResult.data;
 
         if (data.length <= 1) {
             console.log('No products in database (only headers)');
@@ -417,7 +428,14 @@ async function updateProduct(sapNumber, result) {
         }
 
         // Parse CSV using shared utility
-        const data = parseCSV(csvContent);
+        const parseResult = parseCSV(csvContent);
+
+        if (!parseResult.success) {
+            console.error('CSV parsing failed during product update:', parseResult.error);
+            throw new Error(`CSV parsing failed: ${parseResult.error}`);
+        }
+
+        const data = parseResult.data;
 
         // Find product by SAP number
         const rowIndex = data.findIndex((row, i) => i > 0 && row[0] === sapNumber);
