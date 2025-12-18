@@ -1,6 +1,7 @@
 // Fetch a single URL - trigger Render scraping with callback OR use BrowserQL for Cloudflare-protected sites
 const { markUrlFetching, saveUrlResult, getJob } = require('./lib/job-storage');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
+const { retryWithBackoff } = require('./lib/retry-helpers');
 
 /**
  * Check if Render scraping service is healthy
@@ -232,79 +233,38 @@ exports.handler = async function(event, context) {
             console.log(`Calling KEYENCE scraping service: ${scrapingServiceUrl}/scrape-keyence`);
 
             // Retry logic for Render invocation (KEYENCE endpoint)
-            const maxRetries = 3;
-            let lastError = null;
-            let isRenderRestarting = false;
-
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                console.log(`KEYENCE invocation attempt ${attempt}/${maxRetries}`);
-
-                try {
-                    const timeoutPromise = new Promise((resolve) =>
-                        setTimeout(() => resolve({ timedOut: true }), 10000)
-                    );
-
-                    const fetchPromise = fetch(`${scrapingServiceUrl}/scrape-keyence`, {
+            const keyenceResult = await retryWithBackoff({
+                operation: async () => {
+                    return fetch(`${scrapingServiceUrl}/scrape-keyence`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(keyencePayload)
                     });
+                },
+                operationName: 'KEYENCE invocation',
+                maxRetries: 3,
+                timeoutMs: 10000,
+                breakOnTimeout: true
+            });
 
-                    const result = await Promise.race([fetchPromise, timeoutPromise]);
-
-                    if (result.timedOut) {
-                        console.log(`KEYENCE call - timeout after 10s (Render processing in background)`);
-                        break;
-                    } else {
-                        const response = result;
-                        console.log(`KEYENCE call responded with status: ${response.status}`);
-
-                        if (!response.ok) {
-                            const text = await response.text();
-                            console.error(`KEYENCE error response on attempt ${attempt}: ${response.status} - ${text}`);
-
-                            // Detect 503 Service Unavailable (Render restarting)
-                            if (response.status === 503) {
-                                isRenderRestarting = true;
-                                console.warn(`⚠️  Render service is restarting (503 response)`);
-                            }
-
-                            lastError = new Error(`KEYENCE scraping returned error: ${response.status} - ${text}`);
-                        } else {
-                            console.log(`KEYENCE successfully invoked on attempt ${attempt}`);
-                            break;
-                        }
-                    }
-                } catch (error) {
-                    console.error(`KEYENCE call failed on attempt ${attempt}:`, error.message);
-                    lastError = error;
-                }
-
-                if (attempt < maxRetries) {
-                    // Use longer backoff for 503 errors (Render restart takes ~30 seconds)
-                    let backoffMs;
-                    if (isRenderRestarting) {
-                        // For Render restart: wait 15s, 30s on retries (enough time for restart to complete)
-                        backoffMs = attempt === 1 ? 15000 : 30000;
-                        console.log(`Render is restarting, using longer backoff: ${backoffMs}ms (attempt ${attempt})`);
-                    } else {
-                        // Standard exponential backoff for other errors
-                        backoffMs = Math.pow(2, attempt) * 500; // 1s, 2s, 4s
-                    }
-                    console.log(`Retrying KEYENCE call in ${backoffMs}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, backoffMs));
-                }
+            // Handle timeout (Render processing in background)
+            if (keyenceResult.timedOut) {
+                return {
+                    statusCode: 202,
+                    body: JSON.stringify({ success: true, method: 'keyence_pending' })
+                };
             }
 
-            if (lastError) {
-                console.error(`All ${maxRetries} KEYENCE invocation attempts failed`);
+            // Handle failure
+            if (!keyenceResult.success) {
+                const lastError = keyenceResult.error;
                 console.log(`Saving error result and continuing pipeline to prevent job from hanging...`);
 
                 // Determine if this is a Render restart (503 error)
                 const isRenderRestart = lastError.message.includes('503') || lastError.message.includes('Service restarting');
                 const errorMessage = isRenderRestart
                     ? '[Render service was restarting - this KEYENCE search will be retried on next check]'
-                    : `[KEYENCE search failed after ${maxRetries} attempts: ${lastError.message}]`;
+                    : `[KEYENCE search failed after 3 attempts: ${lastError.message}]`;
 
                 // Save error result to prevent job from hanging
                 const allDone = await saveUrlResult(jobId, urlIndex, {
@@ -341,13 +301,14 @@ exports.handler = async function(event, context) {
                     statusCode: 500,
                     body: JSON.stringify({
                         success: false,
-                        error: `KEYENCE invocation failed after ${maxRetries} attempts: ${lastError.message}`,
+                        error: `KEYENCE invocation failed after 3 attempts: ${lastError.message}`,
                         method: 'keyence_failed',
                         pipelineContinued: true
                     })
                 };
             }
 
+            // Success - Render is processing
             return {
                 statusCode: 202,
                 body: JSON.stringify({ success: true, method: 'keyence_pending' })
@@ -407,75 +368,38 @@ exports.handler = async function(event, context) {
             console.log(`IDEC payload: model=${model}, jpUrl=${jpUrl}, usUrl=${usUrl}, hasJpProxy=${!!jpProxyUrl}, hasUsProxy=${!!usProxyUrl}`);
 
             // Retry logic for Render invocation
-            const maxRetries = 3;
-            let lastError = null;
-            let isRenderRestarting = false;
-
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                console.log(`IDEC dual-site attempt ${attempt}/${maxRetries}`);
-
-                try {
-                    const timeoutPromise = new Promise((resolve) =>
-                        setTimeout(() => resolve({ timedOut: true }), 10000)
-                    );
-
-                    const fetchPromise = fetch(`${scrapingServiceUrl}/scrape-idec-dual`, {
+            const idecResult = await retryWithBackoff({
+                operation: async () => {
+                    return fetch(`${scrapingServiceUrl}/scrape-idec-dual`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(idecPayload)
                     });
+                },
+                operationName: 'IDEC dual-site',
+                maxRetries: 3,
+                timeoutMs: 10000,
+                breakOnTimeout: true
+            });
 
-                    const result = await Promise.race([fetchPromise, timeoutPromise]);
-
-                    if (result.timedOut) {
-                        console.log(`IDEC dual-site call - timeout after 10s (Render processing in background)`);
-                        break;
-                    } else {
-                        const response = result;
-                        console.log(`IDEC dual-site call responded with status: ${response.status}`);
-
-                        if (!response.ok) {
-                            const text = await response.text();
-                            console.error(`IDEC dual-site error response on attempt ${attempt}: ${response.status} - ${text}`);
-
-                            if (response.status === 503) {
-                                isRenderRestarting = true;
-                                console.warn(`⚠️  Render service is restarting (503 response)`);
-                            }
-
-                            lastError = new Error(`IDEC dual-site returned error: ${response.status} - ${text}`);
-                        } else {
-                            console.log(`IDEC dual-site successfully invoked on attempt ${attempt}`);
-                            break;
-                        }
-                    }
-                } catch (error) {
-                    console.error(`IDEC dual-site call failed on attempt ${attempt}:`, error.message);
-                    lastError = error;
-                }
-
-                if (attempt < maxRetries) {
-                    let backoffMs;
-                    if (isRenderRestarting) {
-                        backoffMs = attempt === 1 ? 15000 : 30000;
-                        console.log(`Render is restarting, using longer backoff: ${backoffMs}ms (attempt ${attempt})`);
-                    } else {
-                        backoffMs = Math.pow(2, attempt) * 500;
-                    }
-                    console.log(`Retrying IDEC dual-site call in ${backoffMs}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, backoffMs));
-                }
+            // Handle timeout (Render processing in background)
+            if (idecResult.timedOut) {
+                return {
+                    statusCode: 202,
+                    body: JSON.stringify({ success: true, method: 'idec_dual_site_pending' })
+                };
             }
 
-            if (lastError) {
-                console.error(`All ${maxRetries} IDEC dual-site attempts failed`);
+            // Handle failure
+            if (!idecResult.success) {
+                const lastError = idecResult.error;
                 console.log(`Saving error result and continuing pipeline`);
 
                 const allDone = await saveUrlResult(jobId, urlIndex, {
                     url,
                     title: null,
                     snippet,
-                    fullContent: `[IDEC dual-site search failed after ${maxRetries} attempts: ${lastError.message}]`
+                    fullContent: `[IDEC dual-site search failed after 3 attempts: ${lastError.message}]`
                 }, context);
 
                 console.log(`Error result saved for IDEC URL ${urlIndex}. All done: ${allDone}`);
@@ -501,13 +425,14 @@ exports.handler = async function(event, context) {
                     statusCode: 500,
                     body: JSON.stringify({
                         success: false,
-                        error: `IDEC dual-site failed after ${maxRetries} attempts: ${lastError.message}`,
+                        error: `IDEC dual-site failed after 3 attempts: ${lastError.message}`,
                         method: 'idec_dual_site_failed',
                         pipelineContinued: true
                     })
                 };
             }
 
+            // Success - Render is processing
             return {
                 statusCode: 202,
                 body: JSON.stringify({ success: true, method: 'idec_dual_site_pending' })
@@ -779,87 +704,38 @@ exports.handler = async function(event, context) {
         console.log(`Calling Render scraping service for URL ${urlIndex}: ${scrapingServiceUrl}/scrape`);
 
         // Retry logic for Render invocation
-        const maxRetries = 3;
-        let lastError = null;
-        let isRenderRestarting = false;
-
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            console.log(`Render invocation attempt ${attempt}/${maxRetries} for URL ${urlIndex}`);
-
-            try {
-                // Call Render with a timeout - wait max 10s to ensure invocation, then continue
-                // Render will call back when done (which may take 30-60s)
-                const timeoutPromise = new Promise((resolve) =>
-                    setTimeout(() => resolve({ timedOut: true }), 10000)
-                );
-
-                const fetchPromise = fetch(`${scrapingServiceUrl}/scrape`, {
+        const renderResult = await retryWithBackoff({
+            operation: async () => {
+                return fetch(`${scrapingServiceUrl}/scrape`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(renderPayload)
                 });
+            },
+            operationName: `Render invocation for URL ${urlIndex}`,
+            maxRetries: 3,
+            timeoutMs: 10000,
+            breakOnTimeout: true
+        });
 
-                const result = await Promise.race([fetchPromise, timeoutPromise]);
-
-                if (result.timedOut) {
-                    console.log(`Render call for URL ${urlIndex} - timeout after 10s (Render processing in background)`);
-                    // Assume success - Render will callback
-                    break;
-                } else {
-                    const response = result;
-                    console.log(`Render call for URL ${urlIndex} responded with status: ${response.status}`);
-
-                    if (!response.ok) {
-                        const text = await response.text();
-                        console.error(`Render error response on attempt ${attempt}: ${response.status} - ${text}`);
-
-                        // Detect 503 Service Unavailable (Render restarting)
-                        if (response.status === 503) {
-                            isRenderRestarting = true;
-                            console.warn(`⚠️  Render service is restarting (503 response)`);
-                        }
-
-                        lastError = new Error(`Render returned error: ${response.status} - ${text}`);
-                        // Continue to retry
-                    } else {
-                        console.log(`Render successfully invoked for URL ${urlIndex} on attempt ${attempt}`);
-                        // Success - exit retry loop
-                        break;
-                    }
-                }
-            } catch (error) {
-                console.error(`Render call failed on attempt ${attempt}:`, error.message);
-                lastError = error;
-                // Continue to retry
-            }
-
-            // If not last attempt, wait before retrying
-            if (attempt < maxRetries) {
-                // Use longer backoff for 503 errors (Render restart takes ~30 seconds)
-                let backoffMs;
-                if (isRenderRestarting) {
-                    // For Render restart: wait 15s, 30s on retries (enough time for restart to complete)
-                    backoffMs = attempt === 1 ? 15000 : 30000;
-                    console.log(`Render is restarting, using longer backoff: ${backoffMs}ms (attempt ${attempt})`);
-                } else {
-                    // Standard exponential backoff for other errors
-                    backoffMs = Math.pow(2, attempt) * 500; // 1s, 2s, 4s
-                }
-                console.log(`Retrying Render call in ${backoffMs}ms...`);
-                await new Promise(resolve => setTimeout(resolve, backoffMs));
-            }
+        // Handle timeout (Render processing in background)
+        if (renderResult.timedOut) {
+            return {
+                statusCode: 202,
+                body: JSON.stringify({ success: true, method: 'render_pending' })
+            };
         }
 
         // If all retries failed, save error result and continue pipeline
-        if (lastError) {
-            console.error(`All ${maxRetries} Render invocation attempts failed for URL ${urlIndex}`);
+        if (!renderResult.success) {
+            const lastError = renderResult.error;
             console.log(`Saving error result and continuing pipeline to prevent job from hanging...`);
 
             // Determine if this is a Render restart (503 error)
             const isRenderRestart = lastError.message.includes('503') || lastError.message.includes('Service restarting');
             const errorMessage = isRenderRestart
                 ? '[Render service was restarting - this URL will be retried on next check]'
-                : `[Scraping failed after ${maxRetries} attempts: ${lastError.message}]`;
+                : `[Scraping failed after 3 attempts: ${lastError.message}]`;
 
             // Save error result to prevent job from hanging
             const allDone = await saveUrlResult(jobId, urlIndex, {
@@ -896,15 +772,16 @@ exports.handler = async function(event, context) {
                 statusCode: 500,
                 body: JSON.stringify({
                     success: false,
-                    error: `Render invocation failed after ${maxRetries} attempts: ${lastError.message}`,
+                    error: `Render invocation failed after 3 attempts: ${lastError.message}`,
                     method: 'render_failed',
                     pipelineContinued: true
                 })
             };
         }
 
+        // Success - Render is processing
         return {
-            statusCode: 202, // Accepted
+            statusCode: 202,
             body: JSON.stringify({ success: true, method: 'render_pending' })
         };
 
