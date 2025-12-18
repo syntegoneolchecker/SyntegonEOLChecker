@@ -1,6 +1,7 @@
 const { getStore } = require('@netlify/blobs');
 const { toCSV } = require('./lib/csv-parser');
 const { validateCsvData } = require('./lib/validators');
+const config = require('./lib/config');
 
 exports.handler = async function(event, context) {
     // Only allow POST requests
@@ -13,15 +14,36 @@ exports.handler = async function(event, context) {
 
     try {
         console.log('Parsing request body...');
-        const { data } = JSON.parse(event.body);
+        const requestBody = JSON.parse(event.body);
 
-        // Validate CSV data
+        // Validate request body has 'data' field
+        if (!requestBody || !requestBody.data) {
+            console.error('Missing data field in request body');
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: 'Request body must contain a "data" field' })
+            };
+        }
+
+        const { data } = requestBody;
+
+        // Validate CSV data structure
         const validation = validateCsvData(data);
         if (!validation.valid) {
             console.error('CSV validation failed:', validation.error);
             return {
                 statusCode: 400,
                 body: JSON.stringify({ error: validation.error })
+            };
+        }
+
+        // Validate column count matches expected schema (13 columns)
+        if (data.length > 0 && data[0].length !== config.CSV_COLUMN_COUNT) {
+            const error = `Invalid column count: expected ${config.CSV_COLUMN_COUNT} columns, got ${data[0].length}`;
+            console.error(error);
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error })
             };
         }
 
@@ -49,12 +71,10 @@ exports.handler = async function(event, context) {
         };
     } catch (error) {
         console.error('Error in save-csv function:', error);
-        console.error('Error stack:', error.stack);
         return {
             statusCode: 500,
             body: JSON.stringify({
-                error: 'Failed to save CSV data: ' + error.message,
-                stack: error.stack
+                error: 'Failed to save CSV data: ' + error.message
             })
         };
     }

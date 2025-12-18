@@ -2,6 +2,17 @@
 
 An automated End-of-Life (EOL) status checker for industrial products. The system uses AI-powered web scraping to determine if products are discontinued and identify their successors.
 
+## 🔒 Security Notice
+
+**This repository is safe to be public.** All sensitive data is properly secured:
+
+- ✅ **API Keys**: Stored in Netlify environment variables (never committed to repo)
+- ✅ **Database**: SAP part numbers and product data stored in Netlify Blobs (not in repo)
+- ✅ **Proxy Credentials**: Stored in environment variables (not in code)
+- ⚠️ **Important**: Never commit `.env` files or API keys to this repository
+
+If you're forking this project, make sure to set up your own environment variables (see setup instructions below).
+
 ## Architecture
 
 - **Frontend**: Static HTML/CSS/JavaScript hosted on Netlify
