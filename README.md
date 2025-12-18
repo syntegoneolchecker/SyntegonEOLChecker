@@ -1,4 +1,4 @@
-# Syntegon EOL Checker 
+# Syntegon EOL Checker  
 
 An automated End-of-Life (EOL) status checker for industrial products. The system uses AI-powered web scraping to determine if products are discontinued and identify their successors.
 
