@@ -39,7 +39,10 @@ async function cleanupOldJobs(context) {
             try {
                 const job = await store.get(blob.key, { type: 'json' });
 
-                if (!job) continue;
+                if (!job) {
+                    // Blob exists but has no data - safe to skip
+                    continue;
+                }
 
                 // Delete if job is completed or errored and older than 5 minutes
                 if ((job.status === 'complete' || job.status === 'error') && job.completedAt) {
@@ -53,8 +56,21 @@ async function cleanupOldJobs(context) {
                     }
                 }
             } catch (error) {
-                console.error(`Error processing blob ${blob.key} during cleanup:`, error.message);
-                // Continue with other blobs
+                // Handle different error types
+                const is403Error = error.message?.includes('403') || error.statusCode === 403;
+                const is404Error = error.message?.includes('404') || error.statusCode === 404;
+
+                if (is403Error) {
+                    // Permission error on old blob - skip it (likely corrupted or orphaned)
+                    console.warn(`⚠️  Skipping blob ${blob.key}: Permission denied (403). This blob may be orphaned from an older version.`);
+                } else if (is404Error) {
+                    // Blob was deleted between list() and get() - this is fine
+                    console.log(`Blob ${blob.key} was already deleted`);
+                } else {
+                    // Other errors - log but continue
+                    console.error(`Error processing blob ${blob.key} during cleanup:`, error.message);
+                }
+                // Always continue with other blobs
             }
         }
 
