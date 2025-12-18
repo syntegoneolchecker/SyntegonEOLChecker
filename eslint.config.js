@@ -34,7 +34,12 @@ module.exports = [
                 fetch: 'readonly',
                 alert: 'readonly',
                 confirm: 'readonly',
-                AbortSignal: 'readonly'
+                AbortSignal: 'readonly',
+                AbortController: 'readonly',
+                FileReader: 'readonly',
+                Blob: 'readonly',
+                // External libraries
+                XLSX: 'readonly'
             }
         },
         rules: {
