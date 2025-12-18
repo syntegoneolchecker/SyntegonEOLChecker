@@ -14,7 +14,7 @@ All architectural decisions are driven by these **hard limits**:
 |---------|-------|------------------------|
 | **Netlify Functions** | 30s timeout (regular)<br/>15min timeout (background) | - Polling instead of long-running tasks<br/>- Chain multiple background functions for long operations |
 | **Groq LLM** | 200,000 tokens/day<br/>8,000 tokens/minute<br/>(rolling windows) | - Smart content truncation (`analyze-job.js:235-467`)<br/>- Token availability checks before analysis<br/>- Retry logic with exponential backoff |
-| **Tavily Search** | 1,000 searches/month | - Only 2 URLs per search<br/>- Manufacturer-specific direct URLs to skip search<br/>- 20 product limit on daily auto-checks |
+| **Tavily Search** | 1,000 tokens/month | - 2 Tokens per search, only 2 search results used due to LLM Token constraints<br/>- Manufacturer-specific direct URLs to skip search<br/>- 20 product limit on daily auto-checks |
 | **BrowserQL** | 1,000 tokens/month<br/>(1 token = 30 seconds) | - Use ONLY for Cloudflare-protected sites<br/>- Puppeteer (free) for everything else |
 | **Render (Scraping Service)** | 512MB RAM<br/>750 hours/month | - Aggressive memory management<br/>- Self-restart when approaching limit<br/>- Sequential scraping (no concurrency) |
 | **Webshare Proxies** | 1GB bandwidth/month | - Use proxies ONLY when needed (IDEC geo-restriction) |
