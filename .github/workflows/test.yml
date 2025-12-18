@@ -9,17 +9,21 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v3
-    
+
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
         node-version: '18'
-    
+
     - name: Install dependencies
       run: npm install
-      
+
+    - name: Run ESLint
+      run: npx eslint netlify/functions/**/*.js scraping-service/**/*.js script.js test.js --max-warnings 50
+      continue-on-error: true
+
     - name: Run tests
       run: node test.js
