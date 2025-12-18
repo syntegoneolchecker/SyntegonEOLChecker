@@ -2,6 +2,7 @@
 const { markUrlFetching, saveUrlResult, getJob } = require('./lib/job-storage');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { retryWithBackoff } = require('./lib/retry-helpers');
+const config = require('./lib/config');
 
 /**
  * Check if Render scraping service is healthy
@@ -242,8 +243,8 @@ exports.handler = async function(event, context) {
                     });
                 },
                 operationName: 'KEYENCE invocation',
-                maxRetries: 3,
-                timeoutMs: 10000,
+                maxRetries: config.CALLBACK_MAX_RETRIES,
+                timeoutMs: config.HEALTH_CHECK_TIMEOUT_MS * 2, // 10s for invocation
                 breakOnTimeout: true
             });
 
@@ -264,7 +265,7 @@ exports.handler = async function(event, context) {
                 const isRenderRestart = lastError.message.includes('503') || lastError.message.includes('Service restarting');
                 const errorMessage = isRenderRestart
                     ? '[Render service was restarting - this KEYENCE search will be retried on next check]'
-                    : `[KEYENCE search failed after 3 attempts: ${lastError.message}]`;
+                    : `[KEYENCE search failed after ${config.CALLBACK_MAX_RETRIES} attempts: ${lastError.message}]`;
 
                 // Save error result to prevent job from hanging
                 const allDone = await saveUrlResult(jobId, urlIndex, {
@@ -301,7 +302,7 @@ exports.handler = async function(event, context) {
                     statusCode: 500,
                     body: JSON.stringify({
                         success: false,
-                        error: `KEYENCE invocation failed after 3 attempts: ${lastError.message}`,
+                        error: `KEYENCE invocation failed after ${config.CALLBACK_MAX_RETRIES} attempts: ${lastError.message}`,
                         method: 'keyence_failed',
                         pipelineContinued: true
                     })
@@ -377,8 +378,8 @@ exports.handler = async function(event, context) {
                     });
                 },
                 operationName: 'IDEC dual-site',
-                maxRetries: 3,
-                timeoutMs: 10000,
+                maxRetries: config.CALLBACK_MAX_RETRIES,
+                timeoutMs: config.HEALTH_CHECK_TIMEOUT_MS * 2, // 10s for invocation
                 breakOnTimeout: true
             });
 
@@ -399,7 +400,7 @@ exports.handler = async function(event, context) {
                     url,
                     title: null,
                     snippet,
-                    fullContent: `[IDEC dual-site search failed after 3 attempts: ${lastError.message}]`
+                    fullContent: `[IDEC dual-site search failed after ${config.CALLBACK_MAX_RETRIES} attempts: ${lastError.message}]`
                 }, context);
 
                 console.log(`Error result saved for IDEC URL ${urlIndex}. All done: ${allDone}`);
@@ -425,7 +426,7 @@ exports.handler = async function(event, context) {
                     statusCode: 500,
                     body: JSON.stringify({
                         success: false,
-                        error: `IDEC dual-site failed after 3 attempts: ${lastError.message}`,
+                        error: `IDEC dual-site failed after ${config.CALLBACK_MAX_RETRIES} attempts: ${lastError.message}`,
                         method: 'idec_dual_site_failed',
                         pipelineContinued: true
                     })
@@ -713,8 +714,8 @@ exports.handler = async function(event, context) {
                 });
             },
             operationName: `Render invocation for URL ${urlIndex}`,
-            maxRetries: 3,
-            timeoutMs: 10000,
+            maxRetries: config.CALLBACK_MAX_RETRIES,
+            timeoutMs: config.HEALTH_CHECK_TIMEOUT_MS * 2, // 10s for invocation
             breakOnTimeout: true
         });
 
@@ -735,7 +736,7 @@ exports.handler = async function(event, context) {
             const isRenderRestart = lastError.message.includes('503') || lastError.message.includes('Service restarting');
             const errorMessage = isRenderRestart
                 ? '[Render service was restarting - this URL will be retried on next check]'
-                : `[Scraping failed after 3 attempts: ${lastError.message}]`;
+                : `[Scraping failed after ${config.CALLBACK_MAX_RETRIES} attempts: ${lastError.message}]`;
 
             // Save error result to prevent job from hanging
             const allDone = await saveUrlResult(jobId, urlIndex, {
@@ -772,7 +773,7 @@ exports.handler = async function(event, context) {
                 statusCode: 500,
                 body: JSON.stringify({
                     success: false,
-                    error: `Render invocation failed after 3 attempts: ${lastError.message}`,
+                    error: `Render invocation failed after ${config.CALLBACK_MAX_RETRIES} attempts: ${lastError.message}`,
                     method: 'render_failed',
                     pipelineContinued: true
                 })
