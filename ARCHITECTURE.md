@@ -323,17 +323,16 @@ console.assert(result.data.length === 2);
 
 ## Future Improvements (If Free Tiers Change)
 
-1. **If Groq increases daily limit**:
+1. **If Groq increases tokens/minute limit**:
    - Remove aggressive content truncation
-   - Increase auto-check limit from 20/day
+   - Check more than 2 URLs per search
 
 2. **If Render increases RAM**:
    - Enable concurrent scraping (2-3 browsers)
    - Remove memory restart mechanism
 
 3. **If Tavily increases limit**:
-   - Use 3-4 URLs per search (better accuracy)
-   - Remove some manufacturer direct URLs
+   - Increase number of daily checks (Groq daily limit still exists!)
 
 4. **If BrowserQL increases tokens**:
    - Use for more manufacturers
