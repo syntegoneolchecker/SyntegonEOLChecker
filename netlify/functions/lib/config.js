@@ -5,7 +5,7 @@
  * FREE TIER LIMITS (as of 2025):
  * - Netlify Functions: 30s timeout (regular), 15min timeout (background)
  * - Groq: 200,000 tokens/day, 8,000 tokens/minute (rolling window)
- * - Tavily: 1,000 searches/month (2 searches per EOL check)
+ * - Tavily: 1,000 tokens/month (2 tokens per search/EOL check)
  * - BrowserQL: 1,000 tokens/month (1 token = 30 seconds)
  * - Render: 512MB RAM, 750 hours/month
  * - Webshare Proxies: 1GB bandwidth/month
@@ -31,8 +31,8 @@ module.exports = {
     TABLE_CONTEXT_ROWS_AFTER: 3,        // Rows to keep after product mention in tables
 
     // === TAVILY SEARCH ===
-    TAVILY_MAX_RESULTS: 2,              // URLs per search (stays within token limits)
-    TAVILY_SEARCH_DEPTH: 'advanced',    // Search depth level
+    TAVILY_MAX_RESULTS: 2,              // URLs per search (low to stay within groq token limits)
+    TAVILY_SEARCH_DEPTH: 'advanced',    // Search depth level (this is why token cost is 2 per search)
 
     // === BROWSERQL / SCRAPING ===
     BROWSERQL_MONTHLY_TOKENS: 1000,     // BrowserQL token limit
