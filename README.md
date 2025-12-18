@@ -223,6 +223,7 @@ The auto-check background function wakes up Render on the first daily check.
 - 20 products/day × 30 days = 600 products/month
 - 2 URLs/product × 600 products = 1200 searches (needs paid Tavily)
 - Worst case BrowserQL: 2 credits/product × 600 = 1200 credits (needs paid plan)
+- Capacity higher when taking manufacturer specific approaches into consideration
 
 ## Contributing
 
