@@ -12,6 +12,7 @@ An automated End-of-Life (EOL) status checker for industrial products. The syste
   - Tavily (web search)
   - Groq (LLM analysis)
   - BrowserQL/Browserless (Cloudflare bypass)
+- **Proxies**: Provided by Webshare
 
 ## Key Features
 
@@ -21,42 +22,33 @@ An automated End-of-Life (EOL) status checker for industrial products. The syste
   - Fast fetch (simple pages)
   - Puppeteer (JavaScript-heavy pages)
   - BrowserQL (Cloudflare-protected sites)
-  - KEYENCE interactive search (manufacturer-specific)
+  - Interactive search (manufacturer-specific)
+  - Proxy usage to access data from multiple countries (manufacturer-specific)
 - **Excel Import/Export**: Bulk manage product database
 - **Smart Content Extraction**: AI-powered table detection and product mention extraction
 
 ## Environment Variables
 
-### **Netlify Functions** (required)
+### **Netlify Functions**
 
 Set these in your Netlify dashboard under Site Settings > Environment Variables:
 
-| Variable | Description | Example | Required |
-|----------|-------------|---------|----------|
-| `SITE_ID` | Netlify site ID | `abc123-def456-...` | Yes |
-| `NETLIFY_BLOBS_TOKEN` | Token for Netlify Blobs access | Auto-provided by Netlify | Yes |
-| `NETLIFY_TOKEN` | Fallback token for Blobs | Auto-provided by Netlify | Optional |
-| `TAVILY_API_KEY` | Tavily AI web search API key | `tvly-abc123...` | Yes |
-| `GROQ_API_KEY` | Groq LLM API key | `gsk_abc123...` | Yes |
-| `BROWSERQL_API_KEY` | Browserless.io API key (for Cloudflare bypass) | `abc123...` | Yes |
-| `SCRAPING_SERVICE_URL` | URL of Render scraping service | `https://eolscrapingservice.onrender.com` | Yes |
-| `DEPLOY_PRIME_URL` | Auto-set by Netlify (branch deploys) | `https://branch--site.netlify.app` | Auto |
-| `DEPLOY_URL` | Auto-set by Netlify (all deploys) | `https://deploy--site.netlify.app` | Auto |
-| `URL` | Auto-set by Netlify (production) | `https://site.netlify.app` | Auto |
-
-### **Render Scraping Service** (optional)
-
-Set these in your Render dashboard for the scraping service:
-
-| Variable | Description | Example | Required |
-|----------|-------------|---------|----------|
-| `PORT` | Server port (auto-set by Render) | `3000` | Auto |
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `BROWSERQL_API_KEY` | Browserless.io API key (for Cloudflare bypass) | `abc123...` |
+| `GROQ_API_KEY` | Groq LLM API key | `gsk_abc123...` |
+| `IDEC_JP_PROXY` | JP Proxy URL | `http://username:password@123.456.78.910:1234` |
+| `IDEC_US_PROXY` | US Proxy URL | `http://username:password@123.456.78.910:1234` |
+| `NETLIFY_TOKEN` | Token for Netlify Blobs acess | Provided on Netlify |
+| `SCRAPING_SERVICE_URL` | URL of Render scraping service | `https://eolscrapingservice.onrender.com` |
+| `TAVILY_API_KEY` | Tavily AI web search API key | `tvly-abc123...` |
 
 ## API Rate Limits
 
-- **Tavily**: 1000 searches/month (Bootstrap plan)
-- **Groq**: 8000 tokens/minute (varies by time)
+- **Tavily**: 1000 tokens/month -> 500 searches (free tier)
+- **Groq**: 8000 tokens/minute, 200000 tokens/day (rolling window)
 - **BrowserQL**: 1000 credits/month (1 credit = 30 seconds)
+(- **Webshare**: 1GB bandwith limit for proxies)
 
 ## Setup Instructions
 
