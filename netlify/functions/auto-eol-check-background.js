@@ -38,17 +38,17 @@ async function wakeRenderService() {
 }
 
 // Helper: Check if Groq tokens are ready (N/A means fully reset)
-async function checkGroqTokens(siteUrl) {
+async function waitForGroqTokens(siteUrl) {
     try {
         const response = await fetch(`${siteUrl}/.netlify/functions/get-groq-usage`);
-        if (!response.ok) return true; // Assume OK if can't check
+        if (!response.ok) return; // Assume OK if can't check
 
         const data = await response.json();
 
         // Check if resetSeconds is null or undefined (means N/A)
         if (data.resetSeconds === null || data.resetSeconds === undefined) {
             console.log('Groq tokens fully reset (N/A)');
-            return true;
+            return;
         }
 
         // Wait for reset if needed
@@ -56,13 +56,13 @@ async function checkGroqTokens(siteUrl) {
             console.log(`Groq tokens reset in ${data.resetSeconds}s, waiting...`);
             await new Promise(resolve => setTimeout(resolve, (data.resetSeconds + 1) * 1000));
             console.log('Groq tokens should be reset now');
-            return true;
+            return;
         }
 
         return true;
     } catch (error) {
         console.error('Error checking Groq tokens:', error.message);
-        return true; // Proceed anyway
+        return; // Proceed anyway
     }
 }
 
@@ -552,7 +552,7 @@ exports.handler = async function(event, context) {
         }
 
         // Wait for Groq tokens
-        await checkGroqTokens(siteUrl);
+        await waitForGroqTokens(siteUrl);
 
         // Small delay before processing (replaces delay between checks)
         await new Promise(resolve => setTimeout(resolve, 2000));
