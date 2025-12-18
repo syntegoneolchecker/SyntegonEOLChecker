@@ -12,7 +12,7 @@ exports.handler = async function(event, context) {
 
         // Try to get the CSV data from Netlify Blobs
         console.log('Fetching database.csv from Blobs...');
-        let csvContent = await store.get('database.csv');
+        const csvContent = await store.get('database.csv');
         console.log('Blob fetch result:', csvContent ? 'Data found' : 'No data (empty store)');
 
         // If no data exists yet, return default headers (13 columns)

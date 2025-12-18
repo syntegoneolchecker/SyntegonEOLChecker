@@ -2,7 +2,7 @@ let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'M
 
 // Sorting state
 let originalData = null; // Stores the original order for reset
-let currentSort = {
+const currentSort = {
     column: null, // Column index being sorted (0-5 for sortable columns)
     direction: null // 'asc', 'desc', or null
 };
@@ -49,7 +49,7 @@ function formatID(input) {
 function render() {
     const sortableColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]; // SAP Part Number, Legacy Part Number, Designation, Model, Manufacturer, Status, Status Comment, Successor Model, Successor Comment, Successor SAP Number, Stock, Information Date
 
-    let t = document.getElementById('table');
+    const t = document.getElementById('table');
     t.innerHTML = data.map((r, i) =>
         `<tr id="row-${i}">${r.map((c, j) => {
             if (i == 0) {
@@ -170,9 +170,9 @@ async function addRow() {
     }
 
     // Read all 13 fields (13 columns total)
-    let row = [formattedID]; // Start with formatted SAP Part Number
+    const row = [formattedID]; // Start with formatted SAP Part Number
     for (let i = 2; i <= 13; i++) {
-        let v = document.getElementById('c' + i).value;
+        const v = document.getElementById('c' + i).value;
         row.push(v);
     }
 
@@ -549,10 +549,10 @@ async function downloadExcel() {
 }
 
 function loadExcel(e) {
-    let f = e.target.files[0];
+    const f = e.target.files[0];
     if (!f) return;
 
-    let r = new FileReader();
+    const r = new FileReader();
     r.onload = async function(ev) {
         try {
             // Parse Excel file

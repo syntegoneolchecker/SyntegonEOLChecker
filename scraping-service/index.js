@@ -20,7 +20,7 @@ const MEMORY_WARNING_MB = 380; // Warning threshold (log detailed memory info)
 let isShuttingDown = false; // Flag to signal shutdown in progress
 
 // Memory usage tracking for analysis
-let memoryHistory = [];
+const memoryHistory = [];
 
 // Force garbage collection if available (start with --expose-gc flag)
 function forceGarbageCollection() {
@@ -112,7 +112,7 @@ function isTextFileUrl(url) {
 // NOTE: No truncation here - let the website handle all truncation logic
 function extractHTMLText(html) {
     // First preserve table structure by adding markers
-    let processedHtml = html
+    const processedHtml = html
         .replace(/<tr[^>]*>/gi, '\n[ROW] ')
         .replace(/<\/tr>/gi, ' [/ROW]\n')
         .replace(/<td[^>]*>/gi, '[CELL] ')
