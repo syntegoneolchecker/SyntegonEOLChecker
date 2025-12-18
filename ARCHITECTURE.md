@@ -1,4 +1,4 @@
-# SyntegonEOLChecker Architecture
+# SyntegonEOLChecker Architecture 
 
 ## Overview
 
