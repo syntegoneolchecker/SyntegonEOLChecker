@@ -91,10 +91,9 @@ async function cleanupOldJobs(context) {
  * @returns {string} Job ID
  */
 async function createJob(maker, model, context) {
-    // Clean up old jobs first (fire-and-forget, don't await)
-    cleanupOldJobs(context).catch(err =>
-        console.error('Background cleanup failed:', err.message)
-    );
+    // Clean up old jobs first (await to prevent race conditions)
+    // This ensures cleanup completes before creating new job
+    await cleanupOldJobs(context);
 
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
@@ -246,15 +245,11 @@ async function saveFinalResult(jobId, result, context) {
  */
 async function replaceJobUrls(jobId, newUrls, context) {
     const store = getJobStore();
-    const key = `job:${jobId}`;
+    const job = await store.get(jobId, { type: 'json' });
 
-    const blob = await store.get(key, { type: 'json' });
-
-    if (!blob) {
+    if (!job) {
         throw new Error(`Job ${jobId} not found`);
     }
-
-    const job = blob;
 
     // Replace URLs and reset urlResults
     job.urls = newUrls.map((url, index) => ({
@@ -265,7 +260,7 @@ async function replaceJobUrls(jobId, newUrls, context) {
 
     job.urlResults = {};
 
-    await store.setJSON(key, job);
+    await store.setJSON(jobId, job);
 
     console.log(`Replaced URLs for job ${jobId}: ${newUrls.length} new URLs`);
 }
@@ -275,15 +270,11 @@ async function replaceJobUrls(jobId, newUrls, context) {
  */
 async function addUrlToJob(jobId, urlData, context) {
     const store = getJobStore();
-    const key = `job:${jobId}`;
+    const job = await store.get(jobId, { type: 'json' });
 
-    const blob = await store.get(key, { type: 'json' });
-
-    if (!blob) {
+    if (!job) {
         throw new Error(`Job ${jobId} not found`);
     }
-
-    const job = blob;
 
     // Add new URL with next index
     const newIndex = job.urls.length;
@@ -293,7 +284,7 @@ async function addUrlToJob(jobId, urlData, context) {
         status: urlData.status || 'pending'
     });
 
-    await store.setJSON(key, job);
+    await store.setJSON(jobId, job);
 
     console.log(`Added URL to job ${jobId}: ${urlData.url}`);
 

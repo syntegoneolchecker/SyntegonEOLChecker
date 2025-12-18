@@ -52,12 +52,10 @@ exports.handler = async function(event, context) {
         };
     } catch (error) {
         console.error('Error in get-csv function:', error);
-        console.error('Error stack:', error.stack);
         return {
             statusCode: 500,
             body: JSON.stringify({
-                error: 'Failed to read CSV data: ' + error.message,
-                stack: error.stack
+                error: 'Failed to read CSV data: ' + error.message
             })
         };
     }
