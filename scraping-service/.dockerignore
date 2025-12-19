@@ -1,0 +1,53 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies (will be installed via npm install)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Environment files (may contain secrets)
+.env
+.env.*
+*.env
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
+*.md
+
+# Test files
+test
+tests
+*.test.js
+*.spec.js
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+
+# Docker files
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Logs
+logs
+*.log
+
+# Temporary files
+tmp
+temp
+*.tmp
