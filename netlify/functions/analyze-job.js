@@ -756,30 +756,30 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY 
     try {
         analysisResult = JSON.parse(generatedText);
     } catch (parseError) {
-        // Safer regex with size limit
+        // Input size validation (already bounded by 8192 tokens)
         const MAX_SIZE = 8192 * 5;
         if (generatedText.length > MAX_SIZE) {
-            throw new Error(
-                `Response too large for extraction. Parse error: ${parseError.message}`
-            );
+            throw new Error(`Response exceeds maximum expected size`);
         }
         
-        // Non-greedy, bounded regex
+        // RE2 provides ReDoS protection - this regex is safe with RE2
+        // sonar-disable-next-line javascript:S5852
         const jsonRegex = new RE2(/\{[^}]*?(?:\{[^}]*?}[^}]*?)*}/);
         const jsonMatch = jsonRegex.exec(generatedText);
+        
         if (jsonMatch) {
             try {
                 analysisResult = JSON.parse(jsonMatch[0]);
             } catch (extractionError) {
                 throw new Error(
-                    `Failed to parse extracted JSON. ` +
-                    `Original error: ${parseError.message}, ` +
-                    `Extraction error: ${extractionError.message}`
+                    `Failed to parse extracted JSON: ${extractionError.message} ` +
+                    `(Original error: ${parseError.message})`
                 );
             }
         } else {
             throw new Error(
-                `No JSON found in response. Parse error: ${parseError.message}`
+                `No JSON object found in response. ` +
+                `Original parse error: ${parseError.message}`
             );
         }
     }
