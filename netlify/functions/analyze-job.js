@@ -18,13 +18,14 @@ async function checkGroqTokenAvailability() {
         });
 
         const resetTokens = response.headers.get('x-ratelimit-reset-tokens');
-        const remainingTokens = parseInt(response.headers.get('x-ratelimit-remaining-tokens') || '0');
+        const remainingTokens = Number.parseInt(response.headers.get('x-ratelimit-remaining-tokens') || '0');
 
         let resetSeconds = null;
         if (resetTokens) {
-            const match = resetTokens.match(/^([\d.]+)s?$/);
+            const match = /^([\d.]+)s?$/.exec(resetTokens);
+            
             if (match) {
-                resetSeconds = parseFloat(match[1]);
+                resetSeconds = Number.parseFloat(match[1]);
             }
         }
 
@@ -144,7 +145,7 @@ exports.handler = async function(event, context) {
             // For other errors, update status as normal
             await updateJobStatus(jobId, 'error', error.message, context);
         } catch (e) {
-            // Ignore
+            console.log(`Exception thrown: ${e}`);
         }
 
         return {
@@ -163,40 +164,51 @@ function processTablesInContent(content) {
     let inTable = false;
     let tableLines = [];
 
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const trimmed = line.trim();
+    for (const element of lines) {
+        const line = element;
+        const isTableLine = isTableRow(line);
+        const isSeparatorLine = isTableSeparator(line);
 
-        const hasPipes = trimmed.includes('|');
-        const pipeCount = (trimmed.match(/\|/g) || []).length;
-        const isSeparator = /^[\s\-|]+$/.test(trimmed) && trimmed.length > 0;
-
-        if (hasPipes && pipeCount >= 2) {
-            if (!inTable) {
-                inTable = true;
-                tableLines = [];
-                processedLines.push('\n=== TABLE START ===');
-            }
-            tableLines.push(line);
-            processedLines.push(line);
-        } else if (inTable && isSeparator) {
+        if (isTableLine || (inTable && isSeparatorLine)) {
+            processTableStart(inTable, processedLines);
+            inTable = true;
             tableLines.push(line);
             processedLines.push(line);
         } else {
-            if (inTable && tableLines.length > 0) {
-                processedLines.push('=== TABLE END ===\n');
-                tableLines = [];
-                inTable = false;
-            }
+            processTableEnd(inTable, tableLines, processedLines);
+            inTable = false;
+            tableLines = [];
             processedLines.push(line);
         }
     }
 
+    // Handle any table that ends at the end of content
+    processTableEnd(inTable, tableLines, processedLines);
+
+    return processedLines.join('\n');
+}
+
+function isTableRow(line) {
+    const trimmed = line.trim();
+    const pipeCount = (trimmed.match(/\|/g) || []).length;
+    return trimmed.includes('|') && pipeCount >= 2;
+}
+
+function isTableSeparator(line) {
+    const trimmed = line.trim();
+    return /^[\s\-|]+$/.test(trimmed) && trimmed.length > 0;
+}
+
+function processTableStart(inTable, processedLines) {
+    if (!inTable) {
+        processedLines.push('\n=== TABLE START ===');
+    }
+}
+
+function processTableEnd(inTable, tableLines, processedLines) {
     if (inTable && tableLines.length > 0) {
         processedLines.push('=== TABLE END ===\n');
     }
-
-    return processedLines.join('\n');
 }
 
 // Remove tables that don't contain the product model name
@@ -226,7 +238,7 @@ function filterIrrelevantTables(content, productModel) {
                          filteredContent.substring(table.end);
     }
 
-    filteredContent = filteredContent.replace(/\n{3,}/g, '\n\n');
+    filteredContent = filteredContent.replaceAll(/\n{3,}/g, '\n\n');
 
     return filteredContent;
 }
@@ -328,119 +340,189 @@ function truncateTableRows(tableContent, productModel) {
     const ROWS_BEFORE = 3;
     const ROWS_AFTER = 3;
 
-    // Find table boundaries
+    const { tableStart, tableEnd } = findTableBoundaries(lines);
+    if (!isValidTable(tableStart, tableEnd)) return tableContent;
+
+    const productRows = findProductRows(lines, tableStart, tableEnd, productLower);
+    if (productRows.length === 0) return tableContent;
+
+    const rowsToKeep = determineRowsToKeep(lines, tableStart, tableEnd, productRows, ROWS_BEFORE, ROWS_AFTER);
+    const truncatedTable = buildTruncatedTable(lines, tableStart, tableEnd, rowsToKeep);
+
+    return truncatedTable;
+}
+
+function findTableBoundaries(lines) {
     let tableStart = -1;
     let tableEnd = -1;
+    
     for (let i = 0; i < lines.length; i++) {
         if (lines[i].includes('=== TABLE START ===')) tableStart = i;
         if (lines[i].includes('=== TABLE END ===')) tableEnd = i;
     }
+    
+    return { tableStart, tableEnd };
+}
 
-    if (tableStart === -1 || tableEnd === -1) return tableContent;
+function isValidTable(tableStart, tableEnd) {
+    return tableStart !== -1 && tableEnd !== -1;
+}
 
-    // Find rows containing product
+function findProductRows(lines, tableStart, tableEnd, productLower) {
     const productRows = [];
     for (let i = tableStart + 1; i < tableEnd; i++) {
         if (lines[i].toLowerCase().includes(productLower)) {
             productRows.push(i);
         }
     }
+    return productRows;
+}
 
-    if (productRows.length === 0) return tableContent;
-
-    // Build set of rows to keep (including context)
+function determineRowsToKeep(lines, tableStart, tableEnd, productRows, ROWS_BEFORE, ROWS_AFTER) {
     const rowsToKeep = new Set();
 
-    // Always keep header row (first row after TABLE START)
+    // Always keep header row
     if (tableStart + 1 < tableEnd) {
         rowsToKeep.add(tableStart + 1);
     }
 
     // Keep rows around each product mention
-    for (const productRow of productRows) {
-        // Keep ROWS_BEFORE before, the product row, and ROWS_AFTER after
-        for (let i = Math.max(tableStart + 1, productRow - ROWS_BEFORE);
-             i <= Math.min(tableEnd - 1, productRow + ROWS_AFTER);
-             i++) {
-            rowsToKeep.add(i);
-        }
-    }
+    productRows.forEach(productRow => {
+        addRowsAroundProduct(rowsToKeep, tableStart, tableEnd, productRow, ROWS_BEFORE, ROWS_AFTER);
+    });
 
-    // Build truncated table
+    return rowsToKeep;
+}
+
+function addRowsAroundProduct(rowsToKeep, tableStart, tableEnd, productRow, ROWS_BEFORE, ROWS_AFTER) {
+    const startRow = Math.max(tableStart + 1, productRow - ROWS_BEFORE);
+    const endRow = Math.min(tableEnd - 1, productRow + ROWS_AFTER);
+    
+    for (let i = startRow; i <= endRow; i++) {
+        rowsToKeep.add(i);
+    }
+}
+
+function buildTruncatedTable(lines, tableStart, tableEnd, rowsToKeep) {
     const keptLines = [];
     keptLines.push(lines[tableStart]); // TABLE START marker
 
     let lastKeptRow = tableStart;
-    for (let i = tableStart + 1; i < tableEnd; i++) {
-        if (rowsToKeep.has(i)) {
-            // Add ellipsis if we skipped rows
-            if (i - lastKeptRow > 1) {
-                keptLines.push('| ... | ... |');
-            }
-            keptLines.push(lines[i]);
-            lastKeptRow = i;
+    const sortedRows = Array.from(rowsToKeep).sort((a, b) => a - b);
+    
+    sortedRows.forEach(row => {
+        // Add ellipsis if we skipped rows
+        if (row - lastKeptRow > 1) {
+            keptLines.push('| ... | ... |');
         }
-    }
+        keptLines.push(lines[row]);
+        lastKeptRow = row;
+    });
 
     keptLines.push(lines[tableEnd]); // TABLE END marker
 
     const result = keptLines.join('\n');
-    console.log(`Truncated table from ${lines.length} rows to ${keptLines.length} rows`);
+    logTruncationStats(lines.length, keptLines.length);
     return result;
+}
+
+function logTruncationStats(originalRowCount, truncatedRowCount) {
+    console.log(`Truncated table from ${originalRowCount} rows to ${truncatedRowCount} rows`);
 }
 
 // Helper: Extract sections containing product mentions with context
 function extractProductSections(content, productModel, maxLength) {
-    const CONTEXT_CHARS = 250; // Characters before and after product mention
-    const productLower = productModel.toLowerCase();
-    const contentLower = content.toLowerCase();
+    const CONTEXT_CHARS = 250;
+    
+    if (!content) return content;
+    
+    const mentions = findAllProductMentions(content, productModel);
+    if (mentions.length === 0) {
+        return simpleProductSectionsTruncate(content, maxLength);
+    }
 
-    // Find all product mentions
+    console.log(`Found ${mentions.length} product mentions, extracting sections`);
+    
+    const sections = extractSectionsWithContext(content, productModel, mentions, CONTEXT_CHARS);
+    const combined = combineSections(sections);
+    
+    return truncateToMaxLength(combined, sections, maxLength);
+}
+
+function findAllProductMentions(content, productModel) {
+    const contentLower = content.toLowerCase();
+    const productLower = productModel.toLowerCase();
     const mentions = [];
+    
     let index = contentLower.indexOf(productLower);
     while (index !== -1) {
         mentions.push(index);
         index = contentLower.indexOf(productLower, index + 1);
     }
+    
+    return mentions;
+}
 
-    if (mentions.length === 0) {
-        return simpleTruncate(content, maxLength);
+function extractSectionsWithContext(content, productModel, mentions, contextChars) {
+    return mentions.map(mentionIndex => {
+        const section = extractSectionAroundMention(content, mentionIndex, productModel.length, contextChars);
+        return formatSectionWithEllipsis(content, section, mentionIndex, contextChars);
+    });
+}
+
+function extractSectionAroundMention(content, mentionIndex, productLength, contextChars) {
+    const start = Math.max(0, mentionIndex - contextChars);
+    const end = Math.min(content.length, mentionIndex + productLength + contextChars);
+    return content.substring(start, end);
+}
+
+function formatSectionWithEllipsis(content, section, mentionIndex, contextChars) {
+    const start = Math.max(0, mentionIndex - contextChars);
+    const end = Math.min(content.length, mentionIndex + contextChars);
+    
+    let formatted = section;
+    if (start > 0) formatted = '...' + formatted;
+    if (end < content.length) formatted = formatted + '...';
+    
+    return formatted;
+}
+
+function combineSections(sections) {
+    return sections.join('\n\n[...]\n\n');
+}
+
+function truncateToMaxLength(combined, sections, maxLength) {
+    if (combined.length <= maxLength) {
+        return combined;
     }
+    
+    return prioritizeSectionsByFirstMentions(sections, maxLength);
+}
 
-    console.log(`Found ${mentions.length} product mentions, extracting sections`);
-
-    // Extract sections around each mention
-    const sections = [];
-    for (const mentionIndex of mentions) {
-        const start = Math.max(0, mentionIndex - CONTEXT_CHARS);
-        const end = Math.min(content.length, mentionIndex + productModel.length + CONTEXT_CHARS);
-
-        let section = content.substring(start, end);
-
-        // Add ellipsis if we cut mid-text
-        if (start > 0) section = '...' + section;
-        if (end < content.length) section = section + '...';
-
-        sections.push(section);
-    }
-
-    // Combine sections
-    let combined = sections.join('\n\n[...]\n\n');
-
-    // If combined sections still too long, prioritize first mentions
-    if (combined.length > maxLength) {
-        combined = '';
-        for (const section of sections) {
-            if (combined.length + section.length + 20 <= maxLength) {
-                if (combined.length > 0) combined += '\n\n[...]\n\n';
-                combined += section;
-            } else {
-                break;
-            }
+function prioritizeSectionsByFirstMentions(sections, maxLength) {
+    let result = '';
+    
+    for (const section of sections) {
+        if (result.length + section.length + 20 > maxLength) {
+            break;
         }
+        
+        if (result.length > 0) {
+            result += '\n\n[...]\n\n';
+        }
+        
+        result += section;
     }
+    
+    return result;
+}
 
-    return combined;
+function simpleProductSectionsTruncate(content, maxLength) {
+    if (content.length <= maxLength) {
+        return content;
+    }
+    
+    return content.substring(0, maxLength - 3) + '...';
 }
 
 // Helper: Final hard truncation while preserving first product mention
