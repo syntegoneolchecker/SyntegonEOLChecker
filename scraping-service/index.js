@@ -532,6 +532,14 @@ function decodeWithProperEncoding(buffer, contentTypeHeader = '') {
 
 // Helper: Try fast fetch without Puppeteer (for PDFs and simple pages)
 async function tryFastFetch(url, timeout = 5000) {
+    // SSRF Protection: Validate URL before making HTTP request
+    // This provides defense-in-depth even though validation happens at endpoint level
+    const urlValidation = isSafePublicUrl(url);
+    if (!urlValidation.valid) {
+        console.error(`SSRF protection: Blocked unsafe URL in tryFastFetch: ${url} - ${urlValidation.reason}`);
+        return null;
+    }
+
     try {
         const isPDF = isPDFUrl(url);
         const isTextFile = isTextFileUrl(url);
@@ -623,6 +631,14 @@ async function tryFastFetch(url, timeout = 5000) {
 // Helper: Send callback unconditionally (with retry logic and response validation)
 async function sendCallback(callbackUrl, payload, maxRetries = 3) {
     if (!callbackUrl) return;
+
+    // SSRF Protection: Validate callback URL before making HTTP request
+    // This provides defense-in-depth even though validation happens at endpoint level
+    const callbackValidation = isValidCallbackUrl(callbackUrl);
+    if (!callbackValidation.valid) {
+        console.error(`SSRF protection: Blocked unsafe callback URL in sendCallback: ${callbackUrl} - ${callbackValidation.reason}`);
+        throw new Error(`Invalid callback URL: ${callbackValidation.reason}`);
+    }
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -1000,6 +1016,14 @@ app.post('/scrape', async (req, res) => {
         // Use networkidle2 for all pages - tracking domains are blocked, so it won't hang
         const waitStrategy = 'networkidle2';
         const navTimeout = 45000; // Increased to 45s to allow MISUMI API calls to complete
+
+        // SSRF Protection: Validate URL before Puppeteer navigation
+        // Defense-in-depth: double-check URL safety before browser navigation
+        const puppeteerUrlValidation = isSafePublicUrl(url);
+        if (!puppeteerUrlValidation.valid) {
+            console.error(`SSRF protection: Blocked unsafe URL for Puppeteer: ${url} - ${puppeteerUrlValidation.reason}`);
+            throw new Error(`Invalid URL for scraping: ${puppeteerUrlValidation.reason}`);
+        }
 
         // Try navigation with timeout, extract content even if it times out
         let navigationTimedOut = false;
@@ -1791,6 +1815,14 @@ app.post('/scrape-idec-dual', async (req, res) => {
                 }
             });
 
+            // SSRF Protection: Validate URL before Puppeteer navigation
+            // Defense-in-depth: validate siteUrl even though it was validated at endpoint level
+            const siteUrlValidation = isSafePublicUrl(siteUrl);
+            if (!siteUrlValidation.valid) {
+                console.error(`SSRF protection: Blocked unsafe site URL for IDEC: ${siteUrl} - ${siteUrlValidation.reason}`);
+                throw new Error(`Invalid site URL for IDEC scraping: ${siteUrlValidation.reason}`);
+            }
+
             // Navigate to IDEC search page
             console.log(`Navigating to ${siteName} search page: ${siteUrl}`);
             await page.goto(siteUrl, {
@@ -1853,6 +1885,14 @@ app.post('/scrape-idec-dual', async (req, res) => {
                     request.continue();
                 }
             });
+
+            // SSRF Protection: Validate product URL before navigation
+            // Even though productUrl comes from IDEC's own website, validate for defense-in-depth
+            const productUrlValidation = isSafePublicUrl(productUrl);
+            if (!productUrlValidation.valid) {
+                console.error(`SSRF protection: Blocked unsafe product URL from IDEC: ${productUrl} - ${productUrlValidation.reason}`);
+                throw new Error(`Invalid product URL from IDEC: ${productUrlValidation.reason}`);
+            }
 
             // Navigate to product page
             await productPage.goto(productUrl, {
@@ -2140,6 +2180,14 @@ app.post('/scrape-batch', async (req, res) => {
                     });
                 } else {
                     console.log('Resource blocking DISABLED for Cloudflare-protected site (Oriental Motor)');
+                }
+
+                // SSRF Protection: Validate URL before Puppeteer navigation
+                // Defense-in-depth: double-check URL safety before browser navigation
+                const batchUrlValidation = isSafePublicUrl(url);
+                if (!batchUrlValidation.valid) {
+                    console.error(`SSRF protection: Blocked unsafe URL in batch scraping: ${url} - ${batchUrlValidation.reason}`);
+                    throw new Error(`Invalid URL for batch scraping: ${batchUrlValidation.reason}`);
                 }
 
                 await page.goto(url, {
