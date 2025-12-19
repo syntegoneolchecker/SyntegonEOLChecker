@@ -600,10 +600,8 @@ function formatResults(job) {
 
 // Analyze with Groq
 class GroqAnalyzer {
-    constructor() {
-        this.MAX_RETRIES = 3;
-        this.BASE_URL = 'https://api.groq.com/openai/v1/chat/completions';
-    }
+    MAX_RETRIES = 3;
+    BASE_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
     async analyze(maker, model, searchContext) {
         const prompt = this.buildPrompt(maker, model, searchContext);
