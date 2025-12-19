@@ -1,7 +1,8 @@
 FROM node:18-slim
 
 # Install Chromium dependencies and build tools for native modules
-RUN apt-get update && apt-get install -y \
+# Security: Use --no-install-recommends to avoid installing unnecessary packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     gnupg \
     ca-certificates \
@@ -53,7 +54,10 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies (re2 requires build tools for native compilation)
-RUN npm install \
+# Security: Use --ignore-scripts to prevent execution of package lifecycle scripts
+# Note: Native module compilation (node-gyp) still runs, only package.json scripts are ignored
+RUN npm install --ignore-scripts \
+    && npm rebuild \
     && apt-get purge -y --auto-remove python3 make g++
 
 # Copy application files
