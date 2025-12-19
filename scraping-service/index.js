@@ -118,6 +118,153 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// ============================================================================
+// SSRF Protection: URL Validation Functions
+// ============================================================================
+// Security: Prevent Server-Side Request Forgery (SSRF) attacks by validating
+// all user-provided URLs before making HTTP requests or navigating with Puppeteer
+
+/**
+ * Validates that a URL is safe for scraping (blocks private IPs, localhost, etc.)
+ * Allows any public website - needed for dynamic search results from Tavily
+ * @param {string} url - The URL to validate
+ * @returns {{valid: boolean, reason?: string}} Validation result
+ */
+function isSafePublicUrl(url) {
+    try {
+        const parsedUrl = new URL(url);
+
+        // SSRF Protection: Only allow HTTP/HTTPS protocols
+        // Block file://, ftp://, data://, etc.
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            return { valid: false, reason: 'Only HTTP/HTTPS protocols are allowed' };
+        }
+
+        const hostname = parsedUrl.hostname.toLowerCase();
+
+        // SSRF Protection: Block localhost
+        if (hostname === 'localhost' ||
+            hostname === '127.0.0.1' ||
+            hostname === '0.0.0.0' ||
+            hostname === '::1' ||
+            hostname === '[::1]') {
+            return { valid: false, reason: 'Cannot scrape localhost addresses' };
+        }
+
+        // SSRF Protection: Block private IP ranges (RFC 1918)
+        if (/^10\./.test(hostname) ||                              // 10.0.0.0/8
+            /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname) ||     // 172.16.0.0/12
+            /^192\.168\./.test(hostname)) {                        // 192.168.0.0/16
+            return { valid: false, reason: 'Cannot scrape private IP addresses' };
+        }
+
+        // SSRF Protection: Block link-local addresses (AWS EC2 metadata, etc.)
+        // This prevents attackers from accessing cloud provider metadata APIs
+        if (/^169\.254\./.test(hostname)) {                        // 169.254.0.0/16
+            return { valid: false, reason: 'Cannot scrape link-local addresses (cloud metadata blocked)' };
+        }
+
+        // SSRF Protection: Block other reserved/special IP ranges
+        if (/^0\./.test(hostname) ||                               // 0.0.0.0/8 (current network)
+            /^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./.test(hostname) || // 100.64.0.0/10 (CGNAT)
+            /^127\./.test(hostname) ||                             // 127.0.0.0/8 (loopback)
+            /^224\./.test(hostname) ||                             // 224.0.0.0/4 (multicast)
+            /^240\./.test(hostname)) {                             // 240.0.0.0/4 (reserved)
+            return { valid: false, reason: 'Cannot scrape reserved IP ranges' };
+        }
+
+        // SSRF Protection: Block IPv6 private/local addresses
+        if (hostname.startsWith('fc') || hostname.startsWith('fd') || // Unique local (fc00::/7)
+            hostname.startsWith('fe80:') ||                           // Link-local
+            hostname.startsWith('[fc') || hostname.startsWith('[fd') ||
+            hostname.startsWith('[fe80:')) {
+            return { valid: false, reason: 'Cannot scrape private IPv6 addresses' };
+        }
+
+        // URL is safe for public scraping
+        return { valid: true };
+    } catch (error) {
+        return { valid: false, reason: 'Invalid URL format' };
+    }
+}
+
+/**
+ * Validates callback URLs (stricter than scraping URLs)
+ * Only allows callbacks to YOUR backend domains
+ * @param {string} callbackUrl - The callback URL to validate
+ * @returns {{valid: boolean, reason?: string}} Validation result
+ */
+function isValidCallbackUrl(callbackUrl) {
+    if (!callbackUrl) return { valid: true }; // Optional parameter
+
+    try {
+        const parsedUrl = new URL(callbackUrl);
+
+        // SSRF Protection: Only allow HTTP/HTTPS for callbacks
+        if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+            return { valid: false, reason: 'Callback URL must use HTTP/HTTPS' };
+        }
+
+        // SSRF Protection: Get allowed callback domains from environment
+        // Default to localhost for development
+        const allowedDomains = (process.env.ALLOWED_CALLBACK_DOMAINS || 'localhost,127.0.0.1').split(',');
+
+        // Check if hostname matches any allowed domain (exact match or subdomain)
+        const isAllowed = allowedDomains.some(domain => {
+            const trimmedDomain = domain.trim().toLowerCase();
+            const hostname = parsedUrl.hostname.toLowerCase();
+            return hostname === trimmedDomain ||
+                   hostname.endsWith('.' + trimmedDomain);
+        });
+
+        if (!isAllowed) {
+            return { valid: false, reason: `Callback URL domain not in allowed list. Allowed: ${allowedDomains.join(', ')}` };
+        }
+
+        return { valid: true };
+    } catch (error) {
+        return { valid: false, reason: 'Invalid callback URL format' };
+    }
+}
+
+/**
+ * Validates proxy URLs (prevents SSRF through proxy configuration)
+ * @param {string} proxyUrl - The proxy URL to validate
+ * @returns {{valid: boolean, reason?: string}} Validation result
+ */
+function isValidProxyUrl(proxyUrl) {
+    if (!proxyUrl) return { valid: true }; // Optional parameter
+
+    try {
+        const parsedUrl = new URL(proxyUrl);
+
+        // Allow common proxy protocols
+        const allowedProtocols = ['http:', 'https:', 'socks4:', 'socks5:', 'socks:'];
+        if (!allowedProtocols.includes(parsedUrl.protocol)) {
+            return { valid: false, reason: 'Invalid proxy protocol' };
+        }
+
+        const hostname = parsedUrl.hostname.toLowerCase();
+
+        // Block localhost proxies (potential SSRF vector)
+        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+            return { valid: false, reason: 'Cannot use localhost as proxy' };
+        }
+
+        // Block private IP proxies (potential SSRF vector)
+        if (/^10\./.test(hostname) ||
+            /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname) ||
+            /^192\.168\./.test(hostname) ||
+            /^169\.254\./.test(hostname)) {
+            return { valid: false, reason: 'Cannot use private IP addresses as proxy' };
+        }
+
+        return { valid: true };
+    } catch (error) {
+        return { valid: false, reason: 'Invalid proxy URL format' };
+    }
+}
+
 // Helper: Check if URL is a PDF
 function isPDFUrl(url) {
     return url.toLowerCase().includes('pdf') || url.toLowerCase().endsWith('.pdf');
@@ -588,6 +735,26 @@ app.post('/scrape', async (req, res) => {
 
     if (!url) {
         return res.status(400).json({ error: 'URL is required' });
+    }
+
+    // SSRF Protection: Validate scraping URL before use
+    const urlValidation = isSafePublicUrl(url);
+    if (!urlValidation.valid) {
+        console.warn(`SSRF protection blocked URL: ${url} - Reason: ${urlValidation.reason}`);
+        return res.status(400).json({
+            error: 'Invalid or unsafe URL',
+            reason: urlValidation.reason
+        });
+    }
+
+    // SSRF Protection: Validate callback URL before use
+    const callbackValidation = isValidCallbackUrl(callbackUrl);
+    if (!callbackValidation.valid) {
+        console.warn(`SSRF protection blocked callback URL: ${callbackUrl} - Reason: ${callbackValidation.reason}`);
+        return res.status(400).json({
+            error: 'Invalid or unsafe callback URL',
+            reason: callbackValidation.reason
+        });
     }
 
     // Check if memory is already too high before starting scrape
@@ -1087,6 +1254,16 @@ app.post('/scrape-keyence', async (req, res) => {
         return res.status(400).json({ error: 'Model is required' });
     }
 
+    // SSRF Protection: Validate callback URL before use
+    const callbackValidation = isValidCallbackUrl(callbackUrl);
+    if (!callbackValidation.valid) {
+        console.warn(`SSRF protection blocked callback URL: ${callbackUrl} - Reason: ${callbackValidation.reason}`);
+        return res.status(400).json({
+            error: 'Invalid or unsafe callback URL',
+            reason: callbackValidation.reason
+        });
+    }
+
     console.log(`[${new Date().toISOString()}] KEYENCE: Searching for model: ${model}`);
     if (callbackUrl) {
         console.log(`Callback URL provided: ${callbackUrl}`);
@@ -1395,6 +1572,56 @@ app.post('/scrape-idec-dual', async (req, res) => {
 
     if (!model || !jpProxyUrl || !usProxyUrl || !jpUrl || !usUrl) {
         return res.status(400).json({ error: 'model, jpProxyUrl, usProxyUrl, jpUrl, and usUrl are required' });
+    }
+
+    // SSRF Protection: Validate JP URL before use
+    const jpUrlValidation = isSafePublicUrl(jpUrl);
+    if (!jpUrlValidation.valid) {
+        console.warn(`SSRF protection blocked JP URL: ${jpUrl} - Reason: ${jpUrlValidation.reason}`);
+        return res.status(400).json({
+            error: 'Invalid or unsafe JP URL',
+            reason: jpUrlValidation.reason
+        });
+    }
+
+    // SSRF Protection: Validate US URL before use
+    const usUrlValidation = isSafePublicUrl(usUrl);
+    if (!usUrlValidation.valid) {
+        console.warn(`SSRF protection blocked US URL: ${usUrl} - Reason: ${usUrlValidation.reason}`);
+        return res.status(400).json({
+            error: 'Invalid or unsafe US URL',
+            reason: usUrlValidation.reason
+        });
+    }
+
+    // SSRF Protection: Validate JP proxy URL before use
+    const jpProxyValidation = isValidProxyUrl(jpProxyUrl);
+    if (!jpProxyValidation.valid) {
+        console.warn(`SSRF protection blocked JP proxy URL: ${jpProxyUrl} - Reason: ${jpProxyValidation.reason}`);
+        return res.status(400).json({
+            error: 'Invalid or unsafe JP proxy URL',
+            reason: jpProxyValidation.reason
+        });
+    }
+
+    // SSRF Protection: Validate US proxy URL before use
+    const usProxyValidation = isValidProxyUrl(usProxyUrl);
+    if (!usProxyValidation.valid) {
+        console.warn(`SSRF protection blocked US proxy URL: ${usProxyUrl} - Reason: ${usProxyValidation.reason}`);
+        return res.status(400).json({
+            error: 'Invalid or unsafe US proxy URL',
+            reason: usProxyValidation.reason
+        });
+    }
+
+    // SSRF Protection: Validate callback URL before use
+    const callbackValidation = isValidCallbackUrl(callbackUrl);
+    if (!callbackValidation.valid) {
+        console.warn(`SSRF protection blocked callback URL: ${callbackUrl} - Reason: ${callbackValidation.reason}`);
+        return res.status(400).json({
+            error: 'Invalid or unsafe callback URL',
+            reason: callbackValidation.reason
+        });
     }
 
     console.log(`[${new Date().toISOString()}] IDEC Dual-Site: Searching for model: ${model}`);
@@ -1781,6 +2008,19 @@ app.post('/scrape-batch', async (req, res) => {
 
     if (!urls || !Array.isArray(urls)) {
         return res.status(400).json({ error: 'URLs array is required' });
+    }
+
+    // SSRF Protection: Validate all URLs before processing
+    for (let i = 0; i < urls.length; i++) {
+        const urlValidation = isSafePublicUrl(urls[i]);
+        if (!urlValidation.valid) {
+            console.warn(`SSRF protection blocked URL at index ${i}: ${urls[i]} - Reason: ${urlValidation.reason}`);
+            return res.status(400).json({
+                error: `Invalid or unsafe URL at index ${i}`,
+                url: urls[i],
+                reason: urlValidation.reason
+            });
+        }
     }
 
     console.log(`[${new Date().toISOString()}] Batch scraping ${urls.length} URLs`);
