@@ -10,6 +10,10 @@ const jschardet = require('jschardet');
 puppeteer.use(StealthPlugin());
 
 const app = express();
+
+// Security: Disable X-Powered-By header to prevent framework version disclosure
+app.disable('x-powered-by');
+
 const PORT = process.env.PORT || 3000;
 
 // Memory management: Monitor actual memory usage and restart when approaching limit
@@ -93,7 +97,25 @@ function enqueuePuppeteerTask(task) {
 }
 
 // Middleware
-app.use(cors());
+// Security: Configure CORS to only allow requests from trusted origins
+// In production, set ALLOWED_ORIGINS environment variable to your frontend domain
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : ['http://localhost:3000', 'http://localhost:5000']; // Default for local development
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps, curl, Postman)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.indexOf(origin) === -1) {
+            const msg = 'The CORS policy for this site does not allow access from the specified origin.';
+            return callback(new Error(msg), false);
+        }
+        return callback(null, true);
+    },
+    credentials: true // Allow cookies if needed
+}));
 app.use(express.json());
 
 // Helper: Check if URL is a PDF
