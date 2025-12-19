@@ -773,7 +773,8 @@ app.post('/scrape', async (req, res) => {
     // SSRF Protection: Validate callback URL before use
     const callbackValidation = isValidCallbackUrl(callbackUrl);
     if (!callbackValidation.valid) {
-        console.warn(`SSRF protection blocked callback URL: ${callbackUrl} - Reason: ${callbackValidation.reason}`);
+        const safeCallbackUrlForLog = String(callbackUrl).replace(/[\r\n]/g, '');
+        console.warn(`SSRF protection blocked callback URL: ${safeCallbackUrlForLog} - Reason: ${callbackValidation.reason}`);
         return res.status(400).json({
             error: 'Invalid or unsafe callback URL',
             reason: callbackValidation.reason
