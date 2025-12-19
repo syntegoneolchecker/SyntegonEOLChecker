@@ -191,6 +191,7 @@ function isSafePublicUrl(url) {
 /**
  * Validates callback URLs (stricter than scraping URLs)
  * Only allows callbacks to YOUR backend domains
+ * Reuses ALLOWED_ORIGINS environment variable (same domains as CORS)
  * @param {string} callbackUrl - The callback URL to validate
  * @returns {{valid: boolean, reason?: string}} Validation result
  */
@@ -205,20 +206,41 @@ function isValidCallbackUrl(callbackUrl) {
             return { valid: false, reason: 'Callback URL must use HTTP/HTTPS' };
         }
 
-        // SSRF Protection: Get allowed callback domains from environment
-        // Default to localhost for development
-        const allowedDomains = (process.env.ALLOWED_CALLBACK_DOMAINS || 'localhost,127.0.0.1').split(',');
+        // SSRF Protection: Reuse ALLOWED_ORIGINS for callback validation
+        // These are the same domains that can call the scraping service (via CORS)
+        // Default to localhost for local development
+        const allowedOrigins = process.env.ALLOWED_ORIGINS
+            ? process.env.ALLOWED_ORIGINS.split(',')
+            : ['http://localhost:3000', 'http://localhost:5000', 'http://localhost:8888'];
 
-        // Check if hostname matches any allowed domain (exact match or subdomain)
-        const isAllowed = allowedDomains.some(domain => {
-            const trimmedDomain = domain.trim().toLowerCase();
-            const hostname = parsedUrl.hostname.toLowerCase();
-            return hostname === trimmedDomain ||
-                   hostname.endsWith('.' + trimmedDomain);
+        // Extract origin (hostname + port) from each allowed origin and check if callback URL matches
+        const isAllowed = allowedOrigins.some(origin => {
+            try {
+                const allowedUrl = new URL(origin.trim());
+                const allowedHostname = allowedUrl.hostname.toLowerCase();
+                const allowedPort = allowedUrl.port;
+                const callbackHostname = parsedUrl.hostname.toLowerCase();
+                const callbackPort = parsedUrl.port;
+
+                // For localhost: must match hostname AND port (if specified)
+                if (allowedHostname === 'localhost' || allowedHostname === '127.0.0.1') {
+                    // Compare full origin for localhost (including port)
+                    const allowedOriginNormalized = `${allowedUrl.protocol}//${allowedHostname}${allowedPort ? ':' + allowedPort : ''}`;
+                    const callbackOriginNormalized = `${parsedUrl.protocol}//${callbackHostname}${callbackPort ? ':' + callbackPort : ''}`;
+                    return allowedOriginNormalized === callbackOriginNormalized;
+                }
+
+                // For public domains: match exact hostname or subdomain (port doesn't matter)
+                return callbackHostname === allowedHostname ||
+                       callbackHostname.endsWith('.' + allowedHostname);
+            } catch {
+                // If origin is not a valid URL, skip it
+                return false;
+            }
         });
 
         if (!isAllowed) {
-            return { valid: false, reason: `Callback URL domain not in allowed list. Allowed: ${allowedDomains.join(', ')}` };
+            return { valid: false, reason: `Callback URL domain not in allowed list. Allowed origins: ${allowedOrigins.join(', ')}` };
         }
 
         return { valid: true };
