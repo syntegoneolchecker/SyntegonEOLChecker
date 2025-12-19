@@ -95,7 +95,13 @@ async function createJob(maker, model, context) {
     // This ensures cleanup completes before creating new job
     await cleanupOldJobs(context);
 
-    const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const jobId = `job_${Date.now()}_${
+    Array.from(crypto.getRandomValues(new Uint8Array(9)))
+        .map(b => b.toString(36))
+        .join('')
+        .replace(/\./g, '') // Remove dots if any
+        .substring(0, 12)
+}`;
 
     const job = {
         jobId,
