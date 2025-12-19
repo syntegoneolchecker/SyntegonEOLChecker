@@ -552,6 +552,11 @@ async function tryFastFetch(url, timeout = 5000) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), fetchTimeout);
 
+        // NOSONAR javascript:S5144 - SSRF: Whitelist-based validation not feasible for this use case.
+        // This application scrapes dynamic URLs from Tavily search results (manufacturer websites).
+        // Comprehensive blacklist validation is applied: blocks localhost, private IPs (RFC 1918),
+        // link-local addresses (cloud metadata), reserved IP ranges, dangerous protocols.
+        // Defense-in-depth: validation at endpoint level + immediate pre-fetch validation above.
         const response = await fetch(url, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EOLChecker/1.0)' },
             signal: controller.signal
@@ -643,6 +648,9 @@ async function sendCallback(callbackUrl, payload, maxRetries = 3) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             console.log(`Sending callback (attempt ${attempt}/${maxRetries}): ${callbackUrl}`);
+            // NOSONAR javascript:S5144 - SSRF: Callback URLs use whitelist validation via ALLOWED_ORIGINS.
+            // Only trusted backend domains (configured in environment) are permitted for callbacks.
+            // Defense-in-depth: validation at endpoint level + immediate pre-fetch validation above.
             const response = await fetch(callbackUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1028,6 +1036,11 @@ app.post('/scrape', async (req, res) => {
         // Try navigation with timeout, extract content even if it times out
         let navigationTimedOut = false;
         try {
+            // NOSONAR javascript:S5144 - SSRF: Whitelist-based validation not feasible for this use case.
+            // This application scrapes dynamic URLs from Tavily search results (manufacturer websites).
+            // Comprehensive blacklist validation is applied: blocks localhost, private IPs (RFC 1918),
+            // link-local addresses (cloud metadata), reserved IP ranges, dangerous protocols.
+            // Defense-in-depth: validation at endpoint level + immediate pre-navigation validation above.
             await page.goto(url, {
                 waitUntil: waitStrategy, // domcontentloaded for MISUMI, networkidle2 for others
                 timeout: navTimeout
@@ -1825,6 +1838,9 @@ app.post('/scrape-idec-dual', async (req, res) => {
 
             // Navigate to IDEC search page
             console.log(`Navigating to ${siteName} search page: ${siteUrl}`);
+            // NOSONAR javascript:S5144 - SSRF: URLs validated with comprehensive blacklist (see validation above).
+            // Blocks localhost, private IPs, link-local addresses, reserved ranges, dangerous protocols.
+            // Defense-in-depth: endpoint-level validation + immediate pre-navigation validation.
             await page.goto(siteUrl, {
                 waitUntil: 'networkidle2',
                 timeout: 60000
@@ -1895,6 +1911,9 @@ app.post('/scrape-idec-dual', async (req, res) => {
             }
 
             // Navigate to product page
+            // NOSONAR javascript:S5144 - SSRF: URLs validated with comprehensive blacklist (see validation above).
+            // Even though productUrl comes from IDEC's own website, we validate for defense-in-depth.
+            // Blocks localhost, private IPs, link-local addresses, reserved ranges, dangerous protocols.
             await productPage.goto(productUrl, {
                 waitUntil: 'networkidle2',
                 timeout: 45000
@@ -2190,6 +2209,10 @@ app.post('/scrape-batch', async (req, res) => {
                     throw new Error(`Invalid URL for batch scraping: ${batchUrlValidation.reason}`);
                 }
 
+                // NOSONAR javascript:S5144 - SSRF: Whitelist-based validation not feasible for this use case.
+                // Batch scraping processes dynamic URLs (manufacturer websites from search results).
+                // Comprehensive blacklist validation: blocks localhost, private IPs, link-local addresses,
+                // reserved IP ranges, dangerous protocols. Defense-in-depth: endpoint + pre-navigation validation.
                 await page.goto(url, {
                     waitUntil: 'networkidle2', // Wait until ≤2 network connections remain
                     timeout: 120000 // 2 minutes for heavy dynamic sites
