@@ -47,21 +47,21 @@ function parseTimeToSeconds(timeStr) {
     let totalSeconds = 0;
 
     // Extract hours
-    const hoursMatch = timeStr.match(/(\d+)h/);
+    const hoursMatch = timeStr.match(/(\d{1,2})h/);  // Max 2 digits for hours
     if (hoursMatch) {
-        totalSeconds += parseInt(hoursMatch[1]) * 3600;
+        totalSeconds += Number.parseInt(hoursMatch[1]) * 3600;
     }
 
     // Extract minutes
-    const minutesMatch = timeStr.match(/(\d+)m/);
+    const minutesMatch = timeStr.match(/(\d{1,2})m/);  // Max 2 digits for minutes
     if (minutesMatch) {
-        totalSeconds += parseInt(minutesMatch[1]) * 60;
+        totalSeconds += Number.parseInt(minutesMatch[1]) * 60;
     }
 
     // Extract seconds (with optional decimal)
-    const secondsMatch = timeStr.match(/([\d.]+)s/);
+    const secondsMatch = timeStr.match(/(\d{1,2}(?:\.\d{1,3})?)s/);  // Reasonable decimal precision
     if (secondsMatch) {
-        totalSeconds += parseFloat(secondsMatch[1]);
+        totalSeconds += Number.parseFloat(secondsMatch[1]);
     }
 
     return totalSeconds;
@@ -752,18 +752,34 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY 
 
     // Parse JSON from the response
     let analysisResult;
+
     try {
         analysisResult = JSON.parse(generatedText);
-    } catch (e) {
-        const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
+    } catch (parseError) {
+        // Safer regex with size limit
+        const MAX_SIZE = 8192 * 5;
+        if (generatedText.length > MAX_SIZE) {
+            throw new Error(
+                `Response too large for extraction. Parse error: ${parseError.message}`
+            );
+        }
+        
+        // Non-greedy, bounded regex
+        const jsonMatch = generatedText.match(/\{[^}]*?(?:\{[^}]*?}[^}]*?)*}/);
         if (jsonMatch) {
             try {
                 analysisResult = JSON.parse(jsonMatch[0]);
-            } catch (e2) {
-                throw new Error('Failed to parse LLM response as JSON');
+            } catch (extractionError) {
+                throw new Error(
+                    `Failed to parse extracted JSON. ` +
+                    `Original error: ${parseError.message}, ` +
+                    `Extraction error: ${extractionError.message}`
+                );
             }
         } else {
-            throw new Error('No JSON found in LLM response');
+            throw new Error(
+                `No JSON found in response. Parse error: ${parseError.message}`
+            );
         }
     }
 
