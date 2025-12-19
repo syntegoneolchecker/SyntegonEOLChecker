@@ -1,86 +1,90 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>CSV Database</title>
-<style>
-body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5}
-table{width:100%;border-collapse:collapse;background:white;margin:20px 0}
-th,td{border:1px solid #ddd;padding:8px;text-align:left}
-th{background:#4CAF50;color:white}
-tr:hover{background:#f1f1f1}
-button{background:#4CAF50;color:white;border:none;padding:8px 16px;cursor:pointer;margin:5px}
-button:hover{background:#45a049}
-.delete{background:#f44336}
-.delete:hover{background:#da190b}
-input{padding:6px;margin:2px;width:120px}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EOL Database Manager</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
-<h2>CSV Database Manager</h2>
-<div>
-<input id="c1" placeholder="Column 1">
-<input id="c2" placeholder="Column 2">
-<input id="c3" placeholder="Column 3">
-<input id="c4" placeholder="Column 4">
-<input id="c5" placeholder="Column 5">
-<input id="c6" placeholder="Column 6">
-<input id="c7" placeholder="Column 7">
-<button onclick="addRow()">Add Entry</button>
-</div>
-<table id="table"></table>
-<button onclick="downloadCSV()">Download CSV</button>
-<input type="file" id="upload" accept=".csv" onchange="loadCSV(event)">
+    <!-- Sticky header section - stays visible when scrolling -->
+    <div class="sticky-header">
+        <div class="header">
+            <h2>EOL Database Manager</h2>
+            <div class="credits-container">
+                <div id="tavily-credits" class="credits-display">
+                    <span class="credits-label">Tavily Credits/Month (2 used per EOL Check):</span>
+                    <span id="credits-remaining" class="credits-value">Loading...</span>
+                </div>
+                <div id="groq-limits" class="credits-display">
+                    <span class="credits-label">Groq Tokens/Min:</span>
+                    <span id="groq-remaining" class="credits-value">Loading...</span>
+                </div>
+                <div id="groq-reset" class="credits-display">
+                    <span class="credits-label">Limit Resets In:</span>
+                    <span id="groq-reset-countdown" class="credits-value">Loading...</span>
+                </div>
+                <div id="render-health" class="credits-display">
+                    <span class="credits-label">Render Scraping Service:</span>
+                    <span id="render-status" class="credits-value">Checking...</span>
+                </div>
+            </div>
+        </div>
+        <div id="status"></div>
 
-<script>
-let data=[['Col1','Col2','Col3','Col4','Col5','Col6','Col7']];
+        <div>
+            <input id="c1" placeholder="SAP Part Number">
+            <input id="c2" placeholder="Legacy Part Number">
+            <input id="c3" placeholder="Designation">
+            <input id="c4" placeholder="Model">
+            <input id="c5" placeholder="Manufacturer">
+            <input id="c6" placeholder="Status">
+            <input id="c7" placeholder="Status Comment">
+            <input id="c8" placeholder="Successor Model">
+            <input id="c9" placeholder="Successor Comment">
+            <input id="c10" placeholder="Successor SAP Number">
+            <input id="c11" placeholder="Stock">
+            <input id="c12" placeholder="Information Date">
+            <input id="c13" placeholder="Auto Check">
+            <button onclick="addRow()">Add Entry</button>
+        </div>
 
-function render(){
-let t=document.getElementById('table');
-t.innerHTML=data.map((r,i)=>
-`<tr>${r.map((c,j)=>
-i==0?`<th>${c}</th>`:`<td>${c}</td>`
-).join('')}${i>0?`<td><button class="delete" onclick="delRow(${i})">Delete</button></td>`:''}</tr>`
-).join('');
-}
+        <div class="controls-row">
+            <div class="delete-toggle-container">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="delete-toggle" onchange="toggleDeleteButtons()">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span class="toggle-label">Show Delete Buttons</span>
+            </div>
 
-function addRow(){
-let row=[];
-for(let i=1;i<=7;i++){
-let v=document.getElementById('c'+i).value;
-row.push(v);
-document.getElementById('c'+i).value='';
-}
-data.push(row);
-render();
-}
+            <button id="clear-database-btn" class="clear-database" onclick="clearDatabase()" style="display: none;">Clear Database</button>
 
-function delRow(i){
-data.splice(i,1);
-render();
-}
+            <div class="auto-check-container">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="auto-check-toggle" onchange="toggleAutoCheck()">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span class="toggle-label">Auto EOL Check (Daily)</span>
+                <button id="manual-trigger-btn" onclick="manualTriggerAutoCheck()" style="margin-left: 10px;">Manual Trigger</button>
+            </div>
 
-function downloadCSV(){
-let csv=data.map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
-let a=document.createElement('a');
-a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-a.download='database.csv';
-a.click();
-}
+            <div class="file-actions">
+                <button onclick="manualSaveDatabase()">Save Database</button>
+                <button onclick="downloadExcel()">Download Database (Excel)</button>
+                <label for="upload">
+                    <input type="file" id="upload" accept=".xlsx,.xls" onchange="loadExcel(event)" style="display: none;">
+                    <button onclick="document.getElementById('upload').click(); return false;">Import Excel File</button>
+                </label>
+            </div>
+        </div>
+    </div>
 
-function loadCSV(e){
-let f=e.target.files[0];
-if(!f)return;
-let r=new FileReader();
-r.onload=function(ev){
-let lines=ev.target.result.split('\n').filter(l=>l.trim());
-data=lines.map(l=>l.split(',').map(c=>c.replace(/^"|"$/g,'')));
-render();
-};
-r.readAsText(f);
-}
+    <div class="table-wrapper">
+        <table id="table"></table>
+    </div>
 
-render();
-</script>
+    <script src="script.js"></script>
 </body>
 </html>
