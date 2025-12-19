@@ -108,40 +108,81 @@ function isTextFileUrl(url) {
     return textExtensions.some(ext => urlLower.endsWith(ext));
 }
 
+const RE2 = require('re2');
+
 // Helper: Extract text from HTML with enhanced table preservation
 // NOTE: No truncation here - let the website handle all truncation logic
 function extractHTMLText(html) {
+    // Pre-compile all RE2 regex patterns for performance
+    const patterns = {
+        // Table structure preservation
+        trOpen: new RE2(/<tr[^>]*>/gi, { maxMem: 8192 }),
+        trClose: new RE2(/<\/tr>/gi),
+        tdOpen: new RE2(/<td[^>]*>/gi, { maxMem: 8192 }),
+        tdClose: new RE2(/<\/td>/gi),
+        thOpen: new RE2(/<th[^>]*>/gi, { maxMem: 8192 }),
+        thClose: new RE2(/<\/th>/gi),
+        
+        // Element removal
+        script: new RE2(/<script[^>]*>[\s\S]*?<\/script>/gi, { maxMem: 8192 }),
+        style: new RE2(/<style[^>]*>[\s\S]*?<\/style>/gi, { maxMem: 8192 }),
+        nav: new RE2(/<nav[^>]*>[\s\S]*?<\/nav>/gi, { maxMem: 8192 }),
+        footer: new RE2(/<footer[^>]*>[\s\S]*?<\/footer>/gi, { maxMem: 8192 }),
+        header: new RE2(/<header[^>]*>[\s\S]*?<\/header>/gi, { maxMem: 8192 }),
+        comment: new RE2(/<!--[\s\S]*?-->/g, { maxMem: 8192 }),
+        
+        // General tag removal (the problematic one)
+        tags: new RE2(/<[^>]+>/g, { maxMem: 8192 }),
+        
+        // Entity replacements
+        nbsp: new RE2(/&nbsp;/g),
+        amp: new RE2(/&amp;/g),
+        lt: new RE2(/&lt;/g),
+        gt: new RE2(/&gt;/g),
+        quot: new RE2(/&quot;/g),
+        numEntity: new RE2(/&#\d+;/g),
+        whitespace: new RE2(/\s+/g),
+        
+        // Table marker replacements
+        rowOpen: new RE2(/\[ROW\]/g),
+        rowClose: new RE2(/\[\/ROW\]/g),
+        cellOpen: new RE2(/\[CELL\]/g),
+        cellClose: new RE2(/\[\/CELL\]/g),
+        headerOpen: new RE2(/\[HEADER\]/g),
+        headerClose: new RE2(/\[\/HEADER\]/g)
+    };
+
     // First preserve table structure by adding markers
     const processedHtml = html
-        .replace(/<tr[^>]*>/gi, '\n[ROW] ')
-        .replace(/<\/tr>/gi, ' [/ROW]\n')
-        .replace(/<td[^>]*>/gi, '[CELL] ')
-        .replace(/<\/td>/gi, ' [/CELL] ')
-        .replace(/<th[^>]*>/gi, '[HEADER] ')
-        .replace(/<\/th>/gi, ' [/HEADER] ');
+        .replace(patterns.trOpen, '\n[ROW] ')
+        .replace(patterns.trClose, ' [/ROW]\n')
+        .replace(patterns.tdOpen, '[CELL] ')
+        .replace(patterns.tdClose, ' [/CELL] ')
+        .replace(patterns.thOpen, '[HEADER] ')
+        .replace(patterns.thClose, ' [/HEADER] ');
 
     // Remove unwanted elements
     const text = processedHtml
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
-        .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
-        .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
-        .replace(/<!--[\s\S]*?-->/g, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#\d+;/g, ' ')
-        .replace(/\s+/g, ' ')
-        .replace(/\[ROW\]/g, '\n')
-        .replace(/\[\/ROW\]/g, '')
-        .replace(/\[CELL\]/g, '| ')
-        .replace(/\[\/CELL\]/g, '')
-        .replace(/\[HEADER\]/g, '| ')
-        .replace(/\[\/HEADER\]/g, '')
+        .replace(patterns.script, '')
+        .replace(patterns.style, '')
+        .replace(patterns.nav, '')
+        .replace(patterns.footer, '')
+        .replace(patterns.header, '')
+        .replace(patterns.comment, '')
+        .replace(patterns.tags, ' ')
+        .replace(patterns.nbsp, ' ')
+        .replace(patterns.amp, '&')
+        .replace(patterns.lt, '<')
+        .replace(patterns.gt, '>')
+        .replace(patterns.quot, '"')
+        .replace(patterns.numEntity, ' ')
+        .replace(patterns.whitespace, ' ')
+        .replace(patterns.rowOpen, '\n')
+        .replace(patterns.rowClose, '')
+        .replace(patterns.cellOpen, '| ')
+        .replace(patterns.cellClose, '')
+        .replace(patterns.headerOpen, '| ')
+        .replace(patterns.headerClose, '')
         .trim();
 
     return text;

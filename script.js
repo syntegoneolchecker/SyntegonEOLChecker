@@ -1210,7 +1210,7 @@ function startAutoCheckMonitoring() {
                 const creditsElement = document.getElementById('credits-remaining');
                 if (creditsElement) {
                     const creditsText = creditsElement.textContent;
-                    const match = creditsText.match(/(\d+)\/\d+ remaining/);
+                    const match = creditsText.match(/(\d{1,6})\/\d{1,6} remaining/);
                     if (match) {
                         const remaining = parseInt(match[1]);
                         if (remaining <= 50 && state.enabled) {
