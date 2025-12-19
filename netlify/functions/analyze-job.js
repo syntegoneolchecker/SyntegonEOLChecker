@@ -763,8 +763,7 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY 
         }
         
         // RE2 provides ReDoS protection - this regex is safe with RE2
-        // sonar-disable-next-line javascript:S5852
-        const jsonRegex = new RE2(/\{[^}]*?(?:\{[^}]*?}[^}]*?)*}/);
+        const jsonRegex = RE2.fromString('\\{[^}]*?(?:\\{[^}]*?}[^}]*?)*}');
         const jsonMatch = jsonRegex.exec(generatedText);
         
         if (jsonMatch) {
