@@ -52,7 +52,7 @@ function render() {
     const t = document.getElementById('table');
     t.innerHTML = data.map((r, i) =>
         `<tr id="row-${i}">${r.map((c, j) => {
-            if (i == 0) {
+            if (i === 0) {
                 // Header row
                 const isSortable = sortableColumns.includes(j);
                 const sortIndicator = (currentSort.column === j)
