@@ -762,7 +762,8 @@ app.post('/scrape', async (req, res) => {
     // SSRF Protection: Validate scraping URL before use
     const urlValidation = isSafePublicUrl(url);
     if (!urlValidation.valid) {
-        console.warn(`SSRF protection blocked URL: ${url} - Reason: ${urlValidation.reason}`);
+        const safeUrlForLog = String(url).replace(/[\r\n]/g, '');
+        console.warn(`SSRF protection blocked URL: ${safeUrlForLog} - Reason: ${urlValidation.reason}`);
         return res.status(400).json({
             error: 'Invalid or unsafe URL',
             reason: urlValidation.reason
