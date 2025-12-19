@@ -765,7 +765,8 @@ RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY 
         }
         
         // Non-greedy, bounded regex
-        const jsonMatch = generatedText.match(/\{[^}]*?(?:\{[^}]*?}[^}]*?)*}/);
+        const jsonRegex = new RE2(/\{[^}]*?(?:\{[^}]*?}[^}]*?)*}/);
+        const jsonMatch = jsonRegex.exec(generatedText);
         if (jsonMatch) {
             try {
                 analysisResult = JSON.parse(jsonMatch[0]);

@@ -8,7 +8,8 @@
   "dependencies": {
     "@netlify/blobs": "^8.1.0",
     "@netlify/functions": "^2.8.2",
-    "@tavily/core": "^0.6.0"
+    "@tavily/core": "^0.6.0",
+    "re2": "^1.22.3"
   },
   "devDependencies": {
     "netlify-cli": "^17.0.0"
