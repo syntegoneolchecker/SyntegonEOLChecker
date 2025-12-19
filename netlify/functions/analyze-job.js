@@ -567,7 +567,7 @@ function formatResults(job) {
         resultSection += `URL: ${result?.url || urlInfo.url}\n`;
         resultSection += `Snippet: ${urlInfo.snippet}\n`;
 
-        if (result && result.fullContent) {
+        if (result?.fullContent) {
             let processedContent = processTablesInContent(result.fullContent);
             processedContent = filterIrrelevantTables(processedContent, job.model);
 
@@ -599,279 +599,301 @@ function formatResults(job) {
 }
 
 // Analyze with Groq
-async function analyzeWithGroq(maker, model, searchContext) {
-    const prompt = `TASK: Determine if the product "${model}" by ${maker} is discontinued (end-of-life).
-
-SEARCH RESULTS:
-${searchContext}
-
-ANALYSIS RULES:
-
-1. EXACT PRODUCT IDENTIFICATION
-   - You are analyzing "${model}" ONLY
-   - Product variants with ANY character difference (suffixes, prefixes, version numbers) are DIFFERENT products
-   - Only use information explicitly about "${model}"
-
-2. EVIDENCE OF ACTIVE STATUS (product is NOT discontinued if):
-   - Currently sold on manufacturer's official website or authorized retailers
-   - Available for purchase (not auction/secondhand sites)
-   - Listed as a replacement/successor for other products
-   - Has recent documentation, pricing, or specifications listed
-   - **CRITICAL: When provided with a product specification page with no indication of discontinuation, assume that the product is ACTIVE**
-   - **CRITICAL: If there is a price or a delivery date provided for "${model}", then the product is ACTIVE**
-   - **CRITICAL: If "${model}" is listed as the REPLACEMENT/SUCCESSOR for a discontinued product, then "${model}" is ACTIVE**
-
-3. EVIDENCE OF DISCONTINUED STATUS (ONLY mark discontinued with concrete proof):
-   - Explicitly listed in official discontinuation/EOL tables or announcements
-   - Clear statement: "discontinued", "end of life", "end of sales", "production ended"
-   - Must be from reputable source (manufacturer, official distributor)
-   - Auction sites or secondhand listings are NOT evidence
-   - Make sure that the discontinuation is specifically mentioned for "${model}"
-   - **CRITICAL: Do NOT mark "${model}" as discontinued just because it appears in a document about OTHER discontinued products**
-   - **CRITICAL: If "${model}" is the REPLACEMENT/SUCCESSOR for discontinued products, "${model}" is ACTIVE, not discontinued**
-   - **CRITICAL: If "${model}" is being actively sold, has a delivery date, or current price information then it is ACTIVE and not discontinued**
-
-4. REPLACEMENT LOGIC - READ CAREFULLY:
-   - "Product X → Product Y" means: X is discontinued, Y is the active replacement
-   - "Discontinued: X, Replacement: Y" means: X is old/discontinued, Y is new/active
-   - If you see "${model}" as the replacement target in tables or documentation, "${model}" is ACTIVE
-   - Being listed as a replacement/successor for multiple older products means "${model}" is the current active model
-
-5. SUCCESSOR IDENTIFICATION
-   - If discontinued: Search all content for explicit successor mentions
-     ("replaced by X", "successor: X", "recommended replacement: X", or any equivalent statements)
-   - If active: No successor needed
-   - Only report if explicitly stated for this exact product
-
-6. USE COMMON SENSE
-   - Prioritize official manufacturer information
-   - When uncertain, lean toward UNKNOWN rather than guessing
-   - If there is conflicting information, lean toward UNKNOWN rather than guessing
-   - Active sales = strong evidence of ACTIVE status
-   - The information is provided in the form of scraped websites. Websites have links, footers, headers etc. Because of this circumstance, not all content is relevant to the task!
-   - The term "discontinued" appearing somewhere on the page alone is not proof of discontinuation, it must be connected to "${model}" or relate to it specifically
-
-THIS PART IS EXTREMELY IMPORTANT:
-If you are provided with insufficient information: return the status UNKNOWN and write the reason in the explanation sections.
-Respond ONLY with valid JSON. Do not include any other text before or after the JSON.
-
-RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY one of the options mentioned):
-{
-    "status": "ACTIVE" | "DISCONTINUED" | "UNKNOWN",
-    "explanation": "ONE brief sentence citing the most definitive source (Result #N: URL(ALWAYS provide the URL), key evidence)",
-    "successor": {
-        "status": "FOUND" | "UNKNOWN",
-        "model": "model name or null",
-        "explanation": "Brief explanation or 'Product is active, no successor needed'"
+class GroqAnalyzer {
+    constructor() {
+        this.MAX_RETRIES = 3;
+        this.BASE_URL = 'https://api.groq.com/openai/v1/chat/completions';
     }
-}`;
 
-    console.log('This is the entire prompt:\n' + prompt);
+    async analyze(maker, model, searchContext) {
+        const prompt = this.buildPrompt(maker, model, searchContext);
+        console.log('This is the entire prompt:\n' + prompt);
 
-    // FIX: Add retry logic with exponential backoff for rate limits
-    const MAX_RETRIES = 3;
-    let groqResponse = null;
-    let lastError = null;
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            console.log(`Groq API call attempt ${attempt}/${MAX_RETRIES}`);
-
-            groqResponse = await fetch(
-                'https://api.groq.com/openai/v1/chat/completions',
-                {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: 'openai/gpt-oss-120b',
-                        messages: [
-                            {
-                                role: 'user',
-                                content: prompt
-                            }
-                        ],
-                        temperature: 0,
-                        max_completion_tokens: 8192,
-                        top_p: 1,
-                        stream: false,
-                        reasoning_effort: 'low',
-                        response_format: {
-                            type: 'json_object'
-                        },
-                        stop: null,
-                        seed: 1
-                    })
-                }
-            );
-
-            if (!groqResponse.ok) {
-                const errorText = await groqResponse.text();
-                console.error(`Groq API error (attempt ${attempt}):`, errorText);
-
-                if (groqResponse.status === 429) {
-                    // Check if this is a daily token limit (TPD) error
-                    if (errorText.includes('tokens per day (TPD)')) {
-                        // Extract retry time from error message (e.g., "Please try again in 7m54.336s")
-                        let retryTimeMsg = '';
-                        let retrySeconds = null;
-                        // Match time patterns like: "7m54.336s", "54.336s", "2h30m15s", etc.
-                        const retryMatch = errorText.match(/Please try again in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s))/);
-                        if (retryMatch) {
-                            const timeStr = retryMatch[1];
-                            retryTimeMsg = ` Tokens will recover in approximately ${timeStr}.`;
-
-                            // Convert time string to seconds (e.g., "7m54.336s" -> 474.336)
-                            retrySeconds = parseTimeToSeconds(timeStr);
-                        }
-
-                        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                        console.error('🚫 GROQ DAILY TOKEN LIMIT REACHED');
-                        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                        console.error('The daily token limit of 200,000 tokens has been reached.');
-                        console.error('Groq uses a rolling 24-hour window - tokens gradually recover as they age out.');
-                        if (retryTimeMsg) {
-                            console.error(retryTimeMsg);
-                        }
-                        console.error('EOL check cancelled - no database changes will be made.');
-                        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-                        // Throw a specific error type that we can catch and handle differently
-                        const errorMsg = `Daily token limit reached (rolling 24h window). Analysis cancelled to avoid timeout.${retryTimeMsg}`;
-                        const dailyLimitError = new Error(errorMsg);
-                        dailyLimitError.isDailyLimit = true;
-                        dailyLimitError.retrySeconds = retrySeconds;
-                        throw dailyLimitError;
-                    }
-
-                    // Rate limit - extract reset time from headers and wait (for per-minute limits)
-                    const resetTokens = groqResponse.headers.get('x-ratelimit-reset-tokens');
-                    let resetSeconds = 60; // Default to 60s if not provided
-
-                    if (resetTokens) {
-                        const match = resetTokens.match(/^([\d.]+)s?$/);
-                        if (match) {
-                            resetSeconds = parseFloat(match[1]);
-                        }
-                    }
-
-                    if (attempt < MAX_RETRIES) {
-                        const waitMs = Math.ceil(resetSeconds * 1000) + 2000; // Add 2s buffer
-                        console.log(`⏳ Rate limit hit, waiting ${waitMs}ms before retry ${attempt + 1}...`);
-                        await new Promise(resolve => setTimeout(resolve, waitMs));
-                        continue; // Retry
-                    } else {
-                        throw new Error(`Rate limit exceeded after ${MAX_RETRIES} attempts`);
-                    }
-                }
-
-                // Other HTTP errors
-                if (attempt < MAX_RETRIES) {
-                    const backoffMs = 2000 * Math.pow(2, attempt - 1); // 2s, 4s, 8s
-                    console.log(`HTTP ${groqResponse.status} error, retrying in ${backoffMs}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, backoffMs));
-                    continue;
-                } else {
-                    throw new Error(`Groq API failed: ${groqResponse.status} - ${errorText}`);
-                }
-            }
-
-            // Success!
-            console.log(`✓ Groq API call successful on attempt ${attempt}`);
-            break;
-
+            const response = await this.callWithRetry(prompt);
+            return this.processResponse(response);
         } catch (error) {
-            lastError = error;
-            console.error(`Groq API attempt ${attempt} failed:`, error.message);
-
-            // If it's a daily limit error, throw immediately without retrying
-            if (error.isDailyLimit) {
-                throw error;
-            }
-
-            if (attempt < MAX_RETRIES) {
-                const backoffMs = 2000 * Math.pow(2, attempt - 1);
-                console.log(`Retrying in ${backoffMs}ms...`);
-                await new Promise(resolve => setTimeout(resolve, backoffMs));
-            } else {
-                throw error;
-            }
+            this.handleError(error);
+            throw error;
         }
     }
 
-    if (!groqResponse || !groqResponse.ok) {
-        throw lastError || new Error('Groq API call failed after all retries');
+    buildPrompt(maker, model, searchContext) {
+        return `TASK: Determine if the product "${model}" by ${maker} is discontinued (end-of-life).
+
+        SEARCH RESULTS:
+        ${searchContext}
+
+        ANALYSIS RULES:
+
+        1. EXACT PRODUCT IDENTIFICATION
+        - You are analyzing "${model}" ONLY
+        - Product variants with ANY character difference (suffixes, prefixes, version numbers) are DIFFERENT products
+        - Only use information explicitly about "${model}"
+
+        2. EVIDENCE OF ACTIVE STATUS (product is NOT discontinued if):
+        - Currently sold on manufacturer's official website or authorized retailers
+        - Available for purchase (not auction/secondhand sites)
+        - Listed as a replacement/successor for other products
+        - Has recent documentation, pricing, or specifications listed
+        - **CRITICAL: When provided with a product specification page with no indication of discontinuation, assume that the product is ACTIVE**
+        - **CRITICAL: If there is a price or a delivery date provided for "${model}", then the product is ACTIVE**
+        - **CRITICAL: If "${model}" is listed as the REPLACEMENT/SUCCESSOR for a discontinued product, then "${model}" is ACTIVE**
+
+        3. EVIDENCE OF DISCONTINUED STATUS (ONLY mark discontinued with concrete proof):
+        - Explicitly listed in official discontinuation/EOL tables or announcements
+        - Clear statement: "discontinued", "end of life", "end of sales", "production ended"
+        - Must be from reputable source (manufacturer, official distributor)
+        - Auction sites or secondhand listings are NOT evidence
+        - Make sure that the discontinuation is specifically mentioned for "${model}"
+        - **CRITICAL: Do NOT mark "${model}" as discontinued just because it appears in a document about OTHER discontinued products**
+        - **CRITICAL: If "${model}" is the REPLACEMENT/SUCCESSOR for discontinued products, "${model}" is ACTIVE, not discontinued**
+        - **CRITICAL: If "${model}" is being actively sold, has a delivery date, or current price information then it is ACTIVE and not discontinued**
+
+        4. REPLACEMENT LOGIC - READ CAREFULLY:
+        - "Product X → Product Y" means: X is discontinued, Y is the active replacement
+        - "Discontinued: X, Replacement: Y" means: X is old/discontinued, Y is new/active
+        - If you see "${model}" as the replacement target in tables or documentation, "${model}" is ACTIVE
+        - Being listed as a replacement/successor for multiple older products means "${model}" is the current active model
+
+        5. SUCCESSOR IDENTIFICATION
+        - If discontinued: Search all content for explicit successor mentions
+            ("replaced by X", "successor: X", "recommended replacement: X", or any equivalent statements)
+        - If active: No successor needed
+        - Only report if explicitly stated for this exact product
+
+        6. USE COMMON SENSE
+        - Prioritize official manufacturer information
+        - When uncertain, lean toward UNKNOWN rather than guessing
+        - If there is conflicting information, lean toward UNKNOWN rather than guessing
+        - Active sales = strong evidence of ACTIVE status
+        - The information is provided in the form of scraped websites. Websites have links, footers, headers etc. Because of this circumstance, not all content is relevant to the task!
+        - The term "discontinued" appearing somewhere on the page alone is not proof of discontinuation, it must be connected to "${model}" or relate to it specifically
+
+        THIS PART IS EXTREMELY IMPORTANT:
+        If you are provided with insufficient information: return the status UNKNOWN and write the reason in the explanation sections.
+        Respond ONLY with valid JSON. Do not include any other text before or after the JSON.
+
+        RESPONSE FORMAT (JSON ONLY - NO OTHER TEXT, for the status sections put EXACLTY one of the options mentioned):
+        {
+            "status": "ACTIVE" | "DISCONTINUED" | "UNKNOWN",
+            "explanation": "ONE brief sentence citing the most definitive source (Result #N: URL(ALWAYS provide the URL), key evidence)",
+            "successor": {
+                "status": "FOUND" | "UNKNOWN",
+                "model": "model name or null",
+                "explanation": "Brief explanation or 'Product is active, no successor needed'"
+            }
+        }`;
     }
 
-    const groqData = await groqResponse.json();
-    console.log('Groq response:', JSON.stringify(groqData));
-
-    // Extract token rate limit information from headers
-    const resetTokens = groqResponse.headers.get('x-ratelimit-reset-tokens');
-    let resetSeconds = null;
-    if (resetTokens) {
-        const match = resetTokens.match(/^([\d.]+)s?$/);
-        if (match) {
-            resetSeconds = parseFloat(match[1]);
+    async callWithRetry(prompt) {
+        for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
+            try {
+                const response = await this.makeRequest(prompt);
+                if (response.ok) return response;
+                await this.handleFailedRequest(response, attempt);
+            } catch (error) {
+                await this.handleRetry(error, attempt);
+            }
         }
+        throw new Error('Groq API call failed after all retries');
     }
 
-    const rateLimitInfo = {
-        remainingTokens: groqResponse.headers.get('x-ratelimit-remaining-tokens'),
-        limitTokens: groqResponse.headers.get('x-ratelimit-limit-tokens'),
-        resetSeconds: resetSeconds
-    };
+    async makeRequest(prompt) {
+        return fetch(this.BASE_URL, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify(this.getRequestBody(prompt))
+        });
+    }
 
-    // Extract the generated text
-    let generatedText = '';
-    if (groqData.choices && groqData.choices[0]?.message?.content) {
-        generatedText = groqData.choices[0].message.content;
-    } else {
+    getHeaders() {
+        return {
+            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+            'Content-Type': 'application/json'
+        };
+    }
+
+    getRequestBody(prompt) {
+        return {
+            model: 'openai/gpt-oss-120b',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0,
+            max_completion_tokens: 8192,
+            top_p: 1,
+            stream: false,
+            reasoning_effort: 'low',
+            response_format: { type: 'json_object' },
+            stop: null,
+            seed: 1
+        };
+    }
+
+    async handleFailedRequest(response, attempt) {
+        const errorText = await response.text();
+        console.error(`Groq API error (attempt ${attempt}):`, errorText);
+
+        if (response.status === 429) {
+            if (errorText.includes('tokens per day (TPD)')) {
+                throw this.createDailyLimitError(errorText);
+            }
+            await this.handleRateLimit(response, attempt);
+        }
+        
+        throw new Error(`Groq API failed: ${response.status} - ${errorText}`);
+    }
+
+    async handleRateLimit(response, attempt) {
+        if (attempt < this.MAX_RETRIES) {
+            const waitTime = this.calculateWaitTime(response);
+            await this.wait(waitTime);
+            throw new Error('Rate limit - retrying');
+        }
+        throw new Error(`Rate limit exceeded after ${this.MAX_RETRIES} attempts`);
+    }
+
+    calculateWaitTime(response) {
+        const resetSeconds = this.extractResetTime(response);
+        return Math.ceil(resetSeconds * 1000) + 2000;
+    }
+
+    extractResetTime(response) {
+        const resetTokens = response.headers.get('x-ratelimit-reset-tokens');
+        if (!resetTokens) return 60;
+        const match = /^([\d.]+)s?$/.exec(resetTokens);
+        return match ? Number.parseFloat(match[1]) : 60;
+    }
+
+    createDailyLimitError(errorText) {
+        const retryInfo = this.extractRetryTime(errorText);
+        console.error(this.formatDailyLimitMessage(retryInfo.message));
+        
+        const error = new Error(
+            `Daily token limit reached (rolling 24h window). Analysis cancelled.${retryInfo.message}`
+        );
+        error.isDailyLimit = true;
+        error.retrySeconds = retryInfo.seconds;
+        return error;
+    }
+
+    formatDailyLimitMessage(additionalMessage) {
+        return `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚫 GROQ DAILY TOKEN LIMIT REACHED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The daily token limit of 200,000 tokens has been reached.
+Groq uses a rolling 24-hour window - tokens gradually recover as they age out.
+${additionalMessage || ''}
+EOL check cancelled - no database changes will be made.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+    }
+
+    extractRetryTime(errorText) {
+        const retryMatch = /Please try again in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s))/.exec(errorText);
+        if (!retryMatch) return { message: '', seconds: null };
+        
+        const timeStr = retryMatch[1];
+        return {
+            message: ` Tokens will recover in approximately ${timeStr}.`,
+            seconds: parseTimeToSeconds(timeStr)
+        };
+    }
+
+    async handleRetry(error, attempt) {
+        if (error.isDailyLimit) throw error;
+        
+        console.error(`Groq API attempt ${attempt} failed:`, error.message);
+        
+        if (attempt < this.MAX_RETRIES) {
+            await this.wait(this.calculateBackoffTime(attempt));
+            throw new Error('Retrying after error');
+        }
+        throw error;
+    }
+
+    calculateBackoffTime(attempt) {
+        return 2000 * Math.pow(2, attempt - 1);
+    }
+
+    async wait(ms) {
+        console.log(`⏳ Waiting ${ms}ms...`);
+        await new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async processResponse(response) {
+        const groqData = await response.json();
+        console.log('Groq response:', JSON.stringify(groqData));
+        
+        const generatedText = this.extractGeneratedText(groqData);
+        const parsedResult = this.parseResponseText(generatedText);
+        this.validateResult(parsedResult);
+        
+        parsedResult.rateLimits = this.extractRateLimits(response);
+        return parsedResult;
+    }
+
+    extractGeneratedText(groqData) {
+        if (groqData.choices?.[0]?.message?.content) {
+            return groqData.choices[0].message.content;
+        }
         throw new Error('Unexpected response format from LLM');
     }
 
-    // Parse JSON from the response
-    let analysisResult;
+    parseResponseText(text) {
+        try {
+            return JSON.parse(text);
+        } catch (error) {
+            return this.extractJsonFromText(text, error);
+        }
+    }
 
-    try {
-        analysisResult = JSON.parse(generatedText);
-    } catch (parseError) {
-        // Input size validation (already bounded by 8192 tokens)
+    extractJsonFromText(text, parseError) {
         const MAX_SIZE = 8192 * 5;
-        if (generatedText.length > MAX_SIZE) {
-            throw new Error(`Response exceeds maximum expected size`);
+        if (text.length > MAX_SIZE) {
+            throw new Error('Response exceeds maximum expected size');
         }
         
-        // RE2 provides ReDoS protection - this regex is safe with RE2
-        const jsonRegex = RE2.fromString('\\{[^}]*?(?:\\{[^}]*?}[^}]*?)*}');
-        const jsonMatch = jsonRegex.exec(generatedText);
+        const jsonRegex = RE2.fromString(String.raw`\{[^}]*?(?:\{[^}]*?}[^}]*?)*}`);
+        const jsonMatch = jsonRegex.exec(text);
         
         if (jsonMatch) {
             try {
-                analysisResult = JSON.parse(jsonMatch[0]);
+                return JSON.parse(jsonMatch[0]);
             } catch (extractionError) {
                 throw new Error(
                     `Failed to parse extracted JSON: ${extractionError.message} ` +
                     `(Original error: ${parseError.message})`
                 );
             }
-        } else {
-            throw new Error(
-                `No JSON object found in response. ` +
-                `Original parse error: ${parseError.message}`
-            );
+        }
+        
+        throw new Error(`No JSON object found in response. Original parse error: ${parseError.message}`);
+    }
+
+    validateResult(result) {
+        if (!result.status || !result.explanation || !result.successor) {
+            throw new Error('Invalid analysis result structure');
         }
     }
 
-    // Validate the response structure
-    if (!analysisResult.status || !analysisResult.explanation || !analysisResult.successor) {
-        throw new Error('Invalid analysis result structure');
+    extractRateLimits(response) {
+        return {
+            remainingTokens: response.headers.get('x-ratelimit-remaining-tokens'),
+            limitTokens: response.headers.get('x-ratelimit-limit-tokens'),
+            resetSeconds: this.extractResetTime(response)
+        };
     }
 
-    // Add rate limit info to result
-    analysisResult.rateLimits = rateLimitInfo;
+    handleError(error) {
+        if (error.isDailyLimit) {
+            console.error('Daily token limit error handled');
+        } else {
+            console.error('Groq API analysis failed:', error.message);
+        }
+    }
+}
 
-    return analysisResult;
+// Usage
+async function analyzeWithGroq(maker, model, searchContext) {
+    const analyzer = new GroqAnalyzer();
+    return analyzer.analyze(maker, model, searchContext);
 }
