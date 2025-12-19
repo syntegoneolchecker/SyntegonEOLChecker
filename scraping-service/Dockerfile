@@ -55,6 +55,12 @@ RUN npm install
 # Copy application files
 COPY index.js .
 
+# Change ownership of application files to node user
+RUN chown -R node:node /app
+
+# Switch to non-root user
+USER node
+
 # Expose port
 EXPOSE 3000
 
