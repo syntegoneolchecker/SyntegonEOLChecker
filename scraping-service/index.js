@@ -312,7 +312,7 @@ function extractHTMLText(html) {
         tdClose: new RE2('</td>', 'gi'),
         thOpen: new RE2('<th[^>]*>', 'gi'),
         thClose: new RE2('</th>', 'gi'),
-        
+
         // Element removal - use string patterns
         script: new RE2('<script[^>]*>[\\s\\S]*?</script>', 'gi'),
         style: new RE2('<style[^>]*>[\\s\\S]*?</style>', 'gi'),
@@ -320,10 +320,10 @@ function extractHTMLText(html) {
         footer: new RE2('<footer[^>]*>[\\s\\S]*?</footer>', 'gi'),
         header: new RE2('<header[^>]*>[\\s\\S]*?</header>', 'gi'),
         comment: new RE2('<!--[\\s\\S]*?-->', 'g'),
-        
+
         // The problematic one - use string pattern
         tags: new RE2('<[^>]+>', 'g'),
-        
+
         // Entity replacements (could use string methods for these)
         nbsp: new RE2('&nbsp;', 'g'),
         amp: new RE2('&amp;', 'g'),
@@ -332,7 +332,7 @@ function extractHTMLText(html) {
         quot: new RE2('&quot;', 'g'),
         numEntity: new RE2('&#\\d+;', 'g'),
         whitespace: new RE2('\\s+', 'g'),
-        
+
         // Table marker replacements
         rowOpen: new RE2('\\[ROW\\]', 'g'),
         rowClose: new RE2('\\[\\/ROW\\]', 'g'),

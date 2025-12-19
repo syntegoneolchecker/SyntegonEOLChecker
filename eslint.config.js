@@ -28,6 +28,9 @@ module.exports = [
                 clearTimeout: 'readonly',
                 clearInterval: 'readonly',
                 Promise: 'readonly',
+                URL: 'readonly',
+                Event: 'readonly',
+                crypto: 'readonly',
                 // Browser globals (for script.js)
                 window: 'readonly',
                 document: 'readonly',
