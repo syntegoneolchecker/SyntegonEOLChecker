@@ -53,7 +53,7 @@ COPY package*.json ./
 RUN npm install
 
 # Copy application files
-COPY . .
+COPY index.js .
 
 # Expose port
 EXPOSE 3000
