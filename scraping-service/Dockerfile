@@ -1,6 +1,6 @@
 FROM node:18-slim
 
-# Install Chromium dependencies
+# Install Chromium dependencies and build tools for native modules
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -40,6 +40,9 @@ RUN apt-get update && apt-get install -y \
     libxtst6 \
     lsb-release \
     xdg-utils \
+    python3 \
+    make \
+    g++ \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -49,8 +52,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies (re2 requires build tools for native compilation)
+RUN npm install \
+    && apt-get purge -y --auto-remove python3 make g++
 
 # Copy application files
 COPY index.js .
