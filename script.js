@@ -35,7 +35,7 @@ function showStatus(message, type = 'success', permanent = true) {
 // Format SAP Number to X-XXX-XXX-XXX format (10 digits)
 function formatID(input) {
     // Remove all non-digit characters
-    const digits = input.replace(/\D/g, '');
+    const digits = input.replaceAll(/\D/g, '');
 
     // Check if we have exactly 10 digits
     if (digits.length !== 10) {
@@ -73,7 +73,7 @@ function render() {
         .then(r => r.ok ? r.json() : null)
         .then(state => {
             // Disable buttons if EITHER manual check OR auto-check is running
-            const shouldDisable = isManualCheckRunning || (state && state.isRunning);
+            const shouldDisable = isManualCheckRunning || (state?.isRunning);
             if (typeof updateCheckEOLButtons === 'function') {
                 updateCheckEOLButtons(shouldDisable);
             }
@@ -91,7 +91,7 @@ function render() {
 function sortTable(columnIndex) {
     // Save original order on first sort (if not already saved)
     if (originalData === null) {
-        originalData = JSON.parse(JSON.stringify(data));
+        originalData = structuredClone(data);
     }
 
     // Determine next sort state
@@ -105,7 +105,7 @@ function sortTable(columnIndex) {
             // Reset to original order
             currentSort.direction = null;
             currentSort.column = null;
-            data = JSON.parse(JSON.stringify(originalData));
+            data = structuredClone(originalData);
             render();
             return;
         }
@@ -185,7 +185,19 @@ async function addRow() {
         }
     }
 
-    if (existingIndex !== -1) {
+    if (existingIndex === -1) {
+        // New entry - add it
+        data.push(row);
+        if (originalData) originalData.push(row);
+        render();
+        showStatus(`✓ New entry ${formattedID} added successfully`);
+        await saveToServer();
+
+        // Clear input fields
+        for (let i = 1; i <= 13; i++) {
+            document.getElementById('c' + i).value = '';
+        }
+    } else {
         // Entry exists - ask for confirmation
         const existingRow = data[existingIndex];
         const confirmMessage = `An entry with SAP Part Number ${formattedID} already exists:\n\n` +
@@ -219,18 +231,6 @@ async function addRow() {
         } else {
             // User cancelled
             showStatus(`Entry replacement cancelled`, 'info');
-        }
-    } else {
-        // New entry - add it
-        data.push(row);
-        if (originalData) originalData.push(row);
-        render();
-        showStatus(`✓ New entry ${formattedID} added successfully`);
-        await saveToServer();
-
-        // Clear input fields
-        for (let i = 1; i <= 13; i++) {
-            document.getElementById('c' + i).value = '';
         }
     }
 }
@@ -270,7 +270,6 @@ async function checkEOL(rowIndex) {
         // Show loading state
         const rowElement = document.getElementById(`row-${rowIndex}`);
         const checkButton = rowElement.querySelector('.check-eol');
-        const originalButtonText = checkButton.textContent;
         checkButton.textContent = 'Waking Render...';
 
         // Wake up Render scraping service (handles cold starts and post-restart downtime)
@@ -575,7 +574,7 @@ function loadExcel(e) {
             console.log('Excel headers found:', headers);
 
             const idIndex = headers.findIndex(h => {
-                const headerText = h && h.toString().toLowerCase().trim();
+                const headerText = h?.toString().toLowerCase().trim();
                 return headerText === 'sap part number';
             });
 
@@ -622,8 +621,8 @@ function loadExcel(e) {
                 const newRow = [];
                 const ourHeaders = data[0]; // Our standard headers
 
-                for (let j = 0; j < ourHeaders.length; j++) {
-                    const headerName = ourHeaders[j].toLowerCase().trim();
+                for (const element of ourHeaders) {
+                    const headerName = element.toLowerCase().trim();
 
                     if (headerName === 'sap part number') {
                         // Use formatted SAP Part Number
@@ -648,16 +647,16 @@ function loadExcel(e) {
                     }
                 }
 
-                if (existingIndex !== -1) {
-                    // Update existing entry
-                    data[existingIndex] = newRow;
-                    if (originalData) originalData[existingIndex] = newRow;
-                    updatedEntries++;
-                } else {
+                if (existingIndex === -1) {
                     // Add new entry
                     data.push(newRow);
                     if (originalData) originalData.push(newRow);
                     newEntries++;
+                } else {
+                    // Update existing entry
+                    data[existingIndex] = newRow;
+                    if (originalData) originalData[existingIndex] = newRow;
+                    updatedEntries++;
                 }
             }
 
@@ -804,11 +803,11 @@ function updateGroqRateLimits(rateLimits) {
     // Update per-minute limits
     const groqElement = document.getElementById('groq-remaining');
 
-    if (!rateLimits || !rateLimits.remainingTokens || !rateLimits.limitTokens) {
+    if (!rateLimits?.remainingTokens || !rateLimits.limitTokens) {
         groqElement.textContent = 'N/A';
     } else {
-        const remaining = parseInt(rateLimits.remainingTokens);
-        const limit = parseInt(rateLimits.limitTokens);
+        const remaining = Number.parseInt(rateLimits.remainingTokens);
+        const limit = Number.parseInt(rateLimits.limitTokens);
 
         // Format with comma separators for readability
         const remainingFormatted = remaining.toLocaleString();
@@ -831,7 +830,7 @@ function updateGroqRateLimits(rateLimits) {
     }
 
     // Update countdown timer
-    if (rateLimits && rateLimits.resetSeconds !== null && rateLimits.resetSeconds !== undefined) {
+    if (rateLimits?.resetSeconds !== null && rateLimits.resetSeconds !== undefined) {
         startGroqCountdown(rateLimits.resetSeconds);
     } else {
         const countdownElement = document.getElementById('groq-reset-countdown');
@@ -1100,7 +1099,7 @@ async function manualTriggerAutoCheck() {
         }
 
         // Pass the current site URL to the background function
-        const siteUrl = window.location.origin;
+        const siteUrl = globalThis.location.origin;
 
         const response = await fetch('/.netlify/functions/auto-eol-check-background', {
             method: 'POST',
@@ -1210,9 +1209,9 @@ function startAutoCheckMonitoring() {
                 const creditsElement = document.getElementById('credits-remaining');
                 if (creditsElement) {
                     const creditsText = creditsElement.textContent;
-                    const match = creditsText.match(/(\d{1,6})\/\d{1,6} remaining/);
+                    const match = new RegExp(/(\d{1,6})\/\d{1,6} remaining/).exec(creditsText);
                     if (match) {
-                        const remaining = parseInt(match[1]);
+                        const remaining = Number.parseInt(match[1]);
                         if (remaining <= 50 && state.enabled) {
                             console.log('Auto-disabling auto-check due to low credits:', remaining);
 

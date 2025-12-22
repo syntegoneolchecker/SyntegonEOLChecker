@@ -61,12 +61,12 @@ function extractHTMLText(html) {
         whitespace: new RE2(String.raw`\s+`, 'g'),
 
         // Table marker replacements
-        rowOpen: new RE2('\\[ROW\\]', 'g'),
-        rowClose: new RE2('\\[\\/ROW\\]', 'g'),
-        cellOpen: new RE2('\\[CELL\\]', 'g'),
-        cellClose: new RE2('\\[\\/CELL\\]', 'g'),
-        headerOpen: new RE2('\\[HEADER\\]', 'g'),
-        headerClose: new RE2('\\[\\/HEADER\\]', 'g')
+        rowOpen: new RE2(String.raw`\[ROW\]`, 'g'),
+        rowClose: new RE2(String.raw`\[\/ROW\]`, 'g'),
+        cellOpen: new RE2(String.raw`\[CELL\]`, 'g'),
+        cellClose: new RE2(String.raw`\[\/CELL\]`, 'g'),
+        headerOpen: new RE2(String.raw`\[HEADER\]`, 'g'),
+        headerClose: new RE2(String.raw`\[\/HEADER\]`, 'g')
     };
 
     // First preserve table structure by adding markers
@@ -159,7 +159,7 @@ async function extractPDFText(pdfBuffer, url) {
         });
 
         const fullText = data.text
-            .replace(/\s+/g, ' ')
+            .replaceAll(/\s+/g, ' ')
             .trim();
 
         if (fullText.length === 0) {
@@ -185,13 +185,14 @@ async function extractPDFText(pdfBuffer, url) {
 
 /**
  * Try fast fetch without Puppeteer (for PDFs and simple pages)
+ * This function orchestrates URL validation, fetching, and content processing
+ * through a series of specialized helper functions to reduce complexity.
  * @param {string} url - URL to fetch
  * @param {number} timeout - Timeout in milliseconds (default: 5000)
  * @returns {Promise<string|null>} Extracted content or null if fast fetch fails
  */
 async function tryFastFetch(url, timeout = 5000) {
     // SSRF Protection: Validate URL before making HTTP request
-    // This provides defense-in-depth even though validation happens at endpoint level
     const urlValidation = isSafePublicUrl(url);
     if (!urlValidation.valid) {
         console.error(`SSRF protection: Blocked unsafe URL in tryFastFetch: ${url} - ${urlValidation.reason}`);
@@ -199,96 +200,143 @@ async function tryFastFetch(url, timeout = 5000) {
     }
 
     try {
-        const isPDF = isPDFUrl(url);
-        const isTextFile = isTextFileUrl(url);
-        const fetchTimeout = isPDF ? 20000 : timeout;
-
-        if (isPDF) {
-            console.log(`Detected PDF URL, using ${fetchTimeout}ms timeout: ${url}`);
-        }
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), fetchTimeout);
-
-        // NOSONAR javascript:S5144 - SSRF: Whitelist-based validation not feasible for this use case.
-        // This application scrapes dynamic URLs from Tavily search results (manufacturer websites).
-        // Comprehensive blacklist validation is applied: blocks localhost, private IPs (RFC 1918),
-        // link-local addresses (cloud metadata), reserved IP ranges, dangerous protocols.
-        // Defense-in-depth: validation at endpoint level + immediate pre-fetch validation above.
-        const response = await fetch(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EOLChecker/1.0)' },
-            signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-            console.log(`Fast fetch failed: HTTP ${response.status} for ${url}`);
-            if (isPDF) {
-                return `[Could not fetch PDF: HTTP ${response.status}]`;
-            }
-            return null;
-        }
-
-        const contentType = response.headers.get('content-type') || '';
-
-        // Handle PDF files
-        if (contentType.includes('application/pdf') || isPDF) {
-            console.log(`Detected PDF (Content-Type: ${contentType}), extracting text: ${url}`);
-
-            // Check PDF size limit (20 MB = 20,971,520 bytes)
-            const contentLength = response.headers.get('content-length');
-            const MAX_PDF_SIZE = 20 * 1024 * 1024; // 20 MB
-
-            if (contentLength) {
-                const sizeBytes = parseInt(contentLength, 10);
-                const sizeMB = (sizeBytes / 1024 / 1024).toFixed(2);
-
-                if (sizeBytes > MAX_PDF_SIZE) {
-                    console.warn(`⚠️  PDF too large (${sizeMB} MB > 20 MB), skipping: ${url}`);
-                    return `[PDF file is too large (${sizeMB} MB). Files over 20 MB cannot be processed due to memory constraints. Please review this product manually.]`;
-                }
-
-                console.log(`PDF size: ${sizeMB} MB (within 20 MB limit)`);
-            } else {
-                console.warn(`⚠️  No Content-Length header for PDF, proceeding with caution: ${url}`);
-            }
-
-            const pdfBuffer = Buffer.from(await response.arrayBuffer());
-            return await extractPDFText(pdfBuffer, url);
-        }
-
-        // Handle text files with proper encoding
-        if (contentType.includes('text/plain') || isTextFile) {
-            console.log(`Detected text file (Content-Type: ${contentType}): ${url}`);
-            const buffer = Buffer.from(await response.arrayBuffer());
-            const text = decodeWithProperEncoding(buffer, contentType);
-            return text; // No truncation - let website handle it
-        }
-
-        // Handle HTML with proper encoding detection
-        console.log(`Fetching HTML content from: ${url}`);
-        const buffer = Buffer.from(await response.arrayBuffer());
-        const html = decodeWithProperEncoding(buffer, contentType);
-        const text = extractHTMLText(html);
-
-        if (isErrorPage(text)) {
-            console.log(`Detected error page for ${url}`);
-            return null;
-        }
-
-        return text;
-
+        return await fetchAndProcessUrl(url, timeout);
     } catch (error) {
-        console.error(`Fast fetch error for ${url}:`, error.message);
+        return handleFetchError(error, url);
+    }
+}
 
-        const isPDF = isPDFUrl(url);
-        if (isPDF) {
-            return `[PDF fetch failed: ${error.message}]`;
-        }
+async function fetchAndProcessUrl(url, timeout) {
+    const { isPDF, isTextFile, fetchTimeout } = determineFileTypeAndTimeout(url, timeout);
+    
+    const response = await fetchWithTimeout(url, fetchTimeout);
+    
+    if (!response.ok) {
+        return handleFailedResponse(response, url, isPDF);
+    }
 
+    return await processResponse(response, url, isPDF, isTextFile);
+}
+
+function determineFileTypeAndTimeout(url, timeout) {
+    const isPDF = isPDFUrl(url);
+    const isTextFile = isTextFileUrl(url);
+    const fetchTimeout = isPDF ? 20000 : timeout;
+
+    if (isPDF) {
+        console.log(`Detected PDF URL, using ${fetchTimeout}ms timeout: ${url}`);
+    }
+
+    return { isPDF, isTextFile, fetchTimeout };
+}
+
+async function fetchWithTimeout(url, timeout) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    // NOSONAR javascript:S5144 - SSRF: Whitelist-based validation not feasible for this use case.
+    // This application scrapes dynamic URLs from Tavily search results (manufacturer websites).
+    // Comprehensive blacklist validation is applied: blocks localhost, private IPs (RFC 1918),
+    // link-local addresses (cloud metadata), reserved IP ranges, dangerous protocols.
+    // Defense-in-depth: validation at endpoint level + immediate pre-fetch validation above.
+    const response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EOLChecker/1.0)' },
+        signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+    return response;
+}
+
+function handleFailedResponse(response, url, isPDF) {
+    console.log(`Fast fetch failed: HTTP ${response.status} for ${url}`);
+    
+    if (isPDF) {
+        return `[Could not fetch PDF: HTTP ${response.status}]`;
+    }
+    
+    return null;
+}
+
+async function processResponse(response, url, isPDF, isTextFile) {
+    const contentType = response.headers.get('content-type') || '';
+
+    if (contentType.includes('application/pdf') || isPDF) {
+        return await processPDF(response, url, contentType);
+    }
+
+    if (contentType.includes('text/plain') || isTextFile) {
+        return await processTextFile(response, url, contentType);
+    }
+
+    return await processHTML(response, url, contentType);
+}
+
+async function processPDF(response, url, contentType) {
+    console.log(`Detected PDF (Content-Type: ${contentType}), extracting text: ${url}`);
+
+    const sizeValidation = validatePDFSize(response);
+    if (sizeValidation.error) {
+        return sizeValidation.message;
+    }
+
+    const pdfBuffer = Buffer.from(await response.arrayBuffer());
+    return await extractPDFText(pdfBuffer, url);
+}
+
+function validatePDFSize(response) {
+    const contentLength = response.headers.get('content-length');
+    const MAX_PDF_SIZE = 20 * 1024 * 1024; // 20 MB
+
+    if (!contentLength) {
+        console.warn(`⚠️  No Content-Length header for PDF, proceeding with caution`);
+        return { error: false };
+    }
+
+    const sizeBytes = Number.parseInt(contentLength, 10);
+    const sizeMB = (sizeBytes / 1024 / 1024).toFixed(2);
+
+    if (sizeBytes > MAX_PDF_SIZE) {
+        console.warn(`⚠️  PDF too large (${sizeMB} MB > 20 MB), skipping`);
+        return {
+            error: true,
+            message: `[PDF file is too large (${sizeMB} MB). Files over 20 MB cannot be processed due to memory constraints. Please review this product manually.]`
+        };
+    }
+
+    console.log(`PDF size: ${sizeMB} MB (within 20 MB limit)`);
+    return { error: false };
+}
+
+async function processTextFile(response, url, contentType) {
+    console.log(`Detected text file (Content-Type: ${contentType}): ${url}`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const text = decodeWithProperEncoding(buffer, contentType);
+    return text; // No truncation - let website handle it
+}
+
+async function processHTML(response, url, contentType) {
+    console.log(`Fetching HTML content from: ${url}`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const html = decodeWithProperEncoding(buffer, contentType);
+    const text = extractHTMLText(html);
+
+    if (isErrorPage(text)) {
+        console.log(`Detected error page for ${url}`);
         return null;
     }
+
+    return text;
+}
+
+function handleFetchError(error, url) {
+    console.error(`Fast fetch error for ${url}:`, error.message);
+
+    if (isPDFUrl(url)) {
+        return `[PDF fetch failed: ${error.message}]`;
+    }
+
+    return null;
 }
 
 module.exports = {
