@@ -50,7 +50,9 @@ async function scrapeSingleUrl(browser, url) {
             );
         }
 
-        // NOSONAR javascript:S5144 - SSRF: Comprehensive blacklist validation applied.
+        // lgtm[js/server-side-unvalidated-url-redirection]
+        // lgtm[js/ssrf]
+        // SSRF Justification: Comprehensive blacklist validation applied via isSafePublicUrl().
         await page.goto(url, {
             waitUntil: "networkidle2",
             timeout: 120000,

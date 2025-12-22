@@ -25,6 +25,9 @@ const { enqueuePuppeteerTask } = require('./scrape');
  */
 async function performKeyenceSearch(page, model) {
     console.log('Navigating to KEYENCE homepage...');
+    // lgtm[js/server-side-unvalidated-url-redirection]
+    // lgtm[js/ssrf]
+    // SSRF Justification: Hardcoded URL to KEYENCE official website (trusted source).
     await page.goto('https://www.keyence.co.jp/', {
         waitUntil: 'domcontentloaded',
         timeout: 30000
