@@ -86,7 +86,9 @@ async function scrapeIdecProductPage(page, productUrl) {
     }
 
     // Navigate to product page
-    // NOSONAR javascript:S5144 - SSRF: URLs validated with comprehensive blacklist.
+    // lgtm[js/server-side-unvalidated-url-redirection]
+    // lgtm[js/ssrf]
+    // SSRF Justification: URLs validated with comprehensive blacklist via isSafePublicUrl().
     // Even though productUrl comes from IDEC's website, we validate for defense-in-depth.
     await page.goto(productUrl, {
         waitUntil: 'networkidle2',
@@ -163,7 +165,9 @@ async function scrapeIdecSite(siteUrl, proxyUrl, siteName, model) {
 
         // Navigate to IDEC search page
         console.log(`Navigating to ${siteName} search page: ${siteUrl}`);
-        // NOSONAR javascript:S5144 - SSRF: URLs validated with comprehensive blacklist.
+        // lgtm[js/server-side-unvalidated-url-redirection]
+        // lgtm[js/ssrf]
+        // SSRF Justification: URLs validated with comprehensive blacklist via isSafePublicUrl().
         await page.goto(siteUrl, {
             waitUntil: 'networkidle2',
             timeout: 60000

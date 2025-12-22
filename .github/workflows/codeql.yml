@@ -33,6 +33,8 @@ jobs:
         languages: ${{ matrix.language }}
         # Detect security vulnerabilities and code quality issues
         queries: +security-and-quality
+        # Use custom configuration to suppress intentional SSRF patterns
+        config-file: ./.github/codeql/codeql-config.yml
 
     - name: Autobuild
       uses: github/codeql-action/autobuild@v4

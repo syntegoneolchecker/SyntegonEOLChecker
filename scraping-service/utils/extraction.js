@@ -234,10 +234,13 @@ async function fetchWithTimeout(url, timeout) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    // NOSONAR javascript:S5144 - SSRF: Whitelist-based validation not feasible for this use case.
-    // This application scrapes dynamic URLs from Tavily search results (manufacturer websites).
-    // Comprehensive blacklist validation is applied: blocks localhost, private IPs (RFC 1918),
-    // link-local addresses (cloud metadata), reserved IP ranges, dangerous protocols.
+    // lgtm[js/server-side-unvalidated-url-redirection]
+    // lgtm[js/ssrf]
+    // SSRF Justification: This is a web scraping service - fetching arbitrary URLs is the core feature.
+    // Whitelist validation is not feasible as URLs come from dynamic search results (manufacturer websites).
+    // Comprehensive blacklist validation is applied via isSafePublicUrl(): blocks localhost, private IPs
+    // (RFC 1918), link-local addresses (cloud metadata like 169.254.x.x), reserved IP ranges, and
+    // dangerous protocols. Service is internal-only with no sensitive data.
     // Defense-in-depth: validation at endpoint level + immediate pre-fetch validation above.
     const response = await fetch(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EOLChecker/1.0)' },

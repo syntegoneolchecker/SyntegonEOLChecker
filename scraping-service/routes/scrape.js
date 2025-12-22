@@ -223,8 +223,11 @@ async function navigateWithTimeout(
   let navigationTimedOut = false;
 
   try {
-    // NOSONAR javascript:S5144 - SSRF: Comprehensive blacklist validation applied.
-    // Blocks localhost, private IPs (RFC 1918), link-local addresses, reserved ranges, dangerous protocols.
+    // lgtm[js/server-side-unvalidated-url-redirection]
+    // lgtm[js/ssrf]
+    // SSRF Justification: This is a web scraping service - navigating to arbitrary URLs is the core feature.
+    // Comprehensive blacklist validation is applied via isSafePublicUrl(): blocks localhost, private IPs
+    // (RFC 1918), link-local addresses, reserved ranges, dangerous protocols.
     // Defense-in-depth: validation at endpoint level + immediate pre-navigation validation.
     await page.goto(url, {
       waitUntil: waitStrategy,
