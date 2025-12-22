@@ -97,9 +97,14 @@ function parseCreditsRemaining(creditsText) {
 // Render table header cell
 function renderTableHeader(columnContent, columnIndex, sortableColumns) {
     const isSortable = sortableColumns.includes(columnIndex);
-    const sortIndicator = (currentSort.column === columnIndex)
-        ? (currentSort.direction === 'asc' ? ' ▲' : currentSort.direction === 'desc' ? ' ▼' : '')
-        : '';
+    let sortIndicator = '';
+    if (currentSort.column === columnIndex) {
+        if (currentSort.direction === 'asc') {
+            sortIndicator = ' ▲';
+        } else if (currentSort.direction === 'desc') {
+            sortIndicator = ' ▼';
+        }
+    }
     const clickHandler = isSortable ? ` onclick="sortTable(${columnIndex})" style="cursor: pointer; user-select: none;"` : '';
     return `<th${clickHandler}>${columnContent}${sortIndicator}</th>`;
 }
@@ -772,8 +777,8 @@ function showImportSummary(stats) {
 
 // Parse Excel file
 async function parseExcelFile(fileData) {
-    // Parse Excel file
-    const workbook = XLSX.read(fileData, { type: 'binary' });
+    // Parse Excel file using ArrayBuffer instead of binary string
+    const workbook = XLSX.read(fileData, { type: 'array' }); // Change 'binary' to 'array'
 
     // Get first worksheet
     const sheetName = workbook.SheetNames[0];
@@ -807,42 +812,40 @@ function processAllExcelRows(importedData, idIndex) {
     return stats;
 }
 
-function loadExcel(e) {
+async function loadExcel(e) {
     const f = e.target.files[0];
     if (!f) return;
 
-    const r = new FileReader();
-    r.onload = async function(ev) {
-        try {
-            const importedData = await parseExcelFile(ev.target.result);
+    try {
+        // Get ArrayBuffer directly from the file (modern API)
+        const arrayBuffer = await f.arrayBuffer();
+        const importedData = await parseExcelFile(arrayBuffer);
 
-            const headers = importedData[0];
-            console.log('Excel headers found:', headers);
+        const headers = importedData[0];
+        console.log('Excel headers found:', headers);
 
-            // Validate headers
-            const idIndex = validateExcelHeaders(headers);
-            if (idIndex === null) return;
+        // Validate headers
+        const idIndex = validateExcelHeaders(headers);
+        if (idIndex === null) return;
 
-            // Process all rows
-            const stats = processAllExcelRows(importedData, idIndex);
+        // Process all rows
+        const stats = processAllExcelRows(importedData, idIndex);
 
-            // Reset sorting state after import
-            originalData = null;
-            currentSort.column = null;
-            currentSort.direction = null;
+        // Reset sorting state after import
+        originalData = null;
+        currentSort.column = null;
+        currentSort.direction = null;
 
-            render();
-            await saveToServer();
+        render();
+        await saveToServer();
 
-            // Show import summary
-            showImportSummary(stats);
+        // Show import summary
+        showImportSummary(stats);
 
-        } catch (error) {
-            console.error('Excel import failed:', error);
-            showStatus('Error importing Excel file: ' + error.message, 'error');
-        }
-    };
-    r.readAsBinaryString(f);
+    } catch (error) {
+        console.error('Excel import failed:', error);
+        showStatus('Error importing Excel file: ' + error.message, 'error');
+    }
 }
 
 // ============================================================================
