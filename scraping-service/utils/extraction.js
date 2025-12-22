@@ -234,9 +234,7 @@ async function fetchWithTimeout(url, timeout) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    // lgtm[js/server-side-unvalidated-url-redirection]
-    // lgtm[js/ssrf]
-    // SSRF Justification: This is a web scraping service - fetching arbitrary URLs is the core feature.
+    // codeql[js/request-forgery] SSRF Justification: This is a web scraping service - fetching arbitrary URLs is the core feature.
     // Whitelist validation is not feasible as URLs come from dynamic search results (manufacturer websites).
     // Comprehensive blacklist validation is applied via isSafePublicUrl(): blocks localhost, private IPs
     // (RFC 1918), link-local addresses (cloud metadata like 169.254.x.x), reserved IP ranges, and

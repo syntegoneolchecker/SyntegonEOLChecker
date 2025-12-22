@@ -75,10 +75,10 @@ Multiple validation layers:
 ### Suppression Methods
 
 1. **CodeQL config file** (`.github/codeql/codeql-config.yml`)
-   - Excludes SSRF query IDs: `js/ssrf`, `js/server-side-unvalidated-url-redirection`
+   - Excludes SSRF query IDs: `js/request-forgery`, `js/server-side-unvalidated-url-redirection`
    - Documents legitimate use case
 
-2. **Inline suppressions** (`lgtm[js/ssrf]` comments)
+2. **Inline suppressions** (`codeql[js/request-forgery]` comments)
    - Explains justification at each fetch/goto call
    - Documents validation approach
    - Provides audit trail for security reviews
