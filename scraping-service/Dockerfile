@@ -58,6 +58,7 @@ COPY package*.json ./
 # Note: Native module compilation (node-gyp) still runs, only package.json scripts are ignored
 RUN npm install --ignore-scripts \
     && npm rebuild \
+    && npx puppeteer browsers install chrome \
     && apt-get purge -y --auto-remove python3 make g++
 
 # Copy application files
