@@ -28,9 +28,9 @@ const memoryHistory = [];
 
 // Force garbage collection if available (start with --expose-gc flag)
 function forceGarbageCollection() {
-    if (global.gc) {
+    if (globalThis.gc) {
         const before = getMemoryUsageMB();
-        global.gc();
+        globalThis.gc();
         const after = getMemoryUsageMB();
         console.log(`GC: ${before.rss}MB → ${after.rss}MB (freed ${before.rss - after.rss}MB)`);
     }
@@ -152,24 +152,24 @@ function isSafePublicUrl(url) {
         }
 
         // SSRF Protection: Block private IP ranges (RFC 1918)
-        if (/^10\./.test(hostname) ||                              // 10.0.0.0/8
-            /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname) ||     // 172.16.0.0/12
-            /^192\.168\./.test(hostname)) {                        // 192.168.0.0/16
+        if (hostname.startsWith("10.") ||                              // 10.0.0.0/8
+            /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||     // 172.16.0.0/12
+            hostname.startsWith("192.168.")) {                        // 192.168.0.0/16
             return { valid: false, reason: 'Cannot scrape private IP addresses' };
         }
 
         // SSRF Protection: Block link-local addresses (AWS EC2 metadata, etc.)
         // This prevents attackers from accessing cloud provider metadata APIs
-        if (/^169\.254\./.test(hostname)) {                        // 169.254.0.0/16
+        if (hostname.startsWith("169.254.")) {                        // 169.254.0.0/16
             return { valid: false, reason: 'Cannot scrape link-local addresses (cloud metadata blocked)' };
         }
 
         // SSRF Protection: Block other reserved/special IP ranges
-        if (/^0\./.test(hostname) ||                               // 0.0.0.0/8 (current network)
-            /^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./.test(hostname) || // 100.64.0.0/10 (CGNAT)
-            /^127\./.test(hostname) ||                             // 127.0.0.0/8 (loopback)
-            /^224\./.test(hostname) ||                             // 224.0.0.0/4 (multicast)
-            /^240\./.test(hostname)) {                             // 240.0.0.0/4 (reserved)
+        if (hostname.startsWith("0.") ||                               // 0.0.0.0/8 (current network)
+            /^100\.(6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])\./.test(hostname) || // 100.64.0.0/10 (CGNAT)
+            hostname.startsWith("127.") ||                             // 127.0.0.0/8 (loopback)
+            hostname.startsWith("224.") ||                             // 224.0.0.0/4 (multicast)
+            hostname.startsWith("240.")) {                             // 240.0.0.0/4 (reserved)
             return { valid: false, reason: 'Cannot scrape reserved IP ranges' };
         }
 
@@ -184,7 +184,7 @@ function isSafePublicUrl(url) {
         // URL is safe for public scraping
         return { valid: true };
     } catch (error) {
-        return { valid: false, reason: 'Invalid URL format' };
+        return { valid: false, reason: `Invalid URL format. Error: ${error}` };
     }
 }
 
@@ -245,7 +245,7 @@ function isValidCallbackUrl(callbackUrl) {
 
         return { valid: true };
     } catch (error) {
-        return { valid: false, reason: 'Invalid callback URL format' };
+        return { valid: false, reason: `Invalid callback URL format. Error: ${error}` };
     }
 }
 
@@ -274,16 +274,16 @@ function isValidProxyUrl(proxyUrl) {
         }
 
         // Block private IP proxies (potential SSRF vector)
-        if (/^10\./.test(hostname) ||
-            /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname) ||
-            /^192\.168\./.test(hostname) ||
-            /^169\.254\./.test(hostname)) {
+        if (hostname.startsWith("10.") ||
+            /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+            hostname.startsWith("192.168.") ||
+            hostname.startsWith("169.254.")) {
             return { valid: false, reason: 'Cannot use private IP addresses as proxy' };
         }
 
         return { valid: true };
     } catch (error) {
-        return { valid: false, reason: 'Invalid proxy URL format' };
+        return { valid: false, reason: `Invalid proxy URL format. Error: ${error}` };
     }
 }
 
@@ -314,12 +314,12 @@ function extractHTMLText(html) {
         thClose: new RE2('</th>', 'gi'),
 
         // Element removal - use string patterns
-        script: new RE2('<script[^>]*>[\\s\\S]*?</script>', 'gi'),
-        style: new RE2('<style[^>]*>[\\s\\S]*?</style>', 'gi'),
-        nav: new RE2('<nav[^>]*>[\\s\\S]*?</nav>', 'gi'),
-        footer: new RE2('<footer[^>]*>[\\s\\S]*?</footer>', 'gi'),
-        header: new RE2('<header[^>]*>[\\s\\S]*?</header>', 'gi'),
-        comment: new RE2('<!--[\\s\\S]*?-->', 'g'),
+        script: new RE2(String.raw`<script[^>]*>[\s\S]*?</script>`, 'gi'),
+        style: new RE2(String.raw`<style[^>]*>[\s\S]*?</style>`, 'gi'),
+        nav: new RE2(String.raw`<nav[^>]*>[\s\S]*?</nav>`, 'gi'),
+        footer: new RE2(String.raw`<footer[^>]*>[\s\S]*?</footer>`, 'gi'),
+        header: new RE2(String.raw`<header[^>]*>[\s\S]*?</header>`, 'gi'),
+        comment: new RE2(String.raw`<!--[\s\S]*?-->`, 'g'),
 
         // The problematic one - use string pattern
         tags: new RE2('<[^>]+>', 'g'),
@@ -330,8 +330,8 @@ function extractHTMLText(html) {
         lt: new RE2('&lt;', 'g'),
         gt: new RE2('&gt;', 'g'),
         quot: new RE2('&quot;', 'g'),
-        numEntity: new RE2('&#\\d+;', 'g'),
-        whitespace: new RE2('\\s+', 'g'),
+        numEntity: new RE2(String.raw`&#\d+;`, 'g'),
+        whitespace: new RE2(String.raw`\s+`, 'g'),
 
         // Table marker replacements
         rowOpen: new RE2('\\[ROW\\]', 'g'),
