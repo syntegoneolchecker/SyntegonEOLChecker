@@ -10,13 +10,3 @@ query-filters:
   - exclude:
       id: js/server-side-unvalidated-url-redirection
 
-# Path-based filters as an alternative approach
-paths-ignore:
-  # Ignore SSRF checks in scraping utilities
-  # These files contain intentional URL fetching with proper validation
-  - scraping-service/utils/extraction.js
-  - scraping-service/utils/callback.js
-  - scraping-service/routes/scrape.js
-  - scraping-service/routes/scrape-keyence.js
-  - scraping-service/routes/scrape-idec-dual.js
-  - scraping-service/routes/scrape-batch.js
