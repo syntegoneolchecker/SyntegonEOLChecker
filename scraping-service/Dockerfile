@@ -62,6 +62,9 @@ RUN npm install --ignore-scripts \
 
 # Copy application files
 COPY index.js .
+COPY routes/ ./routes/
+COPY utils/ ./utils/
+COPY config/ ./config/
 
 # Change ownership of application files to node user
 RUN chown -R node:node /app
