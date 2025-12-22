@@ -21,7 +21,7 @@ const { enqueuePuppeteerTask } = require('./scrape');
  * Perform KEYENCE search and extract content
  * @param {Page} page - Puppeteer page
  * @param {string} model - Model number to search
- * @returns {Promise<Object>} Search result
+ * @returns {Promise<String>} Search result
  */
 async function performKeyenceSearch(page, model) {
     console.log('Navigating to KEYENCE homepage...');
@@ -188,7 +188,7 @@ async function handleKeyenceScrapeRequest(req, res) {
 
             // Perform search
             const finalUrl = await performKeyenceSearch(page, model);
-            console.log(`Final page URL: ${finalUrl}`);
+            console.log(`Final page URL: ${String(finalUrl)}`);
 
             // Extract content
             const { text, title } = await extractKeyenceContent(page);
@@ -222,7 +222,6 @@ async function handleKeyenceScrapeRequest(req, res) {
                     snippet: `KEYENCE search result for ${model}`,
                     url: finalUrl
                 });
-                callbackSent = true;
             }
 
             // Cleanup
@@ -239,7 +238,6 @@ async function handleKeyenceScrapeRequest(req, res) {
             if (browser) {
                 try {
                     await browser.close();
-                    browser = null;
                     console.log('Browser closed after error, memory freed');
                 } catch (closeError) {
                     console.error('Error closing browser after KEYENCE scraping error:', closeError);
@@ -273,8 +271,8 @@ async function handleKeyenceScrapeRequest(req, res) {
             if (browser) {
                 try {
                     await browser.close();
-                } catch (closeErr) {
-                    console.error('Failed to close browser in finally block:', closeErr.message);
+                } catch (error_) {
+                    console.error('Failed to close browser in finally block:', error_.message);
                 }
             }
         }

@@ -11,80 +11,137 @@ const jschardet = require('jschardet');
  */
 function decodeWithProperEncoding(buffer, contentTypeHeader = '') {
     try {
-        // Step 1: Try to get encoding from HTTP Content-Type header
-        let encoding = null;
-        if (contentTypeHeader) {
-            const charsetMatch = contentTypeHeader.match(/charset=([^\s;]+)/i);
-            if (charsetMatch) {
-                encoding = charsetMatch[1].toLowerCase();
-                console.log(`Encoding from Content-Type header: ${encoding}`);
-            }
-        }
-
-        // Step 2: Check HTML meta tags for charset (first 2KB should contain meta tags)
-        if (!encoding) {
-            const preview = buffer.slice(0, 2048).toString('binary');
-
-            // Look for <meta charset="...">
-            const metaCharsetMatch = preview.match(/<meta[^>]+charset=["']?([^"'\s>]+)/i);
-            if (metaCharsetMatch) {
-                encoding = metaCharsetMatch[1].toLowerCase();
-                console.log(`Encoding from meta charset tag: ${encoding}`);
-            }
-
-            // Look for <meta http-equiv="Content-Type" content="...charset=...">
-            if (!encoding) {
-                const httpEquivMatch = preview.match(/<meta[^>]+http-equiv=["']?content-type["']?[^>]+content=["']?[^"'>]*charset=([^"'\s>]+)/i);
-                if (httpEquivMatch) {
-                    encoding = httpEquivMatch[1].toLowerCase();
-                    console.log(`Encoding from http-equiv meta tag: ${encoding}`);
-                }
-            }
-        }
-
-        // Step 3: Auto-detect encoding if still unknown (especially important for Japanese sites)
-        if (!encoding) {
-            const detected = jschardet.detect(buffer);
-            if (detected && detected.encoding && detected.confidence > 0.7) {
-                encoding = detected.encoding.toLowerCase();
-                console.log(`Auto-detected encoding: ${encoding} (confidence: ${(detected.confidence * 100).toFixed(1)}%)`);
-            }
-        }
-
-        // Step 4: Normalize encoding names and use fallbacks
-        if (encoding) {
-            // Normalize common encoding aliases
-            const encodingMap = {
-                'shift_jis': 'shift_jis',
-                'shift-jis': 'shift_jis',
-                'sjis': 'shift_jis',
-                'x-sjis': 'shift_jis',
-                'euc-jp': 'euc-jp',
-                'eucjp': 'euc-jp',
-                'iso-2022-jp': 'iso-2022-jp',
-                'utf-8': 'utf8',
-                'utf8': 'utf8'
-            };
-
-            encoding = encodingMap[encoding] || encoding;
-
-            // Try to decode with detected encoding
-            if (iconv.encodingExists(encoding)) {
-                const decoded = iconv.decode(buffer, encoding);
-                console.log(`✓ Successfully decoded content using ${encoding}`);
-                return decoded;
-            } else {
-                console.warn(`⚠️  Encoding '${encoding}' not supported by iconv-lite, falling back to UTF-8`);
-            }
-        }
-
-        // Step 5: Default fallback to UTF-8
-        console.log('Using UTF-8 as fallback encoding');
-        return buffer.toString('utf8');
-
+        const encoding = detectEncoding(buffer, contentTypeHeader);
+        return decodeBufferWithEncoding(buffer, encoding);
     } catch (error) {
         console.error('Error during encoding detection/decoding:', error.message);
         // Final fallback: UTF-8
+        return buffer.toString('utf8');
+    }
+}
+
+/**
+ * Detect encoding from various sources
+ * @param {Buffer} buffer - Content buffer
+ * @param {string} contentTypeHeader - HTTP Content-Type header
+ * @returns {string|null} Detected encoding or null
+ */
+function detectEncoding(buffer, contentTypeHeader) {
+    let encoding = extractEncodingFromContentType(contentTypeHeader);
+    
+    if (!encoding) {
+        encoding = extractEncodingFromHtmlMeta(buffer);
+    }
+    
+    if (!encoding) {
+        encoding = autoDetectEncoding(buffer);
+    }
+    
+    return encoding;
+}
+
+/**
+ * Extract encoding from Content-Type header
+ * @param {string} contentTypeHeader - HTTP Content-Type header
+ * @returns {string|null} Encoding or null
+ */
+function extractEncodingFromContentType(contentTypeHeader) {
+    if (!contentTypeHeader) return null;
+    
+    const charsetMatch = new RegExp(/charset=([^\s;]+)/i).exec(contentTypeHeader);
+    if (charsetMatch) {
+        const encoding = charsetMatch[1].toLowerCase();
+        console.log(`Encoding from Content-Type header: ${encoding}`);
+        return encoding;
+    }
+    
+    return null;
+}
+
+/**
+ * Extract encoding from HTML meta tags
+ * @param {Buffer} buffer - Content buffer
+ * @returns {string|null} Encoding or null
+ */
+function extractEncodingFromHtmlMeta(buffer) {
+    const preview = buffer.slice(0, 2048).toString('binary');
+    
+    // Look for <meta charset="...">
+    const metaCharsetMatch = preview.match(/<meta[^>]+charset=["']?([^"'\s>]+)/i);
+    if (metaCharsetMatch) {
+        const encoding = metaCharsetMatch[1].toLowerCase();
+        console.log(`Encoding from meta charset tag: ${encoding}`);
+        return encoding;
+    }
+    
+    // Look for <meta http-equiv="Content-Type" content="...charset=...">
+    const httpEquivMatch = preview.match(/<meta[^>]+http-equiv=["']?content-type["']?[^>]+content=["']?[^"'>]*charset=([^"'\s>]+)/i);
+    if (httpEquivMatch) {
+        const encoding = httpEquivMatch[1].toLowerCase();
+        console.log(`Encoding from http-equiv meta tag: ${encoding}`);
+        return encoding;
+    }
+    
+    return null;
+}
+
+/**
+ * Auto-detect encoding using jschardet
+ * @param {Buffer} buffer - Content buffer
+ * @returns {string|null} Detected encoding or null
+ */
+function autoDetectEncoding(buffer) {
+    const detected = jschardet.detect(buffer);
+    if (detected?.encoding && detected.confidence > 0.7) {
+        const encoding = detected.encoding.toLowerCase();
+        console.log(`Auto-detected encoding: ${encoding} (confidence: ${(detected.confidence * 100).toFixed(1)}%)`);
+        return encoding;
+    }
+    
+    return null;
+}
+
+/**
+ * Normalize encoding name for iconv-lite compatibility
+ * @param {string} encoding - Raw encoding name
+ * @returns {string} Normalized encoding name
+ */
+function normalizeEncoding(encoding) {
+    const encodingMap = {
+        'shift_jis': 'shift_jis',
+        'shift-jis': 'shift_jis',
+        'sjis': 'shift_jis',
+        'x-sjis': 'shift_jis',
+        'euc-jp': 'euc-jp',
+        'eucjp': 'euc-jp',
+        'iso-2022-jp': 'iso-2022-jp',
+        'utf-8': 'utf8',
+        'utf8': 'utf8'
+    };
+    
+    return encodingMap[encoding] || encoding;
+}
+
+/**
+ * Decode buffer with specified encoding
+ * @param {Buffer} buffer - Content buffer
+ * @param {string|null} encoding - Encoding to use
+ * @returns {string} Decoded text
+ */
+function decodeBufferWithEncoding(buffer, encoding) {
+    if (!encoding) {
+        console.log('No encoding detected, using UTF-8 as fallback');
+        return buffer.toString('utf8');
+    }
+    
+    const normalizedEncoding = normalizeEncoding(encoding);
+    
+    if (iconv.encodingExists(normalizedEncoding)) {
+        const decoded = iconv.decode(buffer, normalizedEncoding);
+        console.log(`✓ Successfully decoded content using ${normalizedEncoding}`);
+        return decoded;
+    } else {
+        console.warn(`⚠️  Encoding '${normalizedEncoding}' not supported by iconv-lite, falling back to UTF-8`);
         return buffer.toString('utf8');
     }
 }
