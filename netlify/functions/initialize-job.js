@@ -205,26 +205,9 @@ function extractTakigenProductUrl(html) {
 exports.handler = async function(event, context) {
     console.log('Initialize job request');
 
-    // Handle CORS
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS'
-            },
-            body: ''
-        };
-    }
-
-    if (event.httpMethod !== 'POST') {
-        return {
-            statusCode: 405,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'Method Not Allowed' })
-        };
-    }
+    // Handle preflight and method validation first
+    const preflightResponse = handlePreflightAndMethodValidation(event);
+    if (preflightResponse) return preflightResponse;
 
     try {
         const requestBody = JSON.parse(event.body);
@@ -232,344 +215,357 @@ exports.handler = async function(event, context) {
         // Validate input
         const validation = validateInitializeJob(requestBody);
         if (!validation.valid) {
-            console.error('Validation failed:', validation.errors);
-            return {
-                statusCode: 400,
-                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ error: 'Validation failed', details: validation.errors })
-            };
+            return createValidationErrorResponse(validation.errors);
         }
 
         // Sanitize inputs
         const maker = sanitizeString(requestBody.maker, 200);
         const model = sanitizeString(requestBody.model, 200);
-
         console.log('Creating job for:', { maker, model });
 
         // Create job
         const jobId = await createJob(maker, model, context);
 
-        // Check if manufacturer has a direct URL strategy
-        const manufacturerStrategy = getManufacturerUrl(maker, model);
-
-        if (manufacturerStrategy) {
-            // Check if this URL requires validation (e.g., NTN on motion.com, Takigen)
-            if (manufacturerStrategy.requiresValidation) {
-                console.log(`URL requires validation for ${maker}: ${manufacturerStrategy.url}`);
-
-                try {
-                    // Special handling for Takigen - extract product URL from search results
-                    if (manufacturerStrategy.requiresExtraction) {
-                        console.log(`Extracting product URL from ${maker} search results`);
-
-                        // Takigen uses server-side rendering, so fetchHtml is sufficient
-                        const searchHtml = await fetchHtml(manufacturerStrategy.url);
-                        const productPath = extractTakigenProductUrl(searchHtml);
-
-                        if (!productPath) {
-                            console.log(`No product found in ${maker} search results, falling back to Tavily search`);
-                            // Fall through to Tavily search below
-                        } else {
-                            // Build the full product URL
-                            const productUrl = `https://www.takigen.co.jp${productPath}`;
-                            console.log(`Extracted ${maker} product URL: ${productUrl}`);
-
-                            // Save this URL for scraping
-                            const urls = [{
-                                index: 0,
-                                url: productUrl,
-                                title: `${maker} ${model} Product Page`,
-                                snippet: `Direct product page for ${maker} ${model}`,
-                                scrapingMethod: manufacturerStrategy.scrapingMethod
-                            }];
-
-                            await saveJobUrls(jobId, urls, context);
-
-                            console.log(`Job ${jobId} initialized with extracted ${maker} product URL`);
-
-                            return {
-                                statusCode: 200,
-                                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    jobId,
-                                    status: 'urls_ready',
-                                    urlCount: 1,
-                                    strategy: 'takigen_extracted_url',
-                                    extractedUrl: productUrl
-                                })
-                            };
-                        }
-                    } else if (manufacturerStrategy.requires404Check) {
-                        // Special handling for 日進電子 - check if page is 404
-                        console.log(`Checking for 404 page for ${maker}`);
-
-                        // Fetch the HTML to check if it's a 404 page
-                        const html = await fetchHtml(manufacturerStrategy.url);
-
-                        // Check if page is 404
-                        if (is404Page(html)) {
-                            console.log(`404 page detected for ${manufacturerStrategy.url}, falling back to Tavily search`);
-                            // Fall through to Tavily search below
-                        } else {
-                            // Valid product page! Save this URL for scraping
-                            console.log(`Valid product page found for ${maker} ${model}`);
-
-                            const urls = [{
-                                index: 0,
-                                url: manufacturerStrategy.url,
-                                title: `${maker} ${model} Product Page`,
-                                snippet: `Direct product page for ${maker} ${model}`,
-                                scrapingMethod: manufacturerStrategy.scrapingMethod
-                            }];
-
-                            await saveJobUrls(jobId, urls, context);
-
-                            console.log(`Job ${jobId} initialized with validated ${maker} product URL`);
-
-                            return {
-                                statusCode: 200,
-                                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    jobId,
-                                    status: 'urls_ready',
-                                    urlCount: 1,
-                                    strategy: 'nissin_validated_url'
-                                })
-                            };
-                        }
-                    } else {
-                        // Standard validation (e.g., NTN) - scrape and check for results
-                        const scrapeResult = await scrapeWithBrowserQL(manufacturerStrategy.url);
-
-                        // Check if search returned no results
-                        if (hasNoSearchResults(scrapeResult.content)) {
-                            console.log(`No search results found on ${manufacturerStrategy.url}, falling back to Tavily search`);
-                            // Fall through to Tavily search below (don't return here)
-                        } else {
-                            // Results found! Save this URL with the scraped content
-                            console.log(`Search results found on motion.com, using this content for analysis`);
-
-                            const urls = [{
-                                index: 0,
-                                url: manufacturerStrategy.url,
-                                title: `${maker} ${model} Search Results`,
-                                snippet: `Search results from motion.com for ${maker} ${model}`,
-                                scrapingMethod: manufacturerStrategy.scrapingMethod
-                            }];
-
-                            await saveJobUrls(jobId, urls, context);
-
-                            // Save the scraped content immediately
-                            await saveUrlResult(jobId, 0, {
-                                url: manufacturerStrategy.url,
-                                title: `${maker} ${model} Search Results`,
-                                snippet: `Search results from motion.com`,
-                                fullContent: scrapeResult.content
-                            }, context);
-
-                            console.log(`Job ${jobId} initialized with validated direct URL (content already scraped)`);
-
-                            // Mark job as ready for analysis (content already fetched)
-                            return {
-                                statusCode: 200,
-                                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    jobId,
-                                    status: 'ready_for_analysis',
-                                    urlCount: 1,
-                                    strategy: 'validated_direct_url',
-                                    contentLength: scrapeResult.content.length
-                                })
-                            };
-                        }
-                    }
-                } catch (error) {
-                    console.error(`Validation scraping failed for ${maker}: ${error.message}, falling back to Tavily search`);
-                    // Fall through to Tavily search below
-                }
-            } else {
-                // Standard direct URL (no validation needed)
-                console.log(`Using direct URL strategy for ${maker}: ${manufacturerStrategy.url} (scraping: ${manufacturerStrategy.scrapingMethod})`);
-
-                const urls = [{
-                    index: 0,
-                    url: manufacturerStrategy.url,
-                    title: `${maker} ${model} Product Page`,
-                    snippet: `Direct product page for ${maker} ${model}`,
-                    scrapingMethod: manufacturerStrategy.scrapingMethod
-                }];
-
-                // Pass model for interactive searches (KEYENCE)
-                if (manufacturerStrategy.model) {
-                    urls[0].model = manufacturerStrategy.model;
-                }
-
-                // Pass jpUrl and usUrl for IDEC dual-site
-                if (manufacturerStrategy.jpUrl) {
-                    urls[0].jpUrl = manufacturerStrategy.jpUrl;
-                }
-                if (manufacturerStrategy.usUrl) {
-                    urls[0].usUrl = manufacturerStrategy.usUrl;
-                }
-
-                await saveJobUrls(jobId, urls, context);
-
-                console.log(`Job ${jobId} initialized with direct URL strategy (1 URL, method: ${manufacturerStrategy.scrapingMethod})`);
-
-                return {
-                    statusCode: 200,
-                    headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        jobId,
-                        status: 'urls_ready',
-                        urlCount: urls.length,
-                        strategy: 'direct_url',
-                        scrapingMethod: manufacturerStrategy.scrapingMethod
-                    })
-                };
-            }
+        // Process manufacturer strategy or fall back to search
+        const strategyResult = await processManufacturerStrategy(maker, model, jobId, context);
+        if (strategyResult) {
+            return strategyResult;
         }
 
-        // Perform Tavily search (URLs only - no raw_content)
-        const searchQuery = `${maker} ${model}`;
-
-        // Initialize Tavily client
-        const tavilyClient = tavily({ apiKey: process.env.TAVILY_API_KEY });
-
-        // Perform search using SDK
-        let tavilyData;
-        try {
-            tavilyData = await tavilyClient.search(searchQuery, {
-                searchDepth: 'advanced',
-                maxResults: 2,  // 2 URLs to stay within token limits
-                // NOTE: No includeRawContent - we'll scrape with Render instead
-                includeDomains: [
-                    'ccs-grp.com',
-                    'automationdirect.com',
-                    'takigen.co.jp',
-                    'mitsubishielectric.co.jp',
-                    'sentei.nissei-gtr.co.jp',
-                    'tamron.com',
-                    'search.sugatsune.co.jp',
-                    'sanwa.co.jp',
-                    'jp.idec.com',
-                    'jp.misumi-ec.com',
-                    'mitsubishielectric.com',
-                    'kvm-switches-online.com',
-                    'daitron.co.jp',
-                    'kdwan.co.jp',
-                    'hewtech.co.jp',
-                    'directindustry.com',
-                    'printerland.co.uk',
-                    'orimvexta.co.jp',
-                    'sankyo-seisakusho.co.jp',
-                    'tsubakimoto.co.jp',
-                    'nbk1560.com',
-                    'habasit.com',
-                    'nagoya.sc',
-                    'amazon.co.jp',
-                    'tps.co.jp/eol/',
-                    'ccs-inc.co.jp',
-                    'shinkoh-faulhaber.jp',
-                    'anelva.canon',
-                    'takabel.com',
-                    'ysol.co.jp',
-                    'digikey.jp',
-                    'rs-components.com',
-                    'fa-ubon.jp',
-                    'monotaro.com',
-                    'fujitsu.com',
-                    'hubbell.com',
-                    'adlinktech.com',
-                    'touchsystems.com',
-                    'elotouch.com',
-                    'aten.com',
-                    'canon.com',
-                    'axiomtek.com',
-                    'apc.com',
-                    'hp.com',
-                    'fujielectric.co.jp',
-                    'panasonic.jp',
-                    'wago.com',
-                    'schmersal.com',
-                    'apiste.co.jp',
-                    'tdklamda.com',
-                    'phoenixcontact.com',
-                    'idec.com',
-                    'patlite.co.jp',
-                    'smcworld.com',
-                    'sanyodenki.co.jp',
-                    'nissin-ele.co.jp',
-                    'sony.co.jp',
-                    'orientalmotor.co.jp',
-                    'keyence.co.jp',
-                    'fa.omron.co.jp',
-                    'tme.com/jp',
-                    'ntn.co.jp'
-                ]
-            });
-        } catch (error) {
-            console.error('Tavily API error:', error);
-            return {
-                statusCode: 500,
-                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    error: 'Tavily API failed',
-                    details: error.message
-                })
-            };
-        }
-
-        console.log(`Tavily returned ${tavilyData.results?.length || 0} results`);
-
-        if (!tavilyData.results || tavilyData.results.length === 0) {
-            // No search results - complete job immediately with UNKNOWN status
-            console.log(`No search results found for ${maker} ${model}`);
-            const result = {
-                status: 'UNKNOWN',
-                explanation: 'No search results found',
-                successor: {
-                    status: 'UNKNOWN',
-                    model: null,
-                    explanation: ''
-                }
-            };
-            await saveFinalResult(jobId, result, context);
-            return {
-                statusCode: 200,
-                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jobId, status: 'complete', message: 'No search results found' })
-            };
-        }
-
-        // Extract URLs from search results
-        const urls = tavilyData.results.map((result, index) => ({
-            index: index,
-            url: result.url,
-            title: result.title,
-            snippet: result.content || '' // Use snippet for context
-        }));
-
-        await saveJobUrls(jobId, urls, context);
-
-        console.log(`Job ${jobId} initialized with ${urls.length} URLs`);
-
-        return {
-            statusCode: 200,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                jobId,
-                status: 'urls_ready',
-                urlCount: urls.length
-            })
-        };
+        // Perform Tavily search as fallback
+        return await performTavilySearch(maker, model, jobId, context);
 
     } catch (error) {
         console.error('Initialize job error:', error);
-        return {
-            statusCode: 500,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'Internal server error', details: error.message })
-        };
+        return createErrorResponse(500, 'Internal server error', error.message);
     }
 };
+
+// Helper functions
+function handlePreflightAndMethodValidation(event) {
+    if (event.httpMethod === 'OPTIONS') {
+        return createCorsResponse(200, '');
+    }
+
+    if (event.httpMethod !== 'POST') {
+        return createErrorResponse(405, 'Method Not Allowed');
+    }
+    
+    return null;
+}
+
+function createCorsResponse(statusCode, body, additionalHeaders = {}) {
+    const headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        ...additionalHeaders
+    };
+    
+    return {
+        statusCode,
+        headers,
+        body
+    };
+}
+
+function createErrorResponse(statusCode, error, details = null) {
+    const response = {
+        statusCode,
+        headers: { 
+            'Access-Control-Allow-Origin': '*', 
+            'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({ error })
+    };
+    
+    if (details) {
+        response.body = JSON.stringify({ error, details });
+    }
+    
+    return response;
+}
+
+function createValidationErrorResponse(errors) {
+    console.error('Validation failed:', errors);
+    return createErrorResponse(400, 'Validation failed', errors);
+}
+
+async function processManufacturerStrategy(maker, model, jobId, context) {
+    const manufacturerStrategy = getManufacturerUrl(maker, model);
+    
+    if (!manufacturerStrategy) {
+        return null;
+    }
+
+    if (manufacturerStrategy.requiresValidation) {
+        return await handleValidationRequiredStrategy(maker, model, jobId, manufacturerStrategy, context);
+    } else {
+        return await handleDirectUrlStrategy(maker, model, jobId, manufacturerStrategy, context);
+    }
+}
+
+async function handleValidationRequiredStrategy(maker, model, jobId, strategy, context) {
+    console.log(`URL requires validation for ${maker}: ${strategy.url}`);
+
+    try {
+        if (strategy.requiresExtraction) {
+            return await handleExtractionStrategy(maker, model, jobId, strategy, context);
+        } else if (strategy.requires404Check) {
+            return await handle404CheckStrategy(maker, model, jobId, strategy, context);
+        } else {
+            return await handleStandardValidationStrategy(maker, model, jobId, strategy, context);
+        }
+    } catch (error) {
+        console.error(`Validation scraping failed for ${maker}: ${error.message}, falling back to Tavily search`);
+        return null; // Fall through to Tavily search
+    }
+}
+
+async function handleExtractionStrategy(maker, model, jobId, strategy, context) {
+    console.log(`Extracting product URL from ${maker} search results`);
+
+    const searchHtml = await fetchHtml(strategy.url);
+    const productPath = extractTakigenProductUrl(searchHtml);
+
+    if (!productPath) {
+        console.log(`No product found in ${maker} search results, falling back to Tavily search`);
+        return null;
+    }
+
+    const productUrl = `https://www.takigen.co.jp${productPath}`;
+    console.log(`Extracted ${maker} product URL: ${productUrl}`);
+
+    const urls = [createUrlEntry(0, productUrl, `${maker} ${model} Product Page`, 
+        `Direct product page for ${maker} ${model}`, strategy.scrapingMethod)];
+
+    await saveJobUrls(jobId, urls, context);
+
+    console.log(`Job ${jobId} initialized with extracted ${maker} product URL`);
+
+    return createSuccessResponse(jobId, 'urls_ready', 1, 'takigen_extracted_url', { extractedUrl: productUrl });
+}
+
+async function handle404CheckStrategy(maker, model, jobId, strategy, context) {
+    console.log(`Checking for 404 page for ${maker}`);
+
+    const html = await fetchHtml(strategy.url);
+
+    if (is404Page(html)) {
+        console.log(`404 page detected for ${strategy.url}, falling back to Tavily search`);
+        return null;
+    }
+
+    console.log(`Valid product page found for ${maker} ${model}`);
+
+    const urls = [createUrlEntry(0, strategy.url, `${maker} ${model} Product Page`,
+        `Direct product page for ${maker} ${model}`, strategy.scrapingMethod)];
+
+    await saveJobUrls(jobId, urls, context);
+
+    console.log(`Job ${jobId} initialized with validated ${maker} product URL`);
+
+    return createSuccessResponse(jobId, 'urls_ready', 1, 'nissin_validated_url');
+}
+
+async function handleStandardValidationStrategy(maker, model, jobId, strategy, context) {
+    const scrapeResult = await scrapeWithBrowserQL(strategy.url);
+
+    if (hasNoSearchResults(scrapeResult.content)) {
+        console.log(`No search results found on ${strategy.url}, falling back to Tavily search`);
+        return null;
+    }
+
+    console.log(`Search results found on motion.com, using this content for analysis`);
+
+    const urls = [createUrlEntry(0, strategy.url, `${maker} ${model} Search Results`,
+        `Search results from motion.com for ${maker} ${model}`, strategy.scrapingMethod)];
+
+    await saveJobUrls(jobId, urls, context);
+
+    await saveUrlResult(jobId, 0, {
+        url: strategy.url,
+        title: `${maker} ${model} Search Results`,
+        snippet: `Search results from motion.com`,
+        fullContent: scrapeResult.content
+    }, context);
+
+    console.log(`Job ${jobId} initialized with validated direct URL (content already scraped)`);
+
+    return createSuccessResponse(jobId, 'ready_for_analysis', 1, 'validated_direct_url', 
+        { contentLength: scrapeResult.content.length });
+}
+
+async function handleDirectUrlStrategy(maker, model, jobId, strategy, context) {
+    console.log(`Using direct URL strategy for ${maker}: ${strategy.url} (scraping: ${strategy.scrapingMethod})`);
+
+    const urlEntry = createUrlEntry(0, strategy.url, `${maker} ${model} Product Page`,
+        `Direct product page for ${maker} ${model}`, strategy.scrapingMethod);
+
+    // Add optional properties
+    if (strategy.model) urlEntry.model = strategy.model;
+    if (strategy.jpUrl) urlEntry.jpUrl = strategy.jpUrl;
+    if (strategy.usUrl) urlEntry.usUrl = strategy.usUrl;
+
+    const urls = [urlEntry];
+    await saveJobUrls(jobId, urls, context);
+
+    console.log(`Job ${jobId} initialized with direct URL strategy (1 URL, method: ${strategy.scrapingMethod})`);
+
+    return createSuccessResponse(jobId, 'urls_ready', urls.length, 'direct_url', 
+        { scrapingMethod: strategy.scrapingMethod });
+}
+
+function createUrlEntry(index, url, title, snippet, scrapingMethod = null) {
+    const entry = {
+        index,
+        url,
+        title,
+        snippet
+    };
+    
+    if (scrapingMethod) {
+        entry.scrapingMethod = scrapingMethod;
+    }
+    
+    return entry;
+}
+
+function createSuccessResponse(jobId, status, urlCount, strategy, additionalData = {}) {
+    const response = {
+        statusCode: 200,
+        headers: { 
+            'Access-Control-Allow-Origin': '*', 
+            'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({
+            jobId,
+            status,
+            urlCount,
+            strategy,
+            ...additionalData
+        })
+    };
+    
+    return response;
+}
+
+async function performTavilySearch(maker, model, jobId, context) {
+    const searchQuery = `${maker} ${model}`;
+    
+    // Initialize Tavily client
+    const tavilyClient = tavily({ apiKey: process.env.TAVILY_API_KEY });
+
+    let tavilyData;
+    try {
+        tavilyData = await tavilyClient.search(searchQuery, getTavilySearchOptions());
+    } catch (error) {
+        console.error('Tavily API error:', error);
+        return createErrorResponse(500, 'Tavily API failed', error.message);
+    }
+
+    console.log(`Tavily returned ${tavilyData.results?.length || 0} results`);
+
+    if (!tavilyData.results || tavilyData.results.length === 0) {
+        return await handleNoSearchResults(maker, model, jobId, context);
+    }
+
+    const urls = tavilyData.results.map((result, index) => 
+        createUrlEntry(index, result.url, result.title, result.content || '')
+    );
+
+    await saveJobUrls(jobId, urls, context);
+    console.log(`Job ${jobId} initialized with ${urls.length} URLs`);
+
+    return createSuccessResponse(jobId, 'urls_ready', urls.length);
+}
+
+function getTavilySearchOptions() {
+    return {
+        searchDepth: 'advanced',
+        maxResults: 2,
+        includeDomains: [
+            'ccs-grp.com',
+            'automationdirect.com',
+            'takigen.co.jp',
+            'mitsubishielectric.co.jp',
+            'sentei.nissei-gtr.co.jp',
+            'tamron.com',
+            'search.sugatsune.co.jp',
+            'sanwa.co.jp',
+            'jp.idec.com',
+            'jp.misumi-ec.com',
+            'mitsubishielectric.com',
+            'kvm-switches-online.com',
+            'daitron.co.jp',
+            'kdwan.co.jp',
+            'hewtech.co.jp',
+            'directindustry.com',
+            'printerland.co.uk',
+            'orimvexta.co.jp',
+            'sankyo-seisakusho.co.jp',
+            'tsubakimoto.co.jp',
+            'nbk1560.com',
+            'habasit.com',
+            'nagoya.sc',
+            'amazon.co.jp',
+            'tps.co.jp/eol/',
+            'ccs-inc.co.jp',
+            'shinkoh-faulhaber.jp',
+            'anelva.canon',
+            'takabel.com',
+            'ysol.co.jp',
+            'digikey.jp',
+            'rs-components.com',
+            'fa-ubon.jp',
+            'monotaro.com',
+            'fujitsu.com',
+            'hubbell.com',
+            'adlinktech.com',
+            'touchsystems.com',
+            'elotouch.com',
+            'aten.com',
+            'canon.com',
+            'axiomtek.com',
+            'apc.com',
+            'hp.com',
+            'fujielectric.co.jp',
+            'panasonic.jp',
+            'wago.com',
+            'schmersal.com',
+            'apiste.co.jp',
+            'tdklamda.com',
+            'phoenixcontact.com',
+            'idec.com',
+            'patlite.co.jp',
+            'smcworld.com',
+            'sanyodenki.co.jp',
+            'nissin-ele.co.jp',
+            'sony.co.jp',
+            'orientalmotor.co.jp',
+            'keyence.co.jp',
+            'fa.omron.co.jp',
+            'tme.com/jp',
+            'ntn.co.jp'
+        ]
+    };
+}
+
+async function handleNoSearchResults(maker, model, jobId, context) {
+    console.log(`No search results found for ${maker} ${model}`);
+    
+    const result = {
+        status: 'UNKNOWN',
+        explanation: 'No search results found',
+        successor: {
+            status: 'UNKNOWN',
+            model: null,
+            explanation: ''
+        }
+    };
+    
+    await saveFinalResult(jobId, result, context);
+    
+    return createSuccessResponse(jobId, 'complete', 0, 'no_results', 
+        { message: 'No search results found' });
+}

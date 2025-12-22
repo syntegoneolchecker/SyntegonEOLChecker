@@ -50,9 +50,9 @@ exports.handler = async function(event, context) {
         // Parse reset time (format: "7.66s" -> 7.66 seconds)
         let resetSeconds = null;
         if (resetTokens) {
-            const match = resetTokens.match(/^([\d.]+)s?$/);
+            const match = new RegExp(/^([\d.]+)s?$/).exec(resetTokens);
             if (match) {
-                resetSeconds = parseFloat(match[1]);
+                resetSeconds = Number.parseFloat(match[1]);
             }
         }
 

@@ -28,58 +28,89 @@ async function deleteJob(jobId, context) {
  */
 async function cleanupOldJobs(context) {
     try {
-        const store = getJobStore();
-        const { blobs } = await store.list();
-
-        const now = Date.now();
-        const FIVE_MINUTES_MS = 5 * 60 * 1000;
-        let deletedCount = 0;
-
-        for (const blob of blobs) {
-            try {
-                const job = await store.get(blob.key, { type: 'json' });
-
-                if (!job) {
-                    // Blob exists but has no data - safe to skip
-                    continue;
-                }
-
-                // Delete if job is completed or errored and older than 5 minutes
-                if ((job.status === 'complete' || job.status === 'error') && job.completedAt) {
-                    const completedTime = new Date(job.completedAt).getTime();
-                    const ageMs = now - completedTime;
-
-                    if (ageMs > FIVE_MINUTES_MS) {
-                        await store.delete(blob.key);
-                        deletedCount++;
-                        console.log(`Cleaned up old job ${blob.key} (completed ${Math.round(ageMs / 1000 / 60)}m ago)`);
-                    }
-                }
-            } catch (error) {
-                // Handle different error types
-                const is403Error = error.message?.includes('403') || error.statusCode === 403;
-                const is404Error = error.message?.includes('404') || error.statusCode === 404;
-
-                if (is403Error) {
-                    // Permission error on old blob - skip it (likely corrupted or orphaned)
-                    console.warn(`⚠️  Skipping blob ${blob.key}: Permission denied (403). This blob may be orphaned from an older version.`);
-                } else if (is404Error) {
-                    // Blob was deleted between list() and get() - this is fine
-                    console.log(`Blob ${blob.key} was already deleted`);
-                } else {
-                    // Other errors - log but continue
-                    console.error(`Error processing blob ${blob.key} during cleanup:`, error.message);
-                }
-                // Always continue with other blobs
-            }
-        }
-
-        if (deletedCount > 0) {
-            console.log(`✓ Cleanup complete: deleted ${deletedCount} old job(s)`);
-        }
+        const deletedCount = await performCleanup();
+        logCleanupResult(deletedCount);
     } catch (error) {
         // Don't fail job creation if cleanup fails
         console.error('Job cleanup error (non-fatal):', error.message);
+    }
+}
+
+async function performCleanup() {
+    const store = getJobStore();
+    const { blobs } = await store.list();
+    let deletedCount = 0;
+
+    for (const blob of blobs) {
+        const shouldDelete = await processBlob(blob);
+        if (shouldDelete) {
+            deletedCount++;
+        }
+    }
+
+    return deletedCount;
+}
+
+async function processBlob(blob) {
+    try {
+        const job = await store.get(blob.key, { type: 'json' });
+        
+        if (!job) {
+            return false; // Blob exists but has no data
+        }
+
+        if (shouldDeleteJob(job)) {
+            await store.delete(blob.key);
+            logDeletion(blob.key, job.completedAt);
+            return true;
+        }
+        
+        return false;
+    } catch (error) {
+        handleBlobError(error, blob.key);
+        return false;
+    }
+}
+
+function shouldDeleteJob(job) {
+    const FIVE_MINUTES_MS = 5 * 60 * 1000;
+    
+    if (!(job.status === 'complete' || job.status === 'error')) {
+        return false;
+    }
+    
+    if (!job.completedAt) {
+        return false;
+    }
+    
+    const completedTime = new Date(job.completedAt).getTime();
+    const ageMs = Date.now() - completedTime;
+    
+    return ageMs > FIVE_MINUTES_MS;
+}
+
+function handleBlobError(error, blobKey) {
+    const errorMessage = error.message || '';
+    const statusCode = error.statusCode;
+    
+    if (statusCode === 403 || errorMessage.includes('403')) {
+        console.warn(`⚠️  Skipping blob ${blobKey}: Permission denied (403). This blob may be orphaned from an older version.`);
+    } else if (statusCode === 404 || errorMessage.includes('404')) {
+        console.log(`Blob ${blobKey} was already deleted`);
+    } else {
+        console.error(`Error processing blob ${blobKey} during cleanup:`, errorMessage);
+    }
+}
+
+function logDeletion(blobKey, completedAt) {
+    const ageMs = Date.now() - new Date(completedAt).getTime();
+    const ageMinutes = Math.round(ageMs / 1000 / 60);
+    console.log(`Cleaned up old job ${blobKey} (completed ${ageMinutes}m ago)`);
+}
+
+function logCleanupResult(deletedCount) {
+    if (deletedCount > 0) {
+        console.log(`✓ Cleanup complete: deleted ${deletedCount} old job(s)`);
     }
 }
 
@@ -88,7 +119,7 @@ async function cleanupOldJobs(context) {
  * @param {string} maker - Manufacturer name
  * @param {string} model - Product model
  * @param {Object} context - Netlify function context (optional)
- * @returns {string} Job ID
+ * @returns {Promise<string>} Promise that resolves to Job ID
  */
 async function createJob(maker, model, context) {
     // Clean up old jobs first (await to prevent race conditions)
@@ -99,9 +130,9 @@ async function createJob(maker, model, context) {
     Array.from(crypto.getRandomValues(new Uint8Array(9)))
         .map(b => b.toString(36))
         .join('')
-        .replace(/\./g, '') // Remove dots if any
+        .replaceAll('.', '') // Remove dots if any
         .substring(0, 12)
-}`;
+    }`;
 
     const job = {
         jobId,
