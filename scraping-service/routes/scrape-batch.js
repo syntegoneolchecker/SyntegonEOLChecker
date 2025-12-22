@@ -21,7 +21,9 @@ async function scrapeSingleUrl(browser, url) {
 
         // Conditionally enable resource blocking
         const isCloudflareProtected = url.includes('orientalmotor.co.jp');
-        if (!isCloudflareProtected) {
+        if (isCloudflareProtected) {
+            console.log('Resource blocking DISABLED for Cloudflare-protected site (Oriental Motor)');
+        } else {
             await setupResourceBlocking(page, {
                 blockImages: true,
                 blockStylesheets: true,
@@ -29,8 +31,6 @@ async function scrapeSingleUrl(browser, url) {
                 blockMedia: true,
                 blockTracking: false
             });
-        } else {
-            console.log('Resource blocking DISABLED for Cloudflare-protected site (Oriental Motor)');
         }
 
         // SSRF Protection: Validate URL before navigation
