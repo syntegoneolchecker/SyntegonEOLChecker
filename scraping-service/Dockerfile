@@ -58,7 +58,6 @@ COPY package*.json ./
 # Note: Native module compilation (node-gyp) still runs, only package.json scripts are ignored
 RUN npm install --ignore-scripts \
     && npm rebuild \
-    && npx puppeteer browsers install chrome \
     && apt-get purge -y --auto-remove python3 make g++
 
 # Copy application files
@@ -69,6 +68,10 @@ RUN chown -R node:node /app
 
 # Switch to non-root user
 USER node
+
+# Install Chrome as node user (will install to /home/node/.cache/puppeteer)
+# This ensures the node user has permissions to access Chrome
+RUN npx puppeteer browsers install chrome
 
 # Expose port
 EXPOSE 3000
