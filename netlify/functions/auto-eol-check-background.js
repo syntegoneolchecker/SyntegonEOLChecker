@@ -18,23 +18,50 @@ function getGMT9DateTime() {
 }
 
 // Helper: Wake up Render scraping service (cold start)
+// Tries for up to 2 minutes with health checks every 30 seconds
 async function wakeRenderService() {
     console.log('Waking up Render scraping service...');
-    const startTime = Date.now();
+    const overallStartTime = Date.now();
+    const maxDuration = 120000; // 2 minutes total
+    const healthCheckInterval = 30000; // Check every 30 seconds
+    let attempt = 0;
 
-    try {
-        const response = await fetch('https://eolscrapingservice.onrender.com/health', {
-            signal: AbortSignal.timeout(30000) // 30s timeout
-        });
+    while (Date.now() - overallStartTime < maxDuration) {
+        attempt++;
+        const attemptStartTime = Date.now();
 
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`Render service responded in ${elapsed}s, status: ${response.status}`);
+        try {
+            console.log(`Health check attempt ${attempt} (elapsed: ${((Date.now() - overallStartTime) / 1000).toFixed(1)}s)...`);
 
-        return response.ok;
-    } catch (error) {
-        console.error('Failed to wake Render service:', error.message);
-        return false;
+            const response = await fetch('https://eolscrapingservice.onrender.com/health', {
+                signal: AbortSignal.timeout(healthCheckInterval)
+            });
+
+            if (response.ok) {
+                const elapsed = ((Date.now() - overallStartTime) / 1000).toFixed(1);
+                console.log(`✓ Render service responded successfully in ${elapsed}s (attempt ${attempt})`);
+                return true;
+            }
+
+            console.warn(`Attempt ${attempt} returned HTTP ${response.status}, will retry...`);
+
+        } catch (error) {
+            const elapsed = ((Date.now() - attemptStartTime) / 1000).toFixed(1);
+            console.warn(`Attempt ${attempt} failed after ${elapsed}s: ${error.message}`);
+        }
+
+        // Wait before next attempt (unless we've exceeded total duration)
+        const remainingTime = maxDuration - (Date.now() - overallStartTime);
+        if (remainingTime > 0) {
+            const waitTime = Math.min(healthCheckInterval, remainingTime);
+            console.log(`Waiting ${(waitTime / 1000).toFixed(1)}s before next health check...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
     }
+
+    const totalElapsed = ((Date.now() - overallStartTime) / 1000).toFixed(1);
+    console.error(`❌ Failed to wake Render service after ${totalElapsed}s (${attempt} attempts)`);
+    return false;
 }
 
 // Helper: Check if Groq tokens are ready (N/A means fully reset)
@@ -226,12 +253,13 @@ class JobPoller {
         this.manufacturer = manufacturer;
         this.model = model;
         this.siteUrl = siteUrl;
-        
+
         this.maxAttempts = 60;
         this.attempts = 0;
         this.analyzeTriggered = false;
         this.fetchTriggered = false;
-        
+        this.completionResult = null; // Store result when job completes
+
         this.initializeStorage();
     }
 
@@ -250,9 +278,14 @@ class JobPoller {
     async poll() {
         console.log(`Polling job ${this.jobId} (max ${this.maxAttempts} attempts, 2 minutes)`);
 
-        while (this.attempts < this.maxAttempts) {
+        while (this.attempts < this.maxAttempts && !this.completionResult) {
             this.attempts++;
             await this.pollAttempt();
+        }
+
+        // Return result if job completed, otherwise return timeout
+        if (this.completionResult) {
+            return this.completionResult;
         }
 
         return this.handleTimeout();
@@ -264,22 +297,37 @@ class JobPoller {
 
         try {
             const job = await this.jobStore.get(this.jobId, { type: 'json' });
-            
+
             if (!job) {
                 await this.handleMissingJob();
+                await this.waitForNextPoll();
                 return;
             }
 
-            if (await this.handleJobCompletion(job)) return;
-            if (await this.handleJobError(job)) return;
-            
+            // Check for job completion
+            const completionResult = await this.handleJobCompletion(job);
+            if (completionResult) {
+                this.completionResult = completionResult;
+                return; // Exit immediately without waiting (loop will break)
+            }
+
+            // Check for job error
+            const errorResult = await this.handleJobError(job);
+            if (errorResult) {
+                this.completionResult = errorResult;
+                return; // Exit immediately without waiting (loop will break)
+            }
+
             await this.orchestrateWorkflow(job);
-            
+
         } catch (error) {
             await this.handlePollingError(error);
         }
 
-        await this.waitForNextPoll();
+        // Always wait 2 seconds before next poll (if not completed)
+        if (!this.completionResult) {
+            await this.waitForNextPoll();
+        }
     }
 
     logProgress() {
