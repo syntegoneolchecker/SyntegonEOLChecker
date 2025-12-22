@@ -1,4 +1,4 @@
-FROM node:18-slim
+FROM node:20-slim
 
 # Install Chromium dependencies and build tools for native modules
 # Security: Use --no-install-recommends to avoid installing unnecessary packages
