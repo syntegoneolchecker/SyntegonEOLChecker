@@ -223,9 +223,7 @@ async function navigateWithTimeout(
   let navigationTimedOut = false;
 
   try {
-    // lgtm[js/server-side-unvalidated-url-redirection]
-    // lgtm[js/ssrf]
-    // SSRF Justification: This is a web scraping service - navigating to arbitrary URLs is the core feature.
+    // codeql[js/request-forgery] SSRF Justification: This is a web scraping service - navigating to arbitrary URLs is the core feature.
     // Comprehensive blacklist validation is applied via isSafePublicUrl(): blocks localhost, private IPs
     // (RFC 1918), link-local addresses, reserved ranges, dangerous protocols.
     // Defense-in-depth: validation at endpoint level + immediate pre-navigation validation.

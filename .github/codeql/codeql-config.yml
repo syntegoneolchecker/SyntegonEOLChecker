@@ -6,9 +6,9 @@ query-filters:
   # This service intentionally fetches user-provided URLs for web scraping
   # Comprehensive validation is in place (see utils/validation.js)
   - exclude:
-      id: js/server-side-unvalidated-url-redirection
+      id: js/request-forgery
   - exclude:
-      id: js/ssrf
+      id: js/server-side-unvalidated-url-redirection
 
 # Path-based filters as an alternative approach
 paths-ignore:

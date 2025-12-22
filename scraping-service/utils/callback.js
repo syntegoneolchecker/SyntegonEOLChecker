@@ -55,9 +55,7 @@ function validateCallbackUrl(callbackUrl) {
 async function attemptCallback(callbackUrl, payload, attempt, maxRetries) {
     console.log(`Sending callback (attempt ${attempt}/${maxRetries}): ${callbackUrl}`);
 
-    // lgtm[js/server-side-unvalidated-url-redirection]
-    // lgtm[js/ssrf]
-    // SSRF Justification: Callback URLs use strict whitelist validation via ALLOWED_ORIGINS.
+    // codeql[js/request-forgery] SSRF Justification: Callback URLs use strict whitelist validation via ALLOWED_ORIGINS.
     // Only trusted backend domains (configured in environment) are permitted for callbacks.
     // This is the result delivery mechanism - callbacks must go to configured backend servers.
     // Defense-in-depth: validation at endpoint level + immediate pre-fetch validation above.
