@@ -17,7 +17,7 @@ exports.handler = async function(event, context) {
         const requestBody = JSON.parse(event.body);
 
         // Validate request body has 'data' field
-        if (!requestBody || !requestBody.data) {
+        if (!requestBody?.data) {
             console.error('Missing data field in request body');
             return {
                 statusCode: 400,

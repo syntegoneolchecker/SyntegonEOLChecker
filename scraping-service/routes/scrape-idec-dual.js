@@ -180,9 +180,10 @@ async function scrapeIdecSite(siteUrl, proxyUrl, siteName, model) {
         }
 
         // Build full product URL
+        const baseUrl = siteName === 'JP' ? 'jp' : 'us';
         const productUrl = extractionResult.url.startsWith('http')
             ? extractionResult.url
-            : `https://${siteName === 'JP' ? 'jp' : 'us'}.idec.com${extractionResult.url}`;
+            : `https://${baseUrl}.idec.com${extractionResult.url}`;
 
         console.log(`✓ Found exact match on ${siteName} site: ${productUrl}`);
 
@@ -229,8 +230,8 @@ async function scrapeIdecSite(siteUrl, proxyUrl, siteName, model) {
         if (browser) {
             try {
                 await browser.close();
-            } catch (closeErr) {
-                console.error(`Failed to close browser for ${siteName} site: ${closeErr.message}`);
+            } catch (error_) {
+                console.error(`Failed to close browser for ${siteName} site: ${error_.message}`);
             }
         }
         return { success: false, error: error.message };
@@ -241,7 +242,7 @@ async function scrapeIdecSite(siteUrl, proxyUrl, siteName, model) {
  * IDEC dual-site scraping endpoint handler
  */
 async function handleIdecDualScrapeRequest(req, res) {
-    const { model, callbackUrl, jobId, urlIndex, title, snippet, jpProxyUrl, usProxyUrl, jpUrl, usUrl } = req.body;
+    const { model, callbackUrl, jobId, urlIndex, jpProxyUrl, usProxyUrl, jpUrl, usUrl } = req.body;
 
     // Check shutdown state
     if (getShutdownState()) {
@@ -304,7 +305,6 @@ async function handleIdecDualScrapeRequest(req, res) {
                     snippet: `IDEC product page (JP site)`,
                     url: jpResult.url
                 });
-                callbackSent = true;
 
                 forceGarbageCollection();
                 trackMemoryUsage(`idec_dual_complete_${requestCount}_jp_success`);
@@ -335,7 +335,6 @@ async function handleIdecDualScrapeRequest(req, res) {
                     snippet: `IDEC product page (US site)`,
                     url: usResult.url
                 });
-                callbackSent = true;
 
                 forceGarbageCollection();
                 trackMemoryUsage(`idec_dual_complete_${requestCount}_us_success`);
@@ -364,7 +363,6 @@ async function handleIdecDualScrapeRequest(req, res) {
                 snippet: 'IDEC search - no results',
                 url: jpUrl
             });
-            callbackSent = true;
 
             forceGarbageCollection();
             trackMemoryUsage(`idec_dual_complete_${requestCount}_both_failed`);

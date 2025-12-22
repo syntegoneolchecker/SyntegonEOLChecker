@@ -3,10 +3,10 @@ FROM node:20-slim
 # Install Chromium dependencies and build tools for native modules
 # Security: Use --no-install-recommends to avoid installing unnecessary packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    gnupg \
     ca-certificates \
     fonts-liberation \
+    g++ \
+    gnupg \
     libappindicator3-1 \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -40,10 +40,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxss1 \
     libxtst6 \
     lsb-release \
-    xdg-utils \
-    python3 \
     make \
-    g++ \
+    python3 \
+    wget \
+    xdg-utils \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
