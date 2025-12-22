@@ -380,7 +380,7 @@ function extractHTMLText(html) {
 
 // Helper: Detect error pages
 function isErrorPage(text) {
-    if (!text || text.length < 200) {
+    if (!text || text.length < 50) {
         return true;
     }
 

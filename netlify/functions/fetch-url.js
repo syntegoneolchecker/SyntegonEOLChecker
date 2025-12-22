@@ -32,7 +32,7 @@ async function scrapeNBKSearchWithBrowserQL(model) {
     }
 
     // Preprocess model name: remove lowercase 'x' and '-'
-    const preprocessedModel = model.replaceAll('x', '').replaAll('-'/g, '');
+    const preprocessedModel = model.replaceAll('x', '').replaceAll('-', '');
     console.log(`NBK BrowserQL: Preprocessed model name: ${model} -> ${preprocessedModel}`);
 
     const encodedModel = encodeURIComponent(preprocessedModel);
