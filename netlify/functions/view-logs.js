@@ -170,7 +170,7 @@ function generateHTML(logs, filters) {
       background: #f5f5f5;
     }
     .container {
-      max-width: 1400px;
+      max-width: 1800px;
       margin: 0 auto;
       background: white;
       border-radius: 8px;
