@@ -347,7 +347,7 @@ async function handleRenderServiceCall(params) {
         },
         operationName: methodName,
         maxRetries: config.CALLBACK_MAX_RETRIES,
-        timeoutMs: config.HEALTH_CHECK_TIMEOUT_MS * 2,
+        timeoutMs: config.RENDER_SERVICE_CALL_TIMEOUT_MS,
         breakOnTimeout: true
     });
 }

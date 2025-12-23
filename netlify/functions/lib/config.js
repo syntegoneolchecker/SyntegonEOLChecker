@@ -84,6 +84,7 @@ module.exports = {
     NETLIFY_FUNCTION_TIMEOUT_MS: 30000, // Netlify function timeout (30s)
     NETLIFY_BACKGROUND_TIMEOUT_MS: 900000, // Background function timeout (15min)
     FIRE_AND_FORGET_TIMEOUT_MS: 10000,  // Timeout for fire-and-forget operations
+    RENDER_SERVICE_CALL_TIMEOUT_MS: 15000, // Timeout for Render service calls (should respond with 202 within seconds)
 
     // === SERVICE URLs ===
     // Default URLs (can be overridden by environment variables)

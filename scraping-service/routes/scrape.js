@@ -499,15 +499,29 @@ async function handleScrapeRequest(req, res) {
       );
     }
 
-    // Use Puppeteer for dynamic HTML pages
+    // Use Puppeteer for dynamic HTML pages (fire-and-forget)
     console.log(`Fast fetch failed, using Puppeteer for ${url}...`);
-    const result = await handlePuppeteerScraping(
+
+    // Respond immediately with 202 Accepted - scraping will happen in background
+    res.status(202).json({
+      success: true,
+      status: 'processing',
+      message: 'Scraping started, results will be sent via callback'
+    });
+
+    // Start scraping in background (don't await - true fire-and-forget)
+    // Callback will be sent when scraping completes
+    handlePuppeteerScraping(
       url,
       callbackUrl,
       { jobId, urlIndex, snippet, url },
       res
-    );
-    return res.json(result);
+    ).catch(error => {
+      // Error already logged and callback already sent in handlePuppeteerScraping
+      console.error('Background Puppeteer scraping failed:', error.message);
+    });
+
+    return; // Response already sent
   } catch (error) {
     console.error(
       `[${new Date().toISOString()}] Scraping error:`,

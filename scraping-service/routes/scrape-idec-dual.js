@@ -287,8 +287,15 @@ async function handleIdecDualScrapeRequest(req, res) {
         console.log(`Callback URL provided: ${callbackUrl}`);
     }
 
-    // Enqueue task
-    return enqueuePuppeteerTask(async () => {
+    // Respond immediately with 202 Accepted (fire-and-forget)
+    res.status(202).json({
+        success: true,
+        status: 'processing',
+        message: 'IDEC dual-site search started, results will be sent via callback'
+    });
+
+    // Enqueue task in background (don't await - true fire-and-forget)
+    enqueuePuppeteerTask(async () => {
         const callbackSent = false;
 
         try {
@@ -310,15 +317,8 @@ async function handleIdecDualScrapeRequest(req, res) {
                 trackMemoryUsage(`idec_dual_complete_${requestCount}_jp_success`);
                 scheduleRestartIfNeeded();
 
-                return res.json({
-                    success: true,
-                    site: 'JP',
-                    url: jpResult.url,
-                    title: jpResult.title,
-                    contentLength: jpResult.content.length,
-                    method: 'idec_dual_site_jp',
-                    timestamp: new Date().toISOString()
-                });
+                // Response already sent (202), callback already sent
+                return; // Exit early on success
             }
 
             // JP site failed - try US site
@@ -340,15 +340,8 @@ async function handleIdecDualScrapeRequest(req, res) {
                 trackMemoryUsage(`idec_dual_complete_${requestCount}_us_success`);
                 scheduleRestartIfNeeded();
 
-                return res.json({
-                    success: true,
-                    site: 'US',
-                    url: usResult.url,
-                    title: usResult.title,
-                    contentLength: usResult.content.length,
-                    method: 'idec_dual_site_us',
-                    timestamp: new Date().toISOString()
-                });
+                // Response already sent (202), callback already sent
+                return; // Exit early on success
             }
 
             // Both sites failed
@@ -368,14 +361,7 @@ async function handleIdecDualScrapeRequest(req, res) {
             trackMemoryUsage(`idec_dual_complete_${requestCount}_both_failed`);
             scheduleRestartIfNeeded();
 
-            return res.json({
-                success: false,
-                error: 'No results on both JP and US sites',
-                jpError: jpResult.error,
-                usError: usResult.error,
-                method: 'idec_dual_site_no_results',
-                timestamp: new Date().toISOString()
-            });
+            // Response already sent (202), callback already sent
 
         } catch (error) {
             console.error(`IDEC dual-site scraping error:`, error);
@@ -395,13 +381,14 @@ async function handleIdecDualScrapeRequest(req, res) {
             trackMemoryUsage(`idec_dual_complete_${requestCount}_error`);
             scheduleRestartIfNeeded();
 
-            return res.status(500).json({
-                success: false,
-                error: error.message,
-                model: model
-            });
+            // Response already sent (202), error callback already sent
         }
+    }).catch(error => {
+        // Error already logged and callback already sent
+        console.error('Background IDEC dual-site scraping failed:', error.message);
     });
+
+    // Response already sent above (202 Accepted)
 }
 
 module.exports = {

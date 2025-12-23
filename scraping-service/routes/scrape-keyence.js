@@ -167,8 +167,15 @@ async function handleKeyenceScrapeRequest(req, res) {
         console.log(`Callback URL provided: ${callbackUrl}`);
     }
 
-    // Enqueue task
-    return enqueuePuppeteerTask(async () => {
+    // Respond immediately with 202 Accepted (fire-and-forget)
+    res.status(202).json({
+        success: true,
+        status: 'processing',
+        message: 'KEYENCE search started, results will be sent via callback'
+    });
+
+    // Enqueue task in background (don't await - true fire-and-forget)
+    enqueuePuppeteerTask(async () => {
         let browser = null;
         const callbackSent = false;
 
@@ -230,7 +237,7 @@ async function handleKeyenceScrapeRequest(req, res) {
             trackMemoryUsage(`keyence_complete_${requestCount}`);
             scheduleRestartIfNeeded();
 
-            return res.json(keyenceResult);
+            // Response already sent (202), no need to return result
 
         } catch (error) {
             console.error(`KEYENCE scraping error:`, error);
@@ -262,11 +269,7 @@ async function handleKeyenceScrapeRequest(req, res) {
             setShutdownState(true);
             scheduleRestartIfNeeded();
 
-            return res.status(500).json({
-                success: false,
-                error: error.message,
-                model: model
-            });
+            // Response already sent (202), error callback already sent
         } finally {
             // Ensure browser is always closed
             if (browser) {
@@ -277,7 +280,12 @@ async function handleKeyenceScrapeRequest(req, res) {
                 }
             }
         }
+    }).catch(error => {
+        // Error already logged and callback already sent
+        console.error('Background KEYENCE scraping failed:', error.message);
     });
+
+    // Response already sent above (202 Accepted)
 }
 
 module.exports = {
