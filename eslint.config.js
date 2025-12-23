@@ -81,5 +81,13 @@ module.exports = [
                 it: 'readonly'
             }
         }
+    },
+    // Frontend script.js - functions called from HTML onclick handlers
+    {
+        files: ['**/script.js', '**/public/script.js'],
+        rules: {
+            // Disable unused vars check for script.js - functions are called from HTML
+            'no-unused-vars': 'off'
+        }
     }
 ];
