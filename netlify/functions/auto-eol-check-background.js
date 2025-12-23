@@ -18,23 +18,50 @@ function getGMT9DateTime() {
 }
 
 // Helper: Wake up Render scraping service (cold start)
+// Tries for up to 2 minutes with health checks every 30 seconds
 async function wakeRenderService() {
     console.log('Waking up Render scraping service...');
-    const startTime = Date.now();
+    const overallStartTime = Date.now();
+    const maxDuration = 120000; // 2 minutes total
+    const healthCheckInterval = 30000; // Check every 30 seconds
+    let attempt = 0;
 
-    try {
-        const response = await fetch('https://eolscrapingservice.onrender.com/health', {
-            signal: AbortSignal.timeout(30000) // 30s timeout
-        });
+    while (Date.now() - overallStartTime < maxDuration) {
+        attempt++;
+        const attemptStartTime = Date.now();
 
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`Render service responded in ${elapsed}s, status: ${response.status}`);
+        try {
+            console.log(`Health check attempt ${attempt} (elapsed: ${((Date.now() - overallStartTime) / 1000).toFixed(1)}s)...`);
 
-        return response.ok;
-    } catch (error) {
-        console.error('Failed to wake Render service:', error.message);
-        return false;
+            const response = await fetch('https://eolscrapingservice.onrender.com/health', {
+                signal: AbortSignal.timeout(healthCheckInterval)
+            });
+
+            if (response.ok) {
+                const elapsed = ((Date.now() - overallStartTime) / 1000).toFixed(1);
+                console.log(`✓ Render service responded successfully in ${elapsed}s (attempt ${attempt})`);
+                return true;
+            }
+
+            console.warn(`Attempt ${attempt} returned HTTP ${response.status}, will retry...`);
+
+        } catch (error) {
+            const elapsed = ((Date.now() - attemptStartTime) / 1000).toFixed(1);
+            console.warn(`Attempt ${attempt} failed after ${elapsed}s: ${error.message}`);
+        }
+
+        // Wait before next attempt (unless we've exceeded total duration)
+        const remainingTime = maxDuration - (Date.now() - overallStartTime);
+        if (remainingTime > 0) {
+            const waitTime = Math.min(healthCheckInterval, remainingTime);
+            console.log(`Waiting ${(waitTime / 1000).toFixed(1)}s before next health check...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
     }
+
+    const totalElapsed = ((Date.now() - overallStartTime) / 1000).toFixed(1);
+    console.error(`❌ Failed to wake Render service after ${totalElapsed}s (${attempt} attempts)`);
+    return false;
 }
 
 // Helper: Check if Groq tokens are ready (N/A means fully reset)
@@ -72,12 +99,7 @@ function isAutoCheckEnabled(row) {
 
     // Auto Check column (column 12):
     // - "NO": disabled (skip this product)
-    if (autoCheckValue === 'NO') {
-        return false;
-    }
-
-    // For any other value, default to enabled
-    return true;
+    return (autoCheckValue !== 'NO');
 }
 
 // Helper: Find next product to check
@@ -221,195 +243,317 @@ async function executeEOLCheck(product, siteUrl) {
 
 // Helper: Poll job by checking Blobs directly and orchestrating workflow
 async function pollJobStatus(jobId, manufacturer, model, siteUrl) {
-    const maxAttempts = 60; // 60 attempts × 2s = 2 minutes max
-    let attempts = 0;
-    let analyzeTriggered = false;
-    let fetchTriggered = false;
+    const poller = new JobPoller(jobId, manufacturer, model, siteUrl);
+    return poller.poll();
+}
 
-    // Get job storage helper
-    const { getStore } = require('@netlify/blobs');
-    const { updateJobStatus } = require('./lib/job-storage');
-    const jobStore = getStore({
-        name: 'eol-jobs',
-        siteID: process.env.SITE_ID,
-        token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
-    });
+class JobPoller {
+    constructor(jobId, manufacturer, model, siteUrl) {
+        this.jobId = jobId;
+        this.manufacturer = manufacturer;
+        this.model = model;
+        this.siteUrl = siteUrl;
 
-    console.log(`Polling job ${jobId} (max ${maxAttempts} attempts, 2 minutes)`);
+        this.maxAttempts = 60;
+        this.attempts = 0;
+        this.analyzeTriggered = false;
+        this.fetchTriggered = false;
+        this.completionResult = null; // Store result when job completes
 
-    while (attempts < maxAttempts) {
-        attempts++;
+        this.initializeStorage();
+    }
 
-        // Log progress every 30 attempts (~1 minute)
-        if (attempts % 30 === 0) {
-            console.log(`Polling attempt ${attempts}/${maxAttempts} (~${Math.round(attempts * 2 / 60)} min elapsed)...`);
+    initializeStorage() {
+        const { getStore } = require('@netlify/blobs');
+        const { updateJobStatus } = require('./lib/job-storage');
+        
+        this.jobStore = getStore({
+            name: 'eol-jobs',
+            siteID: process.env.SITE_ID,
+            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+        });
+        this.updateJobStatus = updateJobStatus;
+    }
+
+    async poll() {
+        console.log(`Polling job ${this.jobId} (max ${this.maxAttempts} attempts, 2 minutes)`);
+
+        while (this.attempts < this.maxAttempts && !this.completionResult) {
+            this.attempts++;
+            await this.pollAttempt();
         }
 
-        // RENDER HEALTH CHECK: At attempt 15 (~30 seconds), check if Render crashed
-        // This saves ~90 seconds compared to waiting for full timeout (60 attempts = 2 minutes)
-        if (attempts === 15) {
-            console.log('Polling attempt 15/60 (~30s elapsed) - checking Render service health...');
-            try {
-                const renderHealthUrl = 'https://eolscrapingservice.onrender.com/health';
-                const healthResponse = await fetch(renderHealthUrl, {
-                    signal: AbortSignal.timeout(5000) // 5s timeout
-                });
-
-                if (!healthResponse.ok) {
-                    console.error(`⚠️  Render service unhealthy at attempt 15 (HTTP ${healthResponse.status})`);
-                    console.log('Likely cause: Render crashed during scraping. Skipping this check to save time.');
-
-                    return {
-                        status: 'UNKNOWN',
-                        explanation: 'EOL check skipped - scraping service crashed during processing (detected at 30s). This product will be retried on the next check cycle.',
-                        successor: { status: 'UNKNOWN', model: null, explanation: '' }
-                    };
-                }
-
-                const healthData = await healthResponse.json();
-                console.log(`✓ Render service healthy (memory: ${healthData.memory?.rss || 'N/A'}MB, requests: ${healthData.requestCount || 'N/A'})`);
-            } catch (healthError) {
-                console.error(`⚠️  Render health check failed at attempt 15: ${healthError.message}`);
-                console.log('Assuming Render crashed. Skipping this check to save time.');
-
-                return {
-                    status: 'UNKNOWN',
-                    explanation: 'EOL check skipped - scraping service appears to have crashed (health check failed at 30s). This product will be retried on the next check cycle.',
-                    successor: { status: 'UNKNOWN', model: null, explanation: '' }
-                };
-            }
+        // Return result if job completed, otherwise return timeout
+        if (this.completionResult) {
+            return this.completionResult;
         }
+
+        return this.handleTimeout();
+    }
+
+    async pollAttempt() {
+        this.logProgress();
+        await this.checkRenderHealthIfNeeded();
 
         try {
-            // Poll Blobs directly
-            const job = await jobStore.get(jobId, { type: 'json' });
+            const job = await this.jobStore.get(this.jobId, { type: 'json' });
 
             if (!job) {
-                console.error(`Job ${jobId} not found in Blobs storage`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                continue;
+                await this.handleMissingJob();
+                await this.waitForNextPoll();
+                return;
             }
 
-            // Check if job is complete
-            if (job.status === 'complete' && job.finalResult) {
-                console.log(`✓ Job complete after ${attempts} attempts (~${Math.round(attempts * 2 / 60)} min)`);
-                return job.finalResult;
+            // Check for job completion
+            const completionResult = await this.handleJobCompletion(job);
+            if (completionResult) {
+                this.completionResult = completionResult;
+                return; // Exit immediately without waiting (loop will break)
             }
 
-            if (job.status === 'error') {
-                console.error(`Job failed with error: ${job.error}`);
-                return {
-                    status: 'UNKNOWN',
-                    explanation: `Job failed: ${job.error}`,
-                    successor: { status: 'UNKNOWN', model: null, explanation: '' }
-                };
+            // Check for job error
+            const errorResult = await this.handleJobError(job);
+            if (errorResult) {
+                this.completionResult = errorResult;
+                return; // Exit immediately without waiting (loop will break)
             }
 
-            // STEP 1: If URLs are ready, trigger fetch-url
-            if (job.status === 'urls_ready' && !fetchTriggered) {
-                console.log(`✓ URLs ready, triggering fetch-url (attempt ${attempts})`);
-
-                // Update status to 'fetching'
-                await updateJobStatus(jobId, 'fetching', null, {});
-
-                // Trigger fetch-url for the first URL
-                const firstUrl = job.urls[0];
-                if (firstUrl) {
-                    try {
-                        const fetchUrl = `${siteUrl}/.netlify/functions/fetch-url`;
-                        const payload = {
-                            jobId,
-                            urlIndex: firstUrl.index,
-                            url: firstUrl.url,
-                            title: firstUrl.title,
-                            snippet: firstUrl.snippet,
-                            scrapingMethod: firstUrl.scrapingMethod
-                        };
-
-                        // Pass model for KEYENCE interactive searches
-                        if (firstUrl.model) {
-                            payload.model = firstUrl.model;
-                        }
-
-                        // Fire-and-forget (Render scraping takes 30-60s, we can't wait)
-                        fetch(fetchUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        }).catch(err => {
-                            console.error(`Failed to trigger fetch-url: ${err.message}`);
-                        });
-
-                        console.log(`✓ fetch-url triggered for ${firstUrl.url}`);
-                        fetchTriggered = true;
-                    } catch (error) {
-                        console.error(`Error triggering fetch-url: ${error.message}`);
-                    }
-                }
-            }
-
-            // STEP 2: Check if scraping is complete and analysis needs to be triggered
-            const allUrlsComplete = job.urls && job.urls.length > 0 && job.urls.every(u => u.status === 'complete');
-
-            if (allUrlsComplete && !analyzeTriggered && job.status !== 'analyzing' && job.status !== 'complete') {
-                console.log(`✓ All URLs scraped, triggering analyze-job synchronously (attempt ${attempts})`);
-
-                try {
-                    // Call analyze-job SYNCHRONOUSLY (not fire-and-forget)
-                    const analyzeUrl = `${siteUrl}/.netlify/functions/analyze-job`;
-                    const analyzeResponse = await fetch(analyzeUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ jobId }),
-                        signal: AbortSignal.timeout(25000) // 25s timeout (under Netlify's 26s limit)
-                    });
-
-                    if (analyzeResponse.ok) {
-                        const analyzeData = await analyzeResponse.json();
-                        console.log(`✓ Analysis completed successfully: ${analyzeData.result?.status}`);
-                        analyzeTriggered = true;
-
-                        // Re-fetch job to get updated status
-                        const updatedJob = await jobStore.get(jobId, { type: 'json' });
-                        if (updatedJob?.status === 'complete' && updatedJob.finalResult) {
-                            console.log(`✓ Job complete after analysis`);
-                            return updatedJob.finalResult;
-                        }
-                    } else {
-                        const errorText = await analyzeResponse.text().catch(() => 'Unknown error');
-                        console.error(`analyze-job failed: ${analyzeResponse.status} - ${errorText}`);
-                        analyzeTriggered = true; // Don't retry on same poll cycle
-                    }
-                } catch (error) {
-                    // Timeout or network error - analysis might still be running
-                    if (error.name === 'TimeoutError' || error.message.includes('timeout')) {
-                        console.warn(`analyze-job timed out after 25s (likely Groq token wait), will check on next poll`);
-                        analyzeTriggered = true; // Analysis is running in background
-                    } else {
-                        console.error(`analyze-job error: ${error.message}`);
-                        analyzeTriggered = true; // Don't retry on same poll cycle
-                    }
-                }
-            }
-
-            // Wait 2 seconds before next poll
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await this.orchestrateWorkflow(job);
 
         } catch (error) {
-            console.error(`Polling error (attempt ${attempts}): ${error.message}`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await this.handlePollingError(error);
+        }
+
+        // Always wait 2 seconds before next poll (if not completed)
+        if (!this.completionResult) {
+            await this.waitForNextPoll();
         }
     }
 
-    // Timeout after max attempts
-    const timeoutMinutes = Math.round(maxAttempts * 2 / 60);
-    console.error(`⏱️  Job ${jobId} timed out after ${maxAttempts} attempts (~${timeoutMinutes} minutes)`);
+    logProgress() {
+        if (this.attempts % 30 === 0) {
+            const elapsedMinutes = Math.round(this.attempts * 2 / 60);
+            console.log(`Polling attempt ${this.attempts}/${this.maxAttempts} (~${elapsedMinutes} min elapsed)...`);
+        }
+    }
 
-    return {
-        status: 'UNKNOWN',
-        explanation: `EOL check timed out after ${timeoutMinutes} minutes. The job may still be processing. Check Netlify function logs for details.`,
-        successor: { status: 'UNKNOWN', model: null, explanation: '' }
-    };
+    async checkRenderHealthIfNeeded() {
+        if (this.attempts !== 15) return;
+
+        console.log('Polling attempt 15/60 (~30s elapsed) - checking Render service health...');
+        
+        try {
+            await this.performHealthCheck();
+        } catch (healthError) {
+            await this.handleHealthCheckFailure(healthError);
+        }
+    }
+
+    async performHealthCheck() {
+        const renderHealthUrl = 'https://eolscrapingservice.onrender.com/health';
+        const healthResponse = await fetch(renderHealthUrl, {
+            signal: AbortSignal.timeout(5000)
+        });
+
+        if (!healthResponse.ok) {
+            throw new Error(`Render service unhealthy (HTTP ${healthResponse.status})`);
+        }
+
+        const healthData = await healthResponse.json();
+        console.log(`✓ Render service healthy (memory: ${healthData.memory?.rss || 'N/A'}MB, requests: ${healthData.requestCount || 'N/A'})`);
+    }
+
+    async handleHealthCheckFailure(error) {
+        console.error(`⚠️  Render health check failed at attempt 15: ${error.message}`);
+        console.log('Assuming Render crashed. Skipping this check to save time.');
+
+        const healthCheckError = new Error('Render health check failed');
+        healthCheckError.isHealthCheckFailure = true;
+        healthCheckError.result = {
+            status: 'UNKNOWN',
+            explanation: 'EOL check skipped - scraping service appears to have crashed (health check failed at 30s). This product will be retried on the next check cycle.',
+            successor: { status: 'UNKNOWN', model: null, explanation: '' }
+        };
+        
+        throw healthCheckError;
+    }
+
+    async handleMissingJob() {
+        console.error(`Job ${this.jobId} not found in Blobs storage`);
+        await this.waitForNextPoll();
+    }
+
+    async handleJobCompletion(job) {
+        if (job.status === 'complete' && job.finalResult) {
+            const elapsedMinutes = Math.round(this.attempts * 2 / 60);
+            console.log(`✓ Job complete after ${this.attempts} attempts (~${elapsedMinutes} min)`);
+            return job.finalResult;
+        }
+        return null;
+    }
+
+    async handleJobError(job) {
+        if (job.status === 'error') {
+            console.error(`Job failed with error: ${job.error}`);
+            return {
+                status: 'UNKNOWN',
+                explanation: `Job failed: ${job.error}`,
+                successor: { status: 'UNKNOWN', model: null, explanation: '' }
+            };
+        }
+        return null;
+    }
+
+    async orchestrateWorkflow(job) {
+        await this.triggerFetchIfNeeded(job);
+        await this.triggerAnalysisIfNeeded(job);
+    }
+
+    async triggerFetchIfNeeded(job) {
+        if (job.status === 'urls_ready' && !this.fetchTriggered) {
+            await this.triggerFetchUrl(job);
+            this.fetchTriggered = true;
+        }
+    }
+
+    async triggerFetchUrl(job) {
+        console.log(`✓ URLs ready, triggering fetch-url (attempt ${this.attempts})`);
+        
+        await this.updateJobStatus(this.jobId, 'fetching', null, {});
+        
+        const firstUrl = job.urls[0];
+        if (!firstUrl) return;
+
+        try {
+            await this.fireFetchUrlRequest(firstUrl);
+            console.log(`✓ fetch-url triggered for ${firstUrl.url}`);
+        } catch (error) {
+            console.error(`Error triggering fetch-url: ${error.message}`);
+        }
+    }
+
+    async fireFetchUrlRequest(firstUrl) {
+        const fetchUrl = `${this.siteUrl}/.netlify/functions/fetch-url`;
+        const payload = this.buildFetchPayload(firstUrl);
+
+        // Fire-and-forget
+        fetch(fetchUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).catch(err => {
+            console.error(`Failed to trigger fetch-url: ${err.message}`);
+        });
+    }
+
+    buildFetchPayload(firstUrl) {
+        const payload = {
+            jobId: this.jobId,
+            urlIndex: firstUrl.index,
+            url: firstUrl.url,
+            title: firstUrl.title,
+            snippet: firstUrl.snippet,
+            scrapingMethod: firstUrl.scrapingMethod
+        };
+
+        if (firstUrl.model) {
+            payload.model = firstUrl.model;
+        }
+
+        return payload;
+    }
+
+    async triggerAnalysisIfNeeded(job) {
+        const allUrlsComplete = job.urls && 
+                               job.urls.length > 0 && 
+                               job.urls.every(u => u.status === 'complete');
+        
+        const shouldTriggerAnalysis = allUrlsComplete && 
+                                     !this.analyzeTriggered && 
+                                     job.status !== 'analyzing' && 
+                                     job.status !== 'complete';
+
+        if (shouldTriggerAnalysis) {
+            await this.triggerAnalyzeJob();
+            this.analyzeTriggered = true;
+        }
+    }
+
+    async triggerAnalyzeJob() {
+        console.log(`✓ All URLs scraped, triggering analyze-job synchronously (attempt ${this.attempts})`);
+        
+        try {
+            const result = await this.callAnalyzeJob();
+            
+            if (result) {
+                console.log(`✓ Analysis completed successfully: ${result.status}`);
+                return result;
+            }
+        } catch (error) {
+            this.handleAnalyzeJobError(error);
+        }
+    }
+
+    async callAnalyzeJob() {
+        const analyzeUrl = `${this.siteUrl}/.netlify/functions/analyze-job`;
+        const analyzeResponse = await fetch(analyzeUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobId: this.jobId }),
+            signal: AbortSignal.timeout(25000)
+        });
+
+        if (!analyzeResponse.ok) {
+            const errorText = await analyzeResponse.text().catch(() => 'Unknown error');
+            throw new Error(`analyze-job failed: ${analyzeResponse.status} - ${errorText}`);
+        }
+
+        const analyzeData = await analyzeResponse.json();
+        await this.checkJobCompletionAfterAnalysis();
+        
+        return analyzeData.result;
+    }
+
+    async checkJobCompletionAfterAnalysis() {
+        const updatedJob = await this.jobStore.get(this.jobId, { type: 'json' });
+        if (updatedJob?.status === 'complete' && updatedJob.finalResult) {
+            console.log(`✓ Job complete after analysis`);
+            return updatedJob.finalResult;
+        }
+        return null;
+    }
+
+    handleAnalyzeJobError(error) {
+        if (error.name === 'TimeoutError' || error.message.includes('timeout')) {
+            console.warn(`analyze-job timed out after 25s (likely Groq token wait), will check on next poll`);
+        } else {
+            console.error(`analyze-job error: ${error.message}`);
+        }
+    }
+
+    async handlePollingError(error) {
+        if (error.isHealthCheckFailure) {
+            throw error.result;
+        }
+        
+        console.error(`Polling error (attempt ${this.attempts}): ${error.message}`);
+        await this.waitForNextPoll();
+    }
+
+    async waitForNextPoll() {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    handleTimeout() {
+        const timeoutMinutes = Math.round(this.maxAttempts * 2 / 60);
+        console.error(`⏱️  Job ${this.jobId} timed out after ${this.maxAttempts} attempts (~${timeoutMinutes} minutes)`);
+
+        return {
+            status: 'UNKNOWN',
+            explanation: `EOL check timed out after ${timeoutMinutes} minutes. The job may still be processing. Check Netlify function logs for details.`,
+            successor: { status: 'UNKNOWN', model: null, explanation: '' }
+        };
+    }
 }
 
 // Helper: Update product in database
@@ -474,209 +618,243 @@ exports.handler = async function(event, context) {
     console.log('='.repeat(60));
 
     try {
-        // Parse the request body to get siteUrl
-        const body = JSON.parse(event.body || '{}');
-        const passedSiteUrl = body.siteUrl;
-
-        // Use passed siteUrl or fall back to environment variables
-        const siteUrl = passedSiteUrl || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || 'https://develop--syntegoneolchecker.netlify.app';
-        console.log(`Site URL: ${siteUrl} (${passedSiteUrl ? 'passed from caller' : 'from environment'})`);
-
-        const store = getStore({
-            name: 'auto-check-state',
-            siteID: process.env.SITE_ID,
-            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
-        });
-
-        // Get current state
+        const { siteUrl, store } = await initializeFromEvent(event);
+        
         let state = await store.get('state', { type: 'json' });
-
         if (!state) {
             console.log('State not initialized');
             return { statusCode: 200, body: 'State not initialized' };
         }
 
-        // Check if enabled
-        if (!state.enabled) {
-            console.log('Auto-check disabled, stopping');
-            // Use set-auto-check-state to avoid race condition
-            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isRunning: false })
-            });
-            return { statusCode: 200, body: 'Disabled' };
+        // Validate and prepare for check
+        const shouldProceed = await validateAndPrepareForCheck(state, siteUrl, store);
+        if (!shouldProceed.shouldContinue) {
+            return { statusCode: 200, body: shouldProceed.reason };
         }
-
-        // Check if new day (reset counter at GMT+9 midnight)
-        const currentDate = getGMT9Date();
-        if (state.lastResetDate !== currentDate) {
-            console.log(`New day detected (${currentDate}), resetting counter`);
-            // Use set-auto-check-state to avoid race condition
-            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dailyCounter: 0, lastResetDate: currentDate })
-            });
-            // Re-fetch state after update
-            state = await store.get('state', { type: 'json' });
-        }
-
-        // Check if daily limit reached
-        if (state.dailyCounter >= 20) {
-            console.log('Daily limit reached (20 checks)');
-            // Use set-auto-check-state to avoid race condition
-            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isRunning: false })
-            });
-            return { statusCode: 200, body: 'Daily limit reached' };
-        }
-
+        
+        // Update state with fresh data after potential resets
+        state = shouldProceed.updatedState || state;
+        
         console.log(`Current progress: ${state.dailyCounter}/20 checks today`);
 
-        // Wake Render service (only on first check of the day)
+        // Wake Render service on first check
         if (state.dailyCounter === 0) {
             const renderReady = await wakeRenderService();
             if (!renderReady) {
-                console.warn('Render service not ready, will retry next time');
-                // Use set-auto-check-state to avoid race condition
-                await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ isRunning: false })
-                });
+                await updateAutoCheckState(siteUrl, { isRunning: false });
                 return { statusCode: 200, body: 'Render not ready' };
             }
         }
 
-        // Wait for Groq tokens
-        await waitForGroqTokens(siteUrl);
+        // Prepare for EOL check
+        await prepareForEOLCheck(siteUrl);
 
-        // Small delay before processing (replaces delay between checks)
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // Find next product to check
-        const product = await findNextProduct();
-        if (!product) {
-            console.log('No more products to check');
-            // Use set-auto-check-state to avoid race condition
-            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isRunning: false })
-            });
-            return { statusCode: 200, body: 'No products to check' };
+        // Find and process next product
+        const checkResult = await processNextProduct(state, siteUrl, store);
+        
+        if (checkResult.shouldStopChain) {
+            return { statusCode: 200, body: checkResult.reason };
         }
 
-        // Re-check state RIGHT BEFORE starting EOL check (user may have disabled during prep)
-        const preCheckState = await store.get('state', { type: 'json' });
-        console.log(`Pre-check state: enabled=${preCheckState.enabled}, counter=${preCheckState.dailyCounter}, isRunning=${preCheckState.isRunning}`);
-
-        if (!preCheckState.enabled) {
-            console.log('🛑 Auto-check disabled before starting EOL check, stopping chain');
-            // Use set-auto-check-state to avoid race condition
-            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isRunning: false })
-            });
-            return { statusCode: 200, body: 'Disabled before check' };
-        }
-
-        console.log('✓ Slider still enabled, proceeding with EOL check');
-
-        // Execute ONE EOL check
-        const success = await executeEOLCheck(product, siteUrl);
-
-        // Increment counter and update activity time (even if failed - count toward daily limit)
-        // FIX #5: Keep isRunning=true during chain execution for accurate state tracking
-        const newCounter = preCheckState.dailyCounter + 1;
-        await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                dailyCounter: newCounter,
-                lastActivityTime: new Date().toISOString(),
-                isRunning: true  // Explicitly maintain running state during chain
-            })
-        });
-
-        console.log(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${newCounter}/20`);
-
-        // Check if we should continue (re-fetch state to get latest enabled status)
-        const freshState = await store.get('state', { type: 'json' });
-        console.log(`Post-check state: enabled=${freshState.enabled}, counter=${freshState.dailyCounter}, isRunning=${freshState.isRunning}`);
-
-        const shouldContinue = freshState.enabled && freshState.dailyCounter < 20;
-
-        if (shouldContinue) {
-            // Trigger next check by calling this function again
-            console.log('✓ Slider still enabled, triggering next check...');
-            const nextCheckUrl = `${siteUrl}/.netlify/functions/auto-eol-check-background`;
-
-            try {
-                // Fire and forget - don't wait for response
-                fetch(nextCheckUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        triggeredBy: 'chain',
-                        siteUrl: siteUrl
-                    })
-                }).catch(err => {
-                    console.error('Failed to trigger next check:', err.message);
-                });
-
-                console.log('Next check triggered');
-            } catch (error) {
-                console.error('Error triggering next check:', error.message);
-            }
-        } else {
-            // Chain complete
-            const reason = !freshState.enabled ? 'slider disabled' : 'daily limit reached';
-            console.log(`🛑 Chain stopped: ${reason} (enabled=${freshState.enabled}, counter=${freshState.dailyCounter}/20)`);
-            // Use set-auto-check-state to avoid race condition
-            await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isRunning: false })
-            });
-        }
+        // Determine if chain should continue
+        await determineChainContinuation(siteUrl, store);
 
         return {
-            statusCode: 202, // Accepted (background processing)
+            statusCode: 202,
             body: JSON.stringify({
                 message: 'Check completed',
-                counter: newCounter,
-                nextTriggered: shouldContinue
+                counter: checkResult.newCounter,
+                nextTriggered: checkResult.shouldContinue
             })
         };
 
     } catch (error) {
         console.error('Background function error:', error);
-
-        // Mark as not running on error
-        try {
-            // Determine siteUrl for error handling
-            const body = JSON.parse(event.body || '{}');
-            const passedSiteUrl = body.siteUrl;
-            const errorSiteUrl = passedSiteUrl || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || 'https://develop--syntegoneolchecker.netlify.app';
-
-            // Use set-auto-check-state to avoid race condition
-            await fetch(`${errorSiteUrl}/.netlify/functions/set-auto-check-state`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isRunning: false })
-            });
-        } catch (e) {
-            console.error('Failed to update state on error:', e);
-        }
-
+        await handleErrorState(event);
+        
         return {
             statusCode: 500,
             body: JSON.stringify({ error: error.message })
         };
     }
 };
+
+// ========== EXTRACTED FUNCTIONS ==========
+
+async function initializeFromEvent(event) {
+    const body = JSON.parse(event.body || '{}');
+    const passedSiteUrl = body.siteUrl;
+
+    const siteUrl = passedSiteUrl || 
+                   process.env.DEPLOY_PRIME_URL || 
+                   process.env.DEPLOY_URL || 
+                   process.env.URL || 
+                   'https://develop--syntegoneolchecker.netlify.app';
+    
+    console.log(`Site URL: ${siteUrl} (${passedSiteUrl ? 'passed from caller' : 'from environment'})`);
+
+    const store = getStore({
+        name: 'auto-check-state',
+        siteID: process.env.SITE_ID,
+        token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+    });
+
+    return { siteUrl, store };
+}
+
+async function validateAndPrepareForCheck(state, siteUrl, store) {
+    // Check if enabled
+    if (!state.enabled) {
+        console.log('Auto-check disabled, stopping');
+        await updateAutoCheckState(siteUrl, { isRunning: false });
+        return { shouldContinue: false, reason: 'Disabled' };
+    }
+
+    // Check if new day (reset counter at GMT+9 midnight)
+    const currentDate = getGMT9Date();
+    if (state.lastResetDate !== currentDate) {
+        console.log(`New day detected (${currentDate}), resetting counter`);
+        await updateAutoCheckState(siteUrl, { 
+            dailyCounter: 0, 
+            lastResetDate: currentDate 
+        });
+        
+        // Return updated state
+        const updatedState = await store.get('state', { type: 'json' });
+        return { 
+            shouldContinue: true, 
+            updatedState,
+            reason: 'New day, counter reset'
+        };
+    }
+
+    // Check if daily limit reached
+    if (state.dailyCounter >= 20) {
+        console.log('Daily limit reached (20 checks)');
+        await updateAutoCheckState(siteUrl, { isRunning: false });
+        return { shouldContinue: false, reason: 'Daily limit reached' };
+    }
+
+    return { shouldContinue: true };
+}
+
+async function prepareForEOLCheck(siteUrl) {
+    await waitForGroqTokens(siteUrl);
+    // Small delay before processing
+    await new Promise(resolve => setTimeout(resolve, 2000));
+}
+
+async function processNextProduct(state, siteUrl, store) {
+    // Find next product to check
+    const product = await findNextProduct();
+    if (!product) {
+        console.log('No more products to check');
+        await updateAutoCheckState(siteUrl, { isRunning: false });
+        return { 
+            shouldStopChain: true, 
+            reason: 'No products to check' 
+        };
+    }
+
+    // Re-check state RIGHT BEFORE starting EOL check
+    const preCheckState = await store.get('state', { type: 'json' });
+    console.log(`Pre-check state: enabled=${preCheckState.enabled}, counter=${preCheckState.dailyCounter}, isRunning=${preCheckState.isRunning}`);
+
+    if (!preCheckState.enabled) {
+        console.log('🛑 Auto-check disabled before starting EOL check, stopping chain');
+        await updateAutoCheckState(siteUrl, { isRunning: false });
+        return { 
+            shouldStopChain: true, 
+            reason: 'Disabled before check' 
+        };
+    }
+
+    console.log('✓ Slider still enabled, proceeding with EOL check');
+
+    // Execute ONE EOL check
+    const success = await executeEOLCheck(product, siteUrl);
+
+    // Increment counter and update activity time
+    const newCounter = preCheckState.dailyCounter + 1;
+    await updateAutoCheckState(siteUrl, {
+        dailyCounter: newCounter,
+        lastActivityTime: new Date().toISOString(),
+        isRunning: true  // Explicitly maintain running state during chain
+    });
+
+    console.log(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${newCounter}/20`);
+    
+    return {
+        shouldStopChain: false,
+        newCounter,
+        shouldContinue: true
+    };
+}
+
+async function determineChainContinuation(siteUrl, store) {
+    // Check if we should continue
+    const freshState = await store.get('state', { type: 'json' });
+    console.log(`Post-check state: enabled=${freshState.enabled}, counter=${freshState.dailyCounter}, isRunning=${freshState.isRunning}`);
+
+    const shouldContinue = freshState.enabled && freshState.dailyCounter < 20;
+
+    if (shouldContinue) {
+        await triggerNextCheck(siteUrl);
+    } else {
+        await stopChain(siteUrl, freshState);
+    }
+}
+
+async function updateAutoCheckState(siteUrl, updates) {
+    return fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+    });
+}
+
+async function triggerNextCheck(siteUrl) {
+    console.log('✓ Slider still enabled, triggering next check...');
+    const nextCheckUrl = `${siteUrl}/.netlify/functions/auto-eol-check-background`;
+
+    try {
+        // Fire and forget - don't wait for response
+        fetch(nextCheckUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                triggeredBy: 'chain',
+                siteUrl: siteUrl
+            })
+        }).catch(err => {
+            console.error('Failed to trigger next check:', err.message);
+        });
+
+        console.log('Next check triggered');
+    } catch (error) {
+        console.error('Error triggering next check:', error.message);
+    }
+}
+
+async function stopChain(siteUrl, state) {
+    const reason = state.enabled ? 'daily limit reached' : 'slider disabled';
+    console.log(`🛑 Chain stopped: ${reason} (enabled=${state.enabled}, counter=${state.dailyCounter}/20)`);
+    
+    await updateAutoCheckState(siteUrl, { isRunning: false });
+}
+
+async function handleErrorState(event) {
+    try {
+        const body = JSON.parse(event.body || '{}');
+        const passedSiteUrl = body.siteUrl;
+        const errorSiteUrl = passedSiteUrl || 
+                           process.env.DEPLOY_PRIME_URL || 
+                           process.env.DEPLOY_URL || 
+                           process.env.URL || 
+                           'https://develop--syntegoneolchecker.netlify.app';
+
+        await updateAutoCheckState(errorSiteUrl, { isRunning: false });
+    } catch (e) {
+        console.error('Failed to update state on error:', e);
+    }
+}

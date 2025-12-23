@@ -21,7 +21,7 @@ function getCurrentDeploymentUrl(event, context) {
     // 4. Fall back to environment variables
 
     // Priority 1: Extract from rawUrl (e.g., "https://develop--site.netlify.app/.netlify/functions/...")
-    if (event && event.rawUrl) {
+    if (event?.rawUrl) {
         try {
             const url = new URL(event.rawUrl);
             const siteUrl = `${url.protocol}//${url.host}`;
@@ -33,7 +33,7 @@ function getCurrentDeploymentUrl(event, context) {
     }
 
     // Priority 2: Extract from headers.host
-    if (event && event.headers && event.headers.host) {
+    if (event?.headers?.host) {
         const protocol = event.headers['x-forwarded-proto'] || 'https';
         const siteUrl = `${protocol}://${event.headers.host}`;
         console.log(`Detected site URL from event.headers.host: ${siteUrl}`);
@@ -41,7 +41,7 @@ function getCurrentDeploymentUrl(event, context) {
     }
 
     // Priority 3: Decode from context.clientContext.custom.netlify (base64-encoded JSON)
-    if (context && context.clientContext && context.clientContext.custom && context.clientContext.custom.netlify) {
+    if (context?.clientContext?.custom?.netlify) {
         try {
             const decoded = Buffer.from(context.clientContext.custom.netlify, 'base64').toString('utf-8');
             const data = JSON.parse(decoded);

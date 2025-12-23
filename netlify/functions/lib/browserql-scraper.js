@@ -77,7 +77,7 @@ async function scrapeWithBrowserQL(url) {
         throw new Error(`BrowserQL GraphQL errors: ${JSON.stringify(result.errors)}`);
     }
 
-    if (!result.data || !result.data.pageContent) {
+    if (!result.data?.pageContent) {
         throw new Error('BrowserQL returned no data');
     }
 

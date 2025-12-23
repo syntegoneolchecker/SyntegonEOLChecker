@@ -97,7 +97,7 @@ function sanitizeString(input, maxLength = 1000) {
     }
 
     // Remove null bytes (common in injection attacks)
-    sanitized = sanitized.replace(/\0/g, '');
+    sanitized = sanitized.replaceAll('\0', '');
 
     return sanitized;
 }

@@ -14,6 +14,10 @@ let isManualCheckRunning = false; // Track if manual Check EOL is in progress
 let groqCountdownInterval = null;
 let groqResetTimestamp = null;
 
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
 // Initialize the app
 async function init() {
     await loadFromServer();
@@ -23,6 +27,10 @@ async function init() {
     await loadAutoCheckState();
     startAutoCheckMonitoring(); // Start periodic monitoring
 }
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
 
 function showStatus(message, type = 'success', permanent = true) {
     const status = document.getElementById('status');
@@ -35,7 +43,7 @@ function showStatus(message, type = 'success', permanent = true) {
 // Format SAP Number to X-XXX-XXX-XXX format (10 digits)
 function formatID(input) {
     // Remove all non-digit characters
-    const digits = input.replace(/\D/g, '');
+    const digits = input.replaceAll(/\D/g, '');
 
     // Check if we have exactly 10 digits
     if (digits.length !== 10) {
@@ -46,191 +54,278 @@ function formatID(input) {
     return `${digits.slice(0, 1)}-${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7, 10)}`;
 }
 
+// Find row by SAP Part Number
+function findRowBySAPNumber(sapNumber) {
+    for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === sapNumber) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// Update row in originalData by SAP Part Number
+function updateRowInOriginalData(row) {
+    if (!originalData) return;
+
+    const sapNumber = row[0];
+    const originalIndex = originalData.findIndex(r => r[0] === sapNumber);
+    if (originalIndex !== -1) {
+        originalData[originalIndex] = [...row];
+    }
+}
+
+// Check if Render service is healthy based on status text
+function isRenderServiceHealthy() {
+    const renderStatusElement = document.getElementById('render-status');
+    const renderStatusText = renderStatusElement.textContent;
+    return !renderStatusText.includes('Timeout') &&
+           !renderStatusText.includes('Offline') &&
+           !renderStatusText.includes('Error');
+}
+
+// Parse credits remaining from text
+function parseCreditsRemaining(creditsText) {
+    const match = new RegExp(/(\d{1,6})\/\d{1,6} remaining/).exec(creditsText);
+    return match ? Number.parseInt(match[1]) : null;
+}
+
+// ============================================================================
+// TABLE RENDERING
+// ============================================================================
+
+// Render table header cell
+function renderTableHeader(columnContent, columnIndex, sortableColumns) {
+    const isSortable = sortableColumns.includes(columnIndex);
+    let sortIndicator = '';
+    if (currentSort.column === columnIndex) {
+        if (currentSort.direction === 'asc') {
+            sortIndicator = ' ▲';
+        } else if (currentSort.direction === 'desc') {
+            sortIndicator = ' ▼';
+        }
+    }
+    const clickHandler = isSortable ? ` onclick="sortTable(${columnIndex})" style="cursor: pointer; user-select: none;"` : '';
+    return `<th${clickHandler}>${columnContent}${sortIndicator}</th>`;
+}
+
+// Render table data cell
+function renderTableCell(cellContent) {
+    return `<td>${cellContent}</td>`;
+}
+
+// Render table action buttons
+function renderActionButtons(rowIndex) {
+    return `<td><button class="check-eol" onclick="checkEOL(${rowIndex})">Check EOL</button><button class="delete" onclick="delRow(${rowIndex})">Delete</button></td>`;
+}
+
+// Update Check EOL button states after rendering
+async function updateButtonStates() {
+    try {
+        const response = await fetch('/.netlify/functions/get-auto-check-state');
+        const state = response.ok ? await response.json() : null;
+
+        // Disable buttons if EITHER manual check OR auto-check is running
+        const shouldDisable = isManualCheckRunning || (state?.isRunning);
+        if (typeof updateCheckEOLButtons === 'function') {
+            updateCheckEOLButtons(shouldDisable);
+        }
+    } catch (error) {
+        // If state fetch fails, still respect manual check flag
+        console.warn('Failed to fetch auto-check state:', error);
+        if (isManualCheckRunning) {
+            updateCheckEOLButtons(true);
+        }
+    }
+}
+
 function render() {
-    const sortableColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]; // SAP Part Number, Legacy Part Number, Designation, Model, Manufacturer, Status, Status Comment, Successor Model, Successor Comment, Successor SAP Number, Stock, Information Date
+    const sortableColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]; // All data columns are sortable
 
     const t = document.getElementById('table');
     t.innerHTML = data.map((r, i) =>
         `<tr id="row-${i}">${r.map((c, j) => {
-            if (i == 0) {
-                // Header row
-                const isSortable = sortableColumns.includes(j);
-                const sortIndicator = (currentSort.column === j)
-                    ? (currentSort.direction === 'asc' ? ' ▲' : currentSort.direction === 'desc' ? ' ▼' : '')
-                    : '';
-                const clickHandler = isSortable ? ` onclick="sortTable(${j})" style="cursor: pointer; user-select: none;"` : '';
-                return `<th${clickHandler}>${c}${sortIndicator}</th>`;
+            if (i === 0) {
+                return renderTableHeader(c, j, sortableColumns);
             } else {
-                return `<td>${c}</td>`;
+                return renderTableCell(c);
             }
-        }).join('')}${i > 0 ? `<td><button class="check-eol" onclick="checkEOL(${i})">Check EOL</button><button class="delete" onclick="delRow(${i})">Delete</button></td>` : '<th>Actions</th>'}</tr>`
+        }).join('')}${i > 0 ? renderActionButtons(i) : '<th>Actions</th>'}</tr>`
     ).join('');
 
     // Update Check EOL buttons state after rendering
-    // Check if auto-check OR manual check is running
-    // CRITICAL: Always fetch auto-check state to avoid race condition
-    fetch('/.netlify/functions/get-auto-check-state')
-        .then(r => r.ok ? r.json() : null)
-        .then(state => {
-            // Disable buttons if EITHER manual check OR auto-check is running
-            const shouldDisable = isManualCheckRunning || (state && state.isRunning);
-            if (typeof updateCheckEOLButtons === 'function') {
-                updateCheckEOLButtons(shouldDisable);
-            }
-        })
-        .catch(error => {
-            // If state fetch fails, still respect manual check flag
-            console.warn('Failed to fetch auto-check state:', error);
-            if (isManualCheckRunning) {
-                updateCheckEOLButtons(true);
-            }
-        });
+    updateButtonStates();
+}
+
+// ============================================================================
+// SORTING FUNCTIONALITY
+// ============================================================================
+
+// Compare values for sorting (handles date columns specially)
+function compareValues(aVal, bVal, columnIndex, direction) {
+    // Special handling for Information Date column (column 11)
+    if (columnIndex === 11) {
+        const aDate = aVal ? new Date(aVal) : new Date(0);
+        const bDate = bVal ? new Date(bVal) : new Date(0);
+        return direction === 'asc' ? aDate - bDate : bDate - aDate;
+    }
+
+    // Default lexicographical sorting
+    const aLower = (aVal || '').toString().toLowerCase();
+    const bLower = (bVal || '').toString().toLowerCase();
+    return direction === 'asc' ? aLower.localeCompare(bLower) : bLower.localeCompare(aLower);
+}
+
+// Determine next sort state
+function getNextSortState(columnIndex) {
+    if (currentSort.column === columnIndex) {
+        // Same column clicked - cycle through states: null → asc → desc → null
+        if (currentSort.direction === null) {
+            return 'asc';
+        } else if (currentSort.direction === 'asc') {
+            return 'desc';
+        } else {
+            return null; // Reset
+        }
+    } else {
+        // Different column clicked - start fresh with ascending
+        return 'asc';
+    }
 }
 
 // Three-state sorting: null → asc → desc → null
 function sortTable(columnIndex) {
     // Save original order on first sort (if not already saved)
     if (originalData === null) {
-        originalData = JSON.parse(JSON.stringify(data));
+        originalData = structuredClone(data);
     }
 
     // Determine next sort state
-    if (currentSort.column === columnIndex) {
-        // Same column clicked - cycle through states
-        if (currentSort.direction === null) {
-            currentSort.direction = 'asc';
-        } else if (currentSort.direction === 'asc') {
-            currentSort.direction = 'desc';
-        } else {
-            // Reset to original order
-            currentSort.direction = null;
-            currentSort.column = null;
-            data = JSON.parse(JSON.stringify(originalData));
-            render();
-            return;
-        }
-    } else {
-        // Different column clicked - start fresh with ascending
-        currentSort.column = columnIndex;
-        currentSort.direction = 'asc';
+    const nextDirection = getNextSortState(columnIndex);
+
+    // Handle reset to original order
+    if (nextDirection === null) {
+        currentSort.direction = null;
+        currentSort.column = null;
+        data = structuredClone(originalData);
+        render();
+        return;
     }
+
+    // Update sort state
+    currentSort.column = columnIndex;
+    currentSort.direction = nextDirection;
 
     // Perform the sort (exclude header row at index 0)
     const header = data[0];
     const rows = data.slice(1);
 
-    rows.sort((a, b) => {
-        // Special handling for Information Date column (column 11)
-        if (columnIndex === 11) {
-            const aVal = a[columnIndex] || '';
-            const bVal = b[columnIndex] || '';
-
-            // Parse dates - handle empty values
-            const aDate = aVal ? new Date(aVal) : new Date(0); // Epoch for empty dates
-            const bDate = bVal ? new Date(bVal) : new Date(0);
-
-            if (currentSort.direction === 'asc') {
-                return aDate - bDate; // Oldest to newest
-            } else {
-                return bDate - aDate; // Newest to oldest
-            }
-        }
-
-        // Default lexicographical sorting for all other columns
-        const aVal = (a[columnIndex] || '').toString().toLowerCase();
-        const bVal = (b[columnIndex] || '').toString().toLowerCase();
-
-        if (currentSort.direction === 'asc') {
-            return aVal.localeCompare(bVal);
-        } else {
-            return bVal.localeCompare(aVal);
-        }
-    });
+    rows.sort((a, b) => compareValues(a[columnIndex], b[columnIndex], columnIndex, currentSort.direction));
 
     // Rebuild data array with header + sorted rows
     data = [header, ...rows];
     render();
 }
 
-async function addRow() {
-    // Get ID from first field
-    const idInput = document.getElementById('c1').value.trim();
+// ============================================================================
+// ROW MANAGEMENT (ADD/DELETE)
+// ============================================================================
 
-    // Validate SAP Part Number is provided
+// Validate and format SAP Part Number
+function validateAndFormatSAPNumber(idInput) {
     if (!idInput) {
         showStatus('Error: SAP Part Number is required', 'error');
-        return;
+        return null;
     }
 
-    // Format the SAP Part Number
     const formattedID = formatID(idInput);
     if (!formattedID) {
         showStatus('Error: SAP Part Number must be exactly 10 digits (e.g., 8-114-463-187 or 8114463187)', 'error');
-        return;
+        return null;
     }
 
-    // Read all 13 fields (13 columns total)
-    const row = [formattedID]; // Start with formatted SAP Part Number
-    for (let i = 2; i <= 13; i++) {
-        const v = document.getElementById('c' + i).value;
-        row.push(v);
-    }
+    return formattedID;
+}
 
-    // Find existing entry by ID (skip header row at index 0)
-    let existingIndex = -1;
-    for (let i = 1; i < data.length; i++) {
-        if (data[i][0] === formattedID) {
-            existingIndex = i;
-            break;
-        }
+// Collect all input field values
+function collectInputFields(startIndex, endIndex) {
+    const fields = [];
+    for (let i = startIndex; i <= endIndex; i++) {
+        const value = document.getElementById('c' + i).value;
+        fields.push(value);
     }
+    return fields;
+}
 
-    if (existingIndex !== -1) {
+// Clear all input fields
+function clearInputFields(startIndex, endIndex) {
+    for (let i = startIndex; i <= endIndex; i++) {
+        document.getElementById('c' + i).value = '';
+    }
+}
+
+// Build confirmation message for replacing entry
+function buildConfirmationMessage(formattedID, existingRow) {
+    return `An entry with SAP Part Number ${formattedID} already exists:\n\n` +
+        `SAP Part Number: ${existingRow[0]}\n` +
+        `Legacy Part Number: ${existingRow[1]}\n` +
+        `Designation: ${existingRow[2]}\n` +
+        `Model: ${existingRow[3]}\n` +
+        `Manufacturer: ${existingRow[4]}\n` +
+        `Status: ${existingRow[5]}\n` +
+        `Status Comment: ${existingRow[6]}\n` +
+        `Successor Model: ${existingRow[7]}\n` +
+        `Successor Comment: ${existingRow[8]}\n` +
+        `Successor SAP Number: ${existingRow[9]}\n` +
+        `Stock: ${existingRow[10]}\n` +
+        `Information Date: ${existingRow[11]}\n` +
+        `Auto Check: ${existingRow[12]}\n\n` +
+        `Do you want to replace this entry with the new data?`;
+}
+
+// Add new entry
+async function addNewEntry(formattedID, row) {
+    data.push(row);
+    if (originalData) originalData.push(row);
+    render();
+    showStatus(`✓ New entry ${formattedID} added successfully`);
+    await saveToServer();
+    clearInputFields(1, 13);
+}
+
+// Replace existing entry
+async function replaceExistingEntry(existingIndex, formattedID, row) {
+    data[existingIndex] = row;
+    if (originalData) originalData[existingIndex] = row;
+    render();
+    showStatus(`✓ Entry ${formattedID} replaced successfully`);
+    await saveToServer();
+    clearInputFields(1, 13);
+}
+
+async function addRow() {
+    const idInput = document.getElementById('c1').value.trim();
+    const formattedID = validateAndFormatSAPNumber(idInput);
+    if (!formattedID) return;
+
+    // Build row with all fields
+    const row = [formattedID, ...collectInputFields(2, 13)];
+
+    // Find existing entry by ID
+    const existingIndex = findRowBySAPNumber(formattedID);
+
+    if (existingIndex === -1) {
+        // New entry - add it
+        await addNewEntry(formattedID, row);
+    } else {
         // Entry exists - ask for confirmation
         const existingRow = data[existingIndex];
-        const confirmMessage = `An entry with SAP Part Number ${formattedID} already exists:\n\n` +
-            `SAP Part Number: ${existingRow[0]}\n` +
-            `Legacy Part Number: ${existingRow[1]}\n` +
-            `Designation: ${existingRow[2]}\n` +
-            `Model: ${existingRow[3]}\n` +
-            `Manufacturer: ${existingRow[4]}\n` +
-            `Status: ${existingRow[5]}\n` +
-            `Status Comment: ${existingRow[6]}\n` +
-            `Successor Model: ${existingRow[7]}\n` +
-            `Successor Comment: ${existingRow[8]}\n` +
-            `Successor SAP Number: ${existingRow[9]}\n` +
-            `Stock: ${existingRow[10]}\n` +
-            `Information Date: ${existingRow[11]}\n` +
-            `Auto Check: ${existingRow[12]}\n\n` +
-            `Do you want to replace this entry with the new data?`;
+        const confirmMessage = buildConfirmationMessage(formattedID, existingRow);
 
         if (confirm(confirmMessage)) {
-            // User confirmed - replace the entry
-            data[existingIndex] = row;
-            if (originalData) originalData[existingIndex] = row;
-            render();
-            showStatus(`✓ Entry ${formattedID} replaced successfully`);
-            await saveToServer();
-
-            // Clear input fields
-            for (let i = 1; i <= 13; i++) {
-                document.getElementById('c' + i).value = '';
-            }
+            await replaceExistingEntry(existingIndex, formattedID, row);
         } else {
-            // User cancelled
             showStatus(`Entry replacement cancelled`, 'info');
-        }
-    } else {
-        // New entry - add it
-        data.push(row);
-        if (originalData) originalData.push(row);
-        render();
-        showStatus(`✓ New entry ${formattedID} added successfully`);
-        await saveToServer();
-
-        // Clear input fields
-        for (let i = 1; i <= 13; i++) {
-            document.getElementById('c' + i).value = '';
         }
     }
 }
@@ -253,127 +348,247 @@ async function delRow(i) {
     await saveToServer();
 }
 
-async function checkEOL(rowIndex) {
-    const row = data[rowIndex];
-    const model = row[3]; // Model is column 3
-    const manufacturer = row[4]; // Manufacturer is column 4
+// ============================================================================
+// EOL CHECKING FUNCTIONALITY
+// ============================================================================
 
+// Validate EOL inputs
+function validateEOLInputs(model, manufacturer) {
     if (!model || !manufacturer) {
         showStatus('Error: Model and Manufacturer are required for EOL check', 'error');
-        return;
+        return false;
+    }
+    return true;
+}
+
+// Wake up Render service and validate it's healthy
+async function wakeRenderService(checkButton) {
+    checkButton.textContent = 'Waking Render...';
+    showStatus(`Waking up scraping service...`, 'info', false);
+    await checkRenderHealth();
+
+    if (!isRenderServiceHealthy()) {
+        const renderStatusElement = document.getElementById('render-status');
+        const renderStatusText = renderStatusElement.textContent;
+        showStatus(`Error: Render Scraping Service is not available (${renderStatusText}). Please reload the page and try again.`, 'error');
+        return false;
     }
 
-    // DISABLE ALL CHECK EOL BUTTONS (prevent parallel execution)
+    return true;
+}
+
+// Initialize EOL job
+async function initializeEOLJob(model, manufacturer) {
+    const initResponse = await fetch('/.netlify/functions/initialize-job', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model, maker: manufacturer })
+    });
+
+    if (!initResponse.ok) {
+        const errorData = await initResponse.json();
+        throw new Error(errorData.error || `HTTP error! status: ${initResponse.status}`);
+    }
+
+    const initData = await initResponse.json();
+    console.log('Job initialized:', initData);
+
+    if (!initData.jobId) {
+        throw new Error('No job ID received');
+    }
+
+    return initData.jobId;
+}
+
+// Update row with EOL results
+async function updateRowWithEOLResults(rowIndex, result) {
+    const row = data[rowIndex];
+
+    // Update columns with results
+    row[5] = result.status || 'UNKNOWN';
+    row[6] = result.explanation || '';
+    row[7] = result.successor?.model || '';
+    row[8] = result.successor?.explanation || '';
+    row[11] = new Date().toLocaleString();
+
+    // Update originalData if it exists
+    updateRowInOriginalData(row);
+
+    // Re-render and save
+    render();
+    await saveToServer();
+
+    // Refresh credits and rate limits
+    await loadTavilyCredits();
+    if (result.rateLimits) {
+        updateGroqRateLimits(result.rateLimits);
+    }
+}
+
+async function checkEOL(rowIndex) {
+    const row = data[rowIndex];
+    const model = row[3];
+    const manufacturer = row[4];
+
+    if (!validateEOLInputs(model, manufacturer)) return;
+
+    // Disable all Check EOL buttons
     disableAllCheckEOLButtons();
 
     try {
-        // Show loading state
         const rowElement = document.getElementById(`row-${rowIndex}`);
         const checkButton = rowElement.querySelector('.check-eol');
-        const originalButtonText = checkButton.textContent;
-        checkButton.textContent = 'Waking Render...';
 
-        // Wake up Render scraping service (handles cold starts and post-restart downtime)
-        showStatus(`Waking up scraping service...`, 'info', false);
-        await checkRenderHealth();
-
-        // Check if health check failed or timed out
-        const renderStatusElement = document.getElementById('render-status');
-        const renderStatusText = renderStatusElement.textContent;
-
-        if (renderStatusText.includes('Timeout') || renderStatusText.includes('Offline') || renderStatusText.includes('Error')) {
-            showStatus(`Error: Render Scraping Service is not available (${renderStatusText}). Please reload the page and try again.`, 'error');
+        // Wake up Render service
+        if (!await wakeRenderService(checkButton)) {
             enableAllCheckEOLButtons();
-            return; // Abort the EOL check
+            return;
         }
 
+        // Initialize job
         checkButton.textContent = 'Initializing...';
         showStatus(`Initializing EOL check for ${manufacturer} ${model}...`, 'info', false);
 
-        // Step 1: Initialize job (search and queue URLs)
-        const initResponse = await fetch('/.netlify/functions/initialize-job', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ model, maker: manufacturer })
-        });
+        const jobId = await initializeEOLJob(model, manufacturer);
 
-        if (!initResponse.ok) {
-            const errorData = await initResponse.json();
-            throw new Error(errorData.error || `HTTP error! status: ${initResponse.status}`);
-        }
-
-        const initData = await initResponse.json();
-        console.log('Job initialized:', initData);
-
-        const jobId = initData.jobId;
-
-        if (!jobId) {
-            throw new Error('No job ID received');
-        }
-
-        // Update button to show processing state
+        // Update button and poll for results
         checkButton.textContent = 'Processing...';
-
-        // Step 2: Poll for job status
         const result = await pollJobStatus(jobId, manufacturer, model, checkButton);
 
-        // Update the row with results
-        // New columns: SAP Part Number, Legacy Part Number, Designation, Model, Manufacturer,
-        //              Status, Status Comment, Successor Model, Successor Comment,
-        //              Successor SAP Number, Stock, Information Date, Auto Check
-
-        // Column 5: Status (DISCONTINUED, ACTIVE, or UNKNOWN)
-        row[5] = result.status || 'UNKNOWN';
-
-        // Column 6: Status Comment
-        row[6] = result.explanation || '';
-
-        // Column 7: Successor Model
-        row[7] = result.successor?.model || '';
-
-        // Column 8: Successor Comment
-        row[8] = result.successor?.explanation || '';
-
-        // Column 11: Information Date
-        row[11] = new Date().toLocaleString();
-
-        // Update originalData if it exists (find by SAP Part Number)
-        if (originalData) {
-            const sapNumber = row[0];
-            const originalIndex = originalData.findIndex(r => r[0] === sapNumber);
-            if (originalIndex !== -1) {
-                originalData[originalIndex] = [...row]; // Copy the updated row
-            }
-        }
-
-        // Re-render the table
-        render();
-
-        // Save to server
-        await saveToServer();
-
-        // Refresh Tavily credits
-        await loadTavilyCredits();
-
-        // Update Groq rate limit display
-        if (result.rateLimits) {
-            updateGroqRateLimits(result.rateLimits);
-        }
+        // Update row with results
+        await updateRowWithEOLResults(rowIndex, result);
 
         showStatus(`✓ EOL check completed for ${manufacturer} ${model}`, 'success');
-
-        // RE-ENABLE ALL CHECK EOL BUTTONS
         enableAllCheckEOLButtons();
 
     } catch (error) {
         console.error('EOL check failed:', error);
         showStatus(`Error checking EOL: ${error.message}`, 'error');
-
-        // RE-ENABLE ALL CHECK EOL BUTTONS (even on error)
         enableAllCheckEOLButtons();
     }
+}
+
+// ============================================================================
+// JOB POLLING FUNCTIONALITY
+// ============================================================================
+
+// Update job progress display
+function updateJobProgress(statusData, manufacturer, model, checkButton) {
+    const progress = `${statusData.completedUrls || 0}/${statusData.urlCount || 0}`;
+    if (checkButton) {
+        checkButton.textContent = `Processing (${progress})`;
+    }
+    showStatus(`Checking ${manufacturer} ${model}... (${progress} pages)`, 'info', false);
+}
+
+// Check if we should trigger fetch-url
+function shouldTriggerFetch(statusData, fetchTriggered) {
+    return statusData.status === 'urls_ready' &&
+           !fetchTriggered &&
+           statusData.urls &&
+           statusData.urls.length > 0;
+}
+
+// Build fetch-url payload
+function buildFetchPayload(jobId, firstUrl) {
+    const payload = {
+        jobId,
+        urlIndex: firstUrl.index,
+        url: firstUrl.url,
+        title: firstUrl.title,
+        snippet: firstUrl.snippet,
+        scrapingMethod: firstUrl.scrapingMethod
+    };
+
+    // Add optional fields
+    if (firstUrl.model) payload.model = firstUrl.model;
+    if (firstUrl.jpUrl) payload.jpUrl = firstUrl.jpUrl;
+    if (firstUrl.usUrl) payload.usUrl = firstUrl.usUrl;
+
+    return payload;
+}
+
+// Trigger fetch-url (fire-and-forget)
+async function triggerFetchUrl(jobId, firstUrl, attempts) {
+    console.log(`✓ URLs ready, triggering fetch-url (attempt ${attempts})`);
+
+    const payload = buildFetchPayload(jobId, firstUrl);
+
+    // Fire-and-forget (Render scraping takes 30-60s, we can't wait)
+    fetch('/.netlify/functions/fetch-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    }).catch(err => {
+        console.error(`Failed to trigger fetch-url: ${err.message}`);
+    });
+
+    console.log(`✓ fetch-url triggered for ${firstUrl.url}`);
+}
+
+// Check if all URLs are complete
+function areAllUrlsComplete(statusData) {
+    return statusData.urls &&
+           statusData.urls.length > 0 &&
+           statusData.urls.every(u => u.status === 'complete');
+}
+
+// Check if we should trigger analyze-job
+function shouldTriggerAnalyze(statusData, analyzeTriggered) {
+    return areAllUrlsComplete(statusData) &&
+           !analyzeTriggered &&
+           statusData.status !== 'analyzing' &&
+           statusData.status !== 'complete';
+}
+
+// Trigger analyze-job (fire-and-forget)
+async function triggerAnalyzeJob(jobId, attempts) {
+    console.log(`✓ All URLs scraped, triggering analyze-job (attempt ${attempts})`);
+
+    fetch('/.netlify/functions/analyze-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId })
+    }).catch(err => {
+        console.error(`Failed to trigger analyze-job: ${err.message}`);
+    });
+
+    console.log(`✓ analyze-job triggered`);
+}
+
+// Handle daily limit error
+function handleDailyLimitError(statusData) {
+    if (statusData.isDailyLimit && statusData.retrySeconds) {
+        console.log(`Daily limit hit, starting countdown for ${statusData.retrySeconds}s`);
+        startGroqCountdown(statusData.retrySeconds);
+    }
+}
+
+// Get job status with error handling
+async function getJobStatus(jobId) {
+    const statusResponse = await fetch(`/.netlify/functions/job-status/${jobId}`);
+
+    if (!statusResponse.ok) {
+        throw new Error(`Status check failed: ${statusResponse.status}`);
+    }
+
+    return await statusResponse.json();
+}
+
+// Create timeout result
+function createTimeoutResult(maxAttempts) {
+    console.warn(`Job timed out after ${maxAttempts} attempts (2 minutes)`);
+    return {
+        status: 'UNKNOWN',
+        explanation: `EOL check timed out after ${maxAttempts} polling attempts (2 minutes). Please try again later.`,
+        successor: {
+            status: 'UNKNOWN',
+            model: null,
+            explanation: ''
+        }
+    };
 }
 
 // Poll job status until complete
@@ -388,112 +603,37 @@ async function pollJobStatus(jobId, manufacturer, model, checkButton) {
 
         try {
             console.log(`Polling job status (attempt ${attempts})...`);
-
-            const statusResponse = await fetch(`/.netlify/functions/job-status/${jobId}`);
-
-            if (!statusResponse.ok) {
-                throw new Error(`Status check failed: ${statusResponse.status}`);
-            }
-
-            const statusData = await statusResponse.json();
+            const statusData = await getJobStatus(jobId);
             console.log('Job status:', statusData);
 
-            // Update button text with progress
-            if (checkButton) {
-                const progress = `${statusData.completedUrls || 0}/${statusData.urlCount || 0}`;
-                checkButton.textContent = `Processing (${progress})`;
-            }
+            // Update progress display
+            updateJobProgress(statusData, manufacturer, model, checkButton);
 
-            // Update status message with progress
-            showStatus(`Checking ${manufacturer} ${model}... (${statusData.completedUrls || 0}/${statusData.urlCount || 0} pages)`, 'info', false);
-
+            // Check if job is complete
             if (statusData.status === 'complete') {
-                // Job complete!
                 console.log('Job complete:', statusData);
                 return statusData.result;
             }
 
+            // Check for errors
             if (statusData.status === 'error') {
-                // Check if this is a daily limit error with countdown info
-                if (statusData.isDailyLimit && statusData.retrySeconds) {
-                    console.log(`Daily limit hit, starting countdown for ${statusData.retrySeconds}s`);
-                    startGroqCountdown(statusData.retrySeconds);
-                }
+                handleDailyLimitError(statusData);
                 throw new Error(statusData.error || 'Job failed');
             }
 
-            // STEP 1: If URLs are ready, trigger fetch-url
-            if (statusData.status === 'urls_ready' && !fetchTriggered) {
-                console.log(`✓ URLs ready, triggering fetch-url (attempt ${attempts})`);
-
-                // Trigger fetch-url for the first URL
-                if (statusData.urls && statusData.urls.length > 0) {
-                    const firstUrl = statusData.urls[0];
-                    try {
-                        const payload = {
-                            jobId,
-                            urlIndex: firstUrl.index,
-                            url: firstUrl.url,
-                            title: firstUrl.title,
-                            snippet: firstUrl.snippet,
-                            scrapingMethod: firstUrl.scrapingMethod
-                        };
-
-                        // Pass model for KEYENCE interactive searches
-                        if (firstUrl.model) {
-                            payload.model = firstUrl.model;
-                        }
-
-                        // Pass jpUrl and usUrl for IDEC dual-site
-                        if (firstUrl.jpUrl) {
-                            payload.jpUrl = firstUrl.jpUrl;
-                        }
-                        if (firstUrl.usUrl) {
-                            payload.usUrl = firstUrl.usUrl;
-                        }
-
-                        // Fire-and-forget (Render scraping takes 30-60s, we can't wait)
-                        fetch('/.netlify/functions/fetch-url', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        }).catch(err => {
-                            console.error(`Failed to trigger fetch-url: ${err.message}`);
-                        });
-
-                        console.log(`✓ fetch-url triggered for ${firstUrl.url}`);
-                        fetchTriggered = true;
-                    } catch (error) {
-                        console.error(`Error triggering fetch-url: ${error.message}`);
-                    }
-                }
+            // Trigger fetch-url if URLs are ready
+            if (shouldTriggerFetch(statusData, fetchTriggered)) {
+                await triggerFetchUrl(jobId, statusData.urls[0], attempts);
+                fetchTriggered = true;
             }
 
-            // STEP 2: Check if scraping is complete and analysis needs to be triggered
-            const allUrlsComplete = statusData.urls && statusData.urls.length > 0 &&
-                                     statusData.urls.every(u => u.status === 'complete');
-
-            if (allUrlsComplete && !analyzeTriggered && statusData.status !== 'analyzing' && statusData.status !== 'complete') {
-                console.log(`✓ All URLs scraped, triggering analyze-job (attempt ${attempts})`);
-
-                try {
-                    // Call analyze-job (fire-and-forget)
-                    fetch('/.netlify/functions/analyze-job', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ jobId })
-                    }).catch(err => {
-                        console.error(`Failed to trigger analyze-job: ${err.message}`);
-                    });
-
-                    console.log(`✓ analyze-job triggered`);
-                    analyzeTriggered = true;
-                } catch (error) {
-                    console.error(`Error triggering analyze-job: ${error.message}`);
-                }
+            // Trigger analyze-job if all scraping is complete
+            if (shouldTriggerAnalyze(statusData, analyzeTriggered)) {
+                await triggerAnalyzeJob(jobId, attempts);
+                analyzeTriggered = true;
             }
 
-            // Still processing - wait 2 seconds before next poll
+            // Wait before next poll
             await new Promise(resolve => setTimeout(resolve, 2000));
 
         } catch (error) {
@@ -502,18 +642,13 @@ async function pollJobStatus(jobId, manufacturer, model, checkButton) {
         }
     }
 
-    // Timeout reached - return UNKNOWN result
-    console.warn(`Job ${jobId} timed out after ${maxAttempts} attempts (2 minutes)`);
-    return {
-        status: 'UNKNOWN',
-        explanation: `EOL check timed out after ${maxAttempts} polling attempts (2 minutes). Please try again later.`,
-        successor: {
-            status: 'UNKNOWN',
-            model: null,
-            explanation: ''
-        }
-    };
+    // Timeout reached
+    return createTimeoutResult(maxAttempts);
 }
+
+// ============================================================================
+// EXCEL IMPORT/EXPORT
+// ============================================================================
 
 async function downloadExcel() {
     try {
@@ -548,146 +683,175 @@ async function downloadExcel() {
     }
 }
 
-function loadExcel(e) {
+// Validate Excel headers
+function validateExcelHeaders(headers) {
+    const idIndex = headers.findIndex(h => {
+        const headerText = h?.toString().toLowerCase().trim();
+        return headerText === 'sap part number';
+    });
+
+    if (idIndex === -1) {
+        console.error('SAP Part Number column not found. Headers:', headers);
+        showStatus('Error: Excel file must contain "SAP Part Number" column. Found headers: ' + headers.join(', '), 'error');
+        return null;
+    }
+
+    console.log('SAP Part Number column found at index:', idIndex);
+    return idIndex;
+}
+
+// Build row from Excel data
+function buildRowFromExcel(importedRow, headers, idIndex) {
+    const idInput = (importedRow[idIndex] || '').toString().trim();
+
+    // Skip rows without SAP Number
+    if (!idInput) {
+        return { skip: true, reason: 'no SAP Number' };
+    }
+
+    // Format and validate SAP Number
+    const formattedID = formatID(idInput);
+    if (!formattedID) {
+        return { skip: true, reason: `invalid format: "${idInput}"` };
+    }
+
+    // Build complete row with all columns
+    const newRow = [];
+    const ourHeaders = data[0];
+
+    for (const element of ourHeaders) {
+        const headerName = element.toLowerCase().trim();
+
+        if (headerName === 'sap part number') {
+            newRow.push(formattedID);
+        } else {
+            const importColIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === headerName);
+
+            if (importColIndex !== -1 && importedRow[importColIndex] !== undefined) {
+                newRow.push(importedRow[importColIndex].toString());
+            } else {
+                newRow.push('');
+            }
+        }
+    }
+
+    return { skip: false, formattedID, newRow };
+}
+
+// Process single Excel row
+function processExcelRow(importedRow, headers, idIndex, stats) {
+    const result = buildRowFromExcel(importedRow, headers, idIndex);
+
+    if (result.skip) {
+        stats.skippedEntries++;
+        return;
+    }
+
+    const { formattedID, newRow } = result;
+
+    // Find existing entry with same ID
+    const existingIndex = findRowBySAPNumber(formattedID);
+
+    if (existingIndex === -1) {
+        // Add new entry
+        data.push(newRow);
+        if (originalData) originalData.push(newRow);
+        stats.newEntries++;
+    } else {
+        // Update existing entry
+        data[existingIndex] = newRow;
+        if (originalData) originalData[existingIndex] = newRow;
+        stats.updatedEntries++;
+    }
+}
+
+// Show import summary
+function showImportSummary(stats) {
+    let statusMsg = `✓ Imported: ${stats.newEntries} new entries, ${stats.updatedEntries} updated entries`;
+    if (stats.skippedEntries > 0) {
+        statusMsg += `, ${stats.skippedEntries} skipped (invalid/missing SAP Number)`;
+    }
+    console.log('Import completed:', stats);
+    showStatus(statusMsg);
+}
+
+// Parse Excel file
+async function parseExcelFile(fileData) {
+    // Parse Excel file using ArrayBuffer instead of binary string
+    const workbook = XLSX.read(fileData, { type: 'array' }); // Change 'binary' to 'array'
+
+    // Get first worksheet
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+
+    // Convert to array of arrays
+    const importedData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    if (importedData.length === 0) {
+        throw new Error('Excel file is empty');
+    }
+
+    return importedData;
+}
+
+// Process all Excel rows
+function processAllExcelRows(importedData, idIndex) {
+    const stats = { newEntries: 0, updatedEntries: 0, skippedEntries: 0 };
+    const headers = importedData[0];
+
+    // Process each row (skip header)
+    for (let i = 1; i < importedData.length; i++) {
+        const importedRow = importedData[i];
+
+        // Skip empty rows
+        if (!importedRow || importedRow.length === 0) continue;
+
+        processExcelRow(importedRow, headers, idIndex, stats);
+    }
+
+    return stats;
+}
+
+async function loadExcel(e) {
     const f = e.target.files[0];
     if (!f) return;
 
-    const r = new FileReader();
-    r.onload = async function(ev) {
-        try {
-            // Parse Excel file
-            const workbook = XLSX.read(ev.target.result, { type: 'binary' });
+    try {
+        // Get ArrayBuffer directly from the file (modern API)
+        const arrayBuffer = await f.arrayBuffer();
+        const importedData = await parseExcelFile(arrayBuffer);
 
-            // Get first worksheet
-            const sheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[sheetName];
+        const headers = importedData[0];
+        console.log('Excel headers found:', headers);
 
-            // Convert to array of arrays
-            const importedData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        // Validate headers
+        const idIndex = validateExcelHeaders(headers);
+        if (idIndex === null) return;
 
-            if (importedData.length === 0) {
-                showStatus('Error: Excel file is empty', 'error');
-                return;
-            }
+        // Process all rows
+        const stats = processAllExcelRows(importedData, idIndex);
 
-            // Find column index for SAP Part Number
-            const headers = importedData[0];
-            console.log('Excel headers found:', headers);
+        // Reset sorting state after import
+        originalData = null;
+        currentSort.column = null;
+        currentSort.direction = null;
 
-            const idIndex = headers.findIndex(h => {
-                const headerText = h && h.toString().toLowerCase().trim();
-                return headerText === 'sap part number';
-            });
+        render();
+        await saveToServer();
 
-            if (idIndex === -1) {
-                console.error('SAP Part Number column not found. Headers:', headers);
-                showStatus('Error: Excel file must contain "SAP Part Number" column. Found headers: ' + headers.join(', '), 'error');
-                return;
-            }
+        // Show import summary
+        showImportSummary(stats);
 
-            console.log('SAP Part Number column found at index:', idIndex);
-
-            // Track statistics
-            let newEntries = 0;
-            let updatedEntries = 0;
-            let skippedEntries = 0;
-
-            // Process each row from the imported file (skip header)
-            for (let i = 1; i < importedData.length; i++) {
-                const importedRow = importedData[i];
-
-                // Skip empty rows
-                if (!importedRow || importedRow.length === 0) continue;
-
-                const idInput = (importedRow[idIndex] || '').toString().trim();
-
-                // Skip rows without SAP Number
-                if (!idInput) {
-                    console.log(`Row ${i}: Skipped - no SAP Number`);
-                    skippedEntries++;
-                    continue;
-                }
-
-                // Format the SAP Number
-                const formattedID = formatID(idInput);
-                if (!formattedID) {
-                    console.warn(`Row ${i}: Invalid SAP Number format: "${idInput}" (must be exactly 10 digits)`);
-                    skippedEntries++;
-                    continue; // Skip invalid SAP Numbers
-                }
-
-                console.log(`Row ${i}: Processing SAP Number ${formattedID}`);
-
-                // Build a complete row with all columns
-                const newRow = [];
-                const ourHeaders = data[0]; // Our standard headers
-
-                for (let j = 0; j < ourHeaders.length; j++) {
-                    const headerName = ourHeaders[j].toLowerCase().trim();
-
-                    if (headerName === 'sap part number') {
-                        // Use formatted SAP Part Number
-                        newRow.push(formattedID);
-                    } else {
-                        const importColIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === headerName);
-
-                        if (importColIndex !== -1 && importedRow[importColIndex] !== undefined) {
-                            newRow.push(importedRow[importColIndex].toString());
-                        } else {
-                            newRow.push(''); // Fill missing columns with empty string
-                        }
-                    }
-                }
-
-                // Find existing entry with same ID
-                let existingIndex = -1;
-                for (let k = 1; k < data.length; k++) {
-                    if (data[k][0] === formattedID) {
-                        existingIndex = k;
-                        break;
-                    }
-                }
-
-                if (existingIndex !== -1) {
-                    // Update existing entry
-                    data[existingIndex] = newRow;
-                    if (originalData) originalData[existingIndex] = newRow;
-                    updatedEntries++;
-                } else {
-                    // Add new entry
-                    data.push(newRow);
-                    if (originalData) originalData.push(newRow);
-                    newEntries++;
-                }
-            }
-
-            // Reset sorting state after import (data has changed)
-            originalData = null;
-            currentSort.column = null;
-            currentSort.direction = null;
-
-            render();
-
-            // Save to server first
-            await saveToServer();
-
-            // Then show import summary (so it doesn't get overwritten)
-            let statusMsg = `✓ Imported: ${newEntries} new entries, ${updatedEntries} updated entries`;
-            if (skippedEntries > 0) {
-                statusMsg += `, ${skippedEntries} skipped (invalid/missing SAP Number)`;
-            }
-            console.log('Import completed:', { newEntries, updatedEntries, skippedEntries });
-            showStatus(statusMsg);
-
-        } catch (error) {
-            console.error('Excel import failed:', error);
-            showStatus('Error importing Excel file: ' + error.message, 'error');
-        }
-    };
-    r.readAsBinaryString(f);
+    } catch (error) {
+        console.error('Excel import failed:', error);
+        showStatus('Error importing Excel file: ' + error.message, 'error');
+    }
 }
 
-// Netlify Functions integration with Netlify Blobs
+// ============================================================================
+// SERVER INTEGRATION (NETLIFY BLOBS)
+// ============================================================================
+
 async function saveToServer() {
     try {
         const response = await fetch('/.netlify/functions/save-csv', {
@@ -742,6 +906,10 @@ async function loadFromServer() {
         render();
     }
 }
+
+// ============================================================================
+// CREDITS AND USAGE MONITORING
+// ============================================================================
 
 async function loadTavilyCredits() {
     try {
@@ -804,11 +972,11 @@ function updateGroqRateLimits(rateLimits) {
     // Update per-minute limits
     const groqElement = document.getElementById('groq-remaining');
 
-    if (!rateLimits || !rateLimits.remainingTokens || !rateLimits.limitTokens) {
+    if (!rateLimits?.remainingTokens || !rateLimits.limitTokens) {
         groqElement.textContent = 'N/A';
     } else {
-        const remaining = parseInt(rateLimits.remainingTokens);
-        const limit = parseInt(rateLimits.limitTokens);
+        const remaining = Number.parseInt(rateLimits.remainingTokens);
+        const limit = Number.parseInt(rateLimits.limitTokens);
 
         // Format with comma separators for readability
         const remainingFormatted = remaining.toLocaleString();
@@ -831,7 +999,7 @@ function updateGroqRateLimits(rateLimits) {
     }
 
     // Update countdown timer
-    if (rateLimits && rateLimits.resetSeconds !== null && rateLimits.resetSeconds !== undefined) {
+    if (rateLimits?.resetSeconds !== null && rateLimits.resetSeconds !== undefined) {
         startGroqCountdown(rateLimits.resetSeconds);
     } else {
         const countdownElement = document.getElementById('groq-reset-countdown');
@@ -884,6 +1052,10 @@ function updateCountdownDisplay() {
     const secondsLeft = (timeLeft / 1000).toFixed(1);
     countdownElement.textContent = `${secondsLeft}s`;
 }
+
+// ============================================================================
+// RENDER SERVICE HEALTH CHECK
+// ============================================================================
 
 // Check Render scraping service health
 async function checkRenderHealth() {
@@ -939,6 +1111,10 @@ async function checkRenderHealth() {
         renderStatusElement.classList.add('credits-low');
     }
 }
+
+// ============================================================================
+// DELETE FUNCTIONALITY
+// ============================================================================
 
 // Toggle delete buttons visibility
 function toggleDeleteButtons() {
@@ -1063,6 +1239,21 @@ async function toggleAutoCheck() {
     }
 }
 
+// Set auto-check state
+async function setAutoCheckState(stateUpdate) {
+    const response = await fetch('/.netlify/functions/set-auto-check-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(stateUpdate)
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to set state: ${response.statusText}`);
+    }
+
+    return await response.json();
+}
+
 // Manual trigger for testing
 async function manualTriggerAutoCheck() {
     const button = document.getElementById('manual-trigger-btn');
@@ -1074,34 +1265,17 @@ async function manualTriggerAutoCheck() {
 
         showStatus('Resetting daily counter and triggering auto-check...', 'info');
 
-        // Reset the daily counter to 0 for testing purposes
-        const resetResponse = await fetch('/.netlify/functions/set-auto-check-state', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dailyCounter: 0 })
-        });
-
-        if (!resetResponse.ok) {
-            throw new Error('Failed to reset counter: ' + resetResponse.statusText);
-        }
-
+        // Reset the daily counter to 0
+        await setAutoCheckState({ dailyCounter: 0 });
         console.log('Daily counter reset to 0');
+
         showStatus('Counter reset. Triggering auto-check...', 'info');
 
         // Set isRunning = true before triggering
-        const runningResponse = await fetch('/.netlify/functions/set-auto-check-state', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ isRunning: true })
-        });
+        await setAutoCheckState({ isRunning: true });
 
-        if (!runningResponse.ok) {
-            throw new Error('Failed to set running state: ' + runningResponse.statusText);
-        }
-
-        // Pass the current site URL to the background function
-        const siteUrl = window.location.origin;
-
+        // Trigger the background function
+        const siteUrl = globalThis.location.origin;
         const response = await fetch('/.netlify/functions/auto-eol-check-background', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1131,17 +1305,13 @@ async function manualTriggerAutoCheck() {
 function updateCheckEOLButtons(isRunning) {
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
-        if (isRunning) {
-            button.style.display = 'none';
-        } else {
-            button.style.display = '';
-        }
+        button.style.display = isRunning ? 'none' : '';
     });
 }
 
 // Disable all Check EOL buttons (for manual check - prevent parallel execution)
 function disableAllCheckEOLButtons() {
-    isManualCheckRunning = true; // Set global flag
+    isManualCheckRunning = true;
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
         button.style.display = 'none';
@@ -1151,13 +1321,77 @@ function disableAllCheckEOLButtons() {
 
 // Enable all Check EOL buttons (after manual check completes)
 function enableAllCheckEOLButtons() {
-    isManualCheckRunning = false; // Clear global flag
+    isManualCheckRunning = false;
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
         button.style.display = '';
-        button.textContent = 'Check EOL'; // Reset text to default
+        button.textContent = 'Check EOL';
     });
     console.log('All Check EOL buttons re-enabled (manual check complete)');
+}
+
+// ============================================================================
+// AUTO-CHECK MONITORING
+// ============================================================================
+
+// Sync auto-check toggle with server state
+function syncAutoCheckToggle(serverEnabled) {
+    const toggle = document.getElementById('auto-check-toggle');
+    if (toggle && toggle.checked !== serverEnabled) {
+        console.log(`Syncing toggle with server state: ${serverEnabled}`);
+        toggle.checked = serverEnabled;
+    }
+}
+
+// Calculate minutes since last activity
+function calculateMinutesSinceActivity(lastActivityTime) {
+    if (!lastActivityTime) return 999;
+
+    const lastActivity = new Date(lastActivityTime);
+    const now = new Date();
+    return (now - lastActivity) / 1000 / 60;
+}
+
+// Detect and recover from stuck isRunning state
+async function detectAndRecoverStuckState(state) {
+    if (!state.isRunning) return state;
+
+    const minutesSinceActivity = calculateMinutesSinceActivity(state.lastActivityTime);
+
+    if (minutesSinceActivity > 5) {
+        console.warn(`Detected stuck isRunning state (no activity for ${minutesSinceActivity.toFixed(1)} min), resetting...`);
+
+        // Reset isRunning to false
+        await setAutoCheckState({ isRunning: false });
+
+        // Update local state
+        state.isRunning = false;
+        showStatus('Auto-check recovered from stuck state', 'info');
+    }
+
+    return state;
+}
+
+// Auto-disable auto-check if credits are too low
+async function autoDisableOnLowCredits(state) {
+    if (!state.enabled) return;
+
+    const creditsElement = document.getElementById('credits-remaining');
+    if (!creditsElement) return;
+
+    const remaining = parseCreditsRemaining(creditsElement.textContent);
+    if (remaining === null || remaining > 50) return;
+
+    console.log('Auto-disabling auto-check due to low credits:', remaining);
+
+    // Disable auto-check
+    await setAutoCheckState({ enabled: false });
+
+    // Update toggle
+    const toggle = document.getElementById('auto-check-toggle');
+    if (toggle) toggle.checked = false;
+
+    showStatus('Auto EOL Check disabled - Tavily credits too low (≤50)', 'info');
 }
 
 // Monitor auto-check state periodically
@@ -1168,74 +1402,33 @@ function startAutoCheckMonitoring() {
     autoCheckMonitoringInterval = setInterval(async () => {
         try {
             const response = await fetch('/.netlify/functions/get-auto-check-state');
-            if (response.ok) {
-                const state = await response.json();
+            if (!response.ok) return;
 
-                // Update toggle to match server state (fixes slider jumping back on reload)
-                const toggle = document.getElementById('auto-check-toggle');
-                if (toggle && toggle.checked !== state.enabled) {
-                    console.log(`Syncing toggle with server state: ${state.enabled}`);
-                    toggle.checked = state.enabled;
-                }
+            let state = await response.json();
 
-                // Detect stuck isRunning state (isRunning=true but no activity for >5 minutes)
-                if (state.isRunning) {
-                    const lastActivity = state.lastActivityTime ? new Date(state.lastActivityTime) : null;
-                    const now = new Date();
-                    const minutesSinceActivity = lastActivity ? (now - lastActivity) / 1000 / 60 : 999;
+            // Sync toggle with server state
+            syncAutoCheckToggle(state.enabled);
 
-                    if (minutesSinceActivity > 5) {
-                        console.warn(`Detected stuck isRunning state (no activity for ${minutesSinceActivity.toFixed(1)} min), resetting...`);
+            // Detect and recover from stuck state
+            state = await detectAndRecoverStuckState(state);
 
-                        // Reset isRunning to false
-                        await fetch('/.netlify/functions/set-auto-check-state', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ isRunning: false })
-                        });
-
-                        // Update local state
-                        state.isRunning = false;
-                        showStatus('Auto-check recovered from stuck state', 'info');
-                    }
-                }
-
-                // Update buttons based on isRunning
-                // BUT: Don't override manual check state
-                if (!isManualCheckRunning) {
-                    updateCheckEOLButtons(state.isRunning);
-                }
-
-                // Auto-disable if credits too low
-                const creditsElement = document.getElementById('credits-remaining');
-                if (creditsElement) {
-                    const creditsText = creditsElement.textContent;
-                    const match = creditsText.match(/(\d{1,6})\/\d{1,6} remaining/);
-                    if (match) {
-                        const remaining = parseInt(match[1]);
-                        if (remaining <= 50 && state.enabled) {
-                            console.log('Auto-disabling auto-check due to low credits:', remaining);
-
-                            // Disable auto-check
-                            await fetch('/.netlify/functions/set-auto-check-state', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ enabled: false })
-                            });
-
-                            // Update toggle
-                            if (toggle) toggle.checked = false;
-
-                            showStatus('Auto EOL Check disabled - Tavily credits too low (≤50)', 'info');
-                        }
-                    }
-                }
+            // Update buttons based on isRunning (don't override manual check state)
+            if (!isManualCheckRunning) {
+                updateCheckEOLButtons(state.isRunning);
             }
+
+            // Auto-disable if credits too low
+            await autoDisableOnLowCredits(state);
+
         } catch (error) {
             console.error('Auto-check monitoring error:', error);
         }
     }, 10000); // Every 10 seconds
 }
+
+// ============================================================================
+// INITIALIZE APP
+// ============================================================================
 
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', init);

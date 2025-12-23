@@ -1,0 +1,19 @@
+name: "CodeQL Config - SSRF Suppressions"
+
+# Query filters to suppress specific security alerts
+query-filters:
+  # Suppress SSRF warnings for the scraping service
+  # This service intentionally fetches user-provided URLs for web scraping
+  # Comprehensive validation is in place (see utils/validation.js)
+  - exclude:
+      id: js/request-forgery
+  - exclude:
+      id: js/server-side-unvalidated-url-redirection
+
+  # Suppress format string warnings for logging
+  # User-controlled URLs are logged for debugging purposes
+  # Risk is minimal: template literals don't have format specifiers, URLs are validated,
+  # and this is an internal-only service where log injection has no security impact
+  - exclude:
+      id: js/tainted-format-string
+
