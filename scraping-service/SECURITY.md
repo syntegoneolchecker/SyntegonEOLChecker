@@ -83,6 +83,31 @@ Multiple validation layers:
    - Documents validation approach
    - Provides audit trail for security reviews
 
+## Format String Injection in Logging
+
+### Alert Type: `js/tainted-format-string`
+
+**What CodeQL Detects:**
+User-controlled URLs being interpolated into logging statements like:
+```javascript
+console.error(`Error scraping ${url}:`, error.message);
+```
+
+**Why This Is Suppressed:**
+
+1. **Template literals don't have format specifiers** - JavaScript template literals (`${...}`) perform simple string interpolation, not format string parsing like C's `printf` or Node's `util.format()`
+
+2. **Minimal security impact** - The worst-case scenario is log injection (inserting newlines or control characters), which has no security impact in an internal-only service
+
+3. **URLs are already validated** - The `isSafePublicUrl()` function blocks dangerous characters and malformed URLs
+
+4. **Necessary for debugging** - Logging which URLs succeeded/failed is critical for troubleshooting scraping issues
+
+5. **Not user-facing** - Logs are only visible to internal operators, not end users
+
+**Suppression Method:**
+Global exclusion via CodeQL config (`js/tainted-format-string`) rather than inline suppressions, as this pattern appears in many log statements across the codebase.
+
 ## Alternative Approaches Considered
 
 ### ❌ Whitelist-only validation

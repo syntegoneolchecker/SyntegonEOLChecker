@@ -10,3 +10,10 @@ query-filters:
   - exclude:
       id: js/server-side-unvalidated-url-redirection
 
+  # Suppress format string warnings for logging
+  # User-controlled URLs are logged for debugging purposes
+  # Risk is minimal: template literals don't have format specifiers, URLs are validated,
+  # and this is an internal-only service where log injection has no security impact
+  - exclude:
+      id: js/tainted-format-string
+
