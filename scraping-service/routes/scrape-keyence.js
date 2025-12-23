@@ -170,7 +170,7 @@ async function handleKeyenceScrapeRequest(req, res) {
     // Enqueue task
     return enqueuePuppeteerTask(async () => {
         let browser = null;
-        let callbackSent = false;
+        const callbackSent = false;
 
         try {
             browser = await launchBrowser();

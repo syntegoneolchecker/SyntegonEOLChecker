@@ -97,7 +97,7 @@ async function executeOperationWithTimeout(operation, operationName, timeoutMs, 
     );
 
     const operationPromise = operation();
-    
+
     try {
         const result = await Promise.race([operationPromise, timeoutPromise]);
 
@@ -114,11 +114,11 @@ async function executeOperationWithTimeout(operation, operationName, timeoutMs, 
 
 function handleSuccess(result, operationName, attempt, onSuccess) {
     console.log(`${operationName} succeeded on attempt ${attempt}`);
-    
+
     if (onSuccess) {
         onSuccess(attempt);
     }
-    
+
     return { success: true, result, error: null, timedOut: false };
 }
 
@@ -143,7 +143,7 @@ async function handleOperationError(result, operationName, attempt, onError) {
 
 function handleExceptionError(error, operationName, attempt, onError) {
     console.error(`${operationName} failed on attempt ${attempt}:`, error.message);
-    
+
     if (onError) {
         onError(error, attempt);
     }

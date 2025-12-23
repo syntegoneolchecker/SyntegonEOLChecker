@@ -28,15 +28,15 @@ function decodeWithProperEncoding(buffer, contentTypeHeader = '') {
  */
 function detectEncoding(buffer, contentTypeHeader) {
     let encoding = extractEncodingFromContentType(contentTypeHeader);
-    
+
     if (!encoding) {
         encoding = extractEncodingFromHtmlMeta(buffer);
     }
-    
+
     if (!encoding) {
         encoding = autoDetectEncoding(buffer);
     }
-    
+
     return encoding;
 }
 
@@ -47,14 +47,14 @@ function detectEncoding(buffer, contentTypeHeader) {
  */
 function extractEncodingFromContentType(contentTypeHeader) {
     if (!contentTypeHeader) return null;
-    
+
     const charsetMatch = new RegExp(/charset=([^\s;]+)/i).exec(contentTypeHeader);
     if (charsetMatch) {
         const encoding = charsetMatch[1].toLowerCase();
         console.log(`Encoding from Content-Type header: ${encoding}`);
         return encoding;
     }
-    
+
     return null;
 }
 
@@ -65,7 +65,7 @@ function extractEncodingFromContentType(contentTypeHeader) {
  */
 function extractEncodingFromHtmlMeta(buffer) {
     const preview = buffer.slice(0, 2048).toString('binary');
-    
+
     // Look for <meta charset="...">
     const metaCharsetMatch = preview.match(/<meta[^>]+charset=["']?([^"'\s>]+)/i);
     if (metaCharsetMatch) {
@@ -73,7 +73,7 @@ function extractEncodingFromHtmlMeta(buffer) {
         console.log(`Encoding from meta charset tag: ${encoding}`);
         return encoding;
     }
-    
+
     // Look for <meta http-equiv="Content-Type" content="...charset=...">
     const httpEquivMatch = preview.match(/<meta[^>]+http-equiv=["']?content-type["']?[^>]+content=["']?[^"'>]*charset=([^"'\s>]+)/i);
     if (httpEquivMatch) {
@@ -81,7 +81,7 @@ function extractEncodingFromHtmlMeta(buffer) {
         console.log(`Encoding from http-equiv meta tag: ${encoding}`);
         return encoding;
     }
-    
+
     return null;
 }
 
@@ -97,7 +97,7 @@ function autoDetectEncoding(buffer) {
         console.log(`Auto-detected encoding: ${encoding} (confidence: ${(detected.confidence * 100).toFixed(1)}%)`);
         return encoding;
     }
-    
+
     return null;
 }
 
@@ -118,7 +118,7 @@ function normalizeEncoding(encoding) {
         'utf-8': 'utf8',
         'utf8': 'utf8'
     };
-    
+
     return encodingMap[encoding] || encoding;
 }
 
@@ -133,9 +133,9 @@ function decodeBufferWithEncoding(buffer, encoding) {
         console.log('No encoding detected, using UTF-8 as fallback');
         return buffer.toString('utf8');
     }
-    
+
     const normalizedEncoding = normalizeEncoding(encoding);
-    
+
     if (iconv.encodingExists(normalizedEncoding)) {
         const decoded = iconv.decode(buffer, normalizedEncoding);
         console.log(`✓ Successfully decoded content using ${normalizedEncoding}`);

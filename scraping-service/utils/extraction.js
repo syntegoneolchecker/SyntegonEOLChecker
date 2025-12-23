@@ -208,9 +208,9 @@ async function tryFastFetch(url, timeout = 5000) {
 
 async function fetchAndProcessUrl(url, timeout) {
     const { isPDF, isTextFile, fetchTimeout } = determineFileTypeAndTimeout(url, timeout);
-    
+
     const response = await fetchWithTimeout(url, fetchTimeout);
-    
+
     if (!response.ok) {
         return handleFailedResponse(response, url, isPDF);
     }
@@ -251,11 +251,11 @@ async function fetchWithTimeout(url, timeout) {
 
 function handleFailedResponse(response, url, isPDF) {
     console.log(`Fast fetch failed: HTTP ${response.status} for ${url}`);
-    
+
     if (isPDF) {
         return `[Could not fetch PDF: HTTP ${response.status}]`;
     }
-    
+
     return null;
 }
 

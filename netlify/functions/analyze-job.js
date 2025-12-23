@@ -24,7 +24,7 @@ async function checkGroqTokenAvailability() {
         let resetSeconds = null;
         if (resetTokens) {
             const match = /^([\d.]+)s?$/.exec(resetTokens);
-            
+
             if (match) {
                 resetSeconds = Number.parseFloat(match[1]);
             }
@@ -356,12 +356,12 @@ function truncateTableRows(tableContent, productModel) {
 function findTableBoundaries(lines) {
     let tableStart = -1;
     let tableEnd = -1;
-    
+
     for (let i = 0; i < lines.length; i++) {
         if (lines[i].includes('=== TABLE START ===')) tableStart = i;
         if (lines[i].includes('=== TABLE END ===')) tableEnd = i;
     }
-    
+
     return { tableStart, tableEnd };
 }
 
@@ -398,7 +398,7 @@ function determineRowsToKeep(lines, tableStart, tableEnd, productRows, ROWS_BEFO
 function addRowsAroundProduct(rowsToKeep, tableStart, tableEnd, productRow, ROWS_BEFORE, ROWS_AFTER) {
     const startRow = Math.max(tableStart + 1, productRow - ROWS_BEFORE);
     const endRow = Math.min(tableEnd - 1, productRow + ROWS_AFTER);
-    
+
     for (let i = startRow; i <= endRow; i++) {
         rowsToKeep.add(i);
     }
@@ -410,7 +410,7 @@ function buildTruncatedTable(lines, tableStart, tableEnd, rowsToKeep) {
 
     let lastKeptRow = tableStart;
     const sortedRows = Array.from(rowsToKeep).sort((a, b) => a - b);
-    
+
     sortedRows.forEach(row => {
         // Add ellipsis if we skipped rows
         if (row - lastKeptRow > 1) {
@@ -434,19 +434,19 @@ function logTruncationStats(originalRowCount, truncatedRowCount) {
 // Helper: Extract sections containing product mentions with context
 function extractProductSections(content, productModel, maxLength) {
     const CONTEXT_CHARS = 250;
-    
+
     if (!content) return content;
-    
+
     const mentions = findAllProductMentions(content, productModel);
     if (mentions.length === 0) {
         return simpleProductSectionsTruncate(content, maxLength);
     }
 
     console.log(`Found ${mentions.length} product mentions, extracting sections`);
-    
+
     const sections = extractSectionsWithContext(content, productModel, mentions, CONTEXT_CHARS);
     const combined = combineSections(sections);
-    
+
     return truncateToMaxLength(combined, sections, maxLength);
 }
 
@@ -454,13 +454,13 @@ function findAllProductMentions(content, productModel) {
     const contentLower = content.toLowerCase();
     const productLower = productModel.toLowerCase();
     const mentions = [];
-    
+
     let index = contentLower.indexOf(productLower);
     while (index !== -1) {
         mentions.push(index);
         index = contentLower.indexOf(productLower, index + 1);
     }
-    
+
     return mentions;
 }
 
@@ -480,11 +480,11 @@ function extractSectionAroundMention(content, mentionIndex, productLength, conte
 function formatSectionWithEllipsis(content, section, mentionIndex, contextChars) {
     const start = Math.max(0, mentionIndex - contextChars);
     const end = Math.min(content.length, mentionIndex + contextChars);
-    
+
     let formatted = section;
     if (start > 0) formatted = '...' + formatted;
     if (end < content.length) formatted = formatted + '...';
-    
+
     return formatted;
 }
 
@@ -496,25 +496,25 @@ function truncateToMaxLength(combined, sections, maxLength) {
     if (combined.length <= maxLength) {
         return combined;
     }
-    
+
     return prioritizeSectionsByFirstMentions(sections, maxLength);
 }
 
 function prioritizeSectionsByFirstMentions(sections, maxLength) {
     let result = '';
-    
+
     for (const section of sections) {
         if (result.length + section.length + 20 > maxLength) {
             break;
         }
-        
+
         if (result.length > 0) {
             result += '\n\n[...]\n\n';
         }
-        
+
         result += section;
     }
-    
+
     return result;
 }
 
@@ -522,7 +522,7 @@ function simpleProductSectionsTruncate(content, maxLength) {
     if (content.length <= maxLength) {
         return content;
     }
-    
+
     return content.substring(0, maxLength - 3) + '...';
 }
 
@@ -738,7 +738,7 @@ class GroqAnalyzer {
             }
             await this.handleRateLimit(response, attempt);
         }
-        
+
         throw new Error(`Groq API failed: ${response.status} - ${errorText}`);
     }
 
@@ -766,7 +766,7 @@ class GroqAnalyzer {
     createDailyLimitError(errorText) {
         const retryInfo = this.extractRetryTime(errorText);
         console.error(this.formatDailyLimitMessage(retryInfo.message));
-        
+
         const error = new Error(
             `Daily token limit reached (rolling 24h window). Analysis cancelled.${retryInfo.message}`
         );
@@ -789,7 +789,7 @@ EOL check cancelled - no database changes will be made.
     extractRetryTime(errorText) {
         const retryMatch = /Please try again in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s))/.exec(errorText);
         if (!retryMatch) return { message: '', seconds: null };
-        
+
         const timeStr = retryMatch[1];
         return {
             message: ` Tokens will recover in approximately ${timeStr}.`,
@@ -799,9 +799,9 @@ EOL check cancelled - no database changes will be made.
 
     async handleRetry(error, attempt) {
         if (error.isDailyLimit) throw error;
-        
+
         console.error(`Groq API attempt ${attempt} failed:`, error.message);
-        
+
         if (attempt < this.MAX_RETRIES) {
             await this.wait(this.calculateBackoffTime(attempt));
             throw new Error('Retrying after error');
@@ -821,11 +821,11 @@ EOL check cancelled - no database changes will be made.
     async processResponse(response) {
         const groqData = await response.json();
         console.log('Groq response:', JSON.stringify(groqData));
-        
+
         const generatedText = this.extractGeneratedText(groqData);
         const parsedResult = this.parseResponseText(generatedText);
         this.validateResult(parsedResult);
-        
+
         parsedResult.rateLimits = this.extractRateLimits(response);
         return parsedResult;
     }
@@ -850,10 +850,10 @@ EOL check cancelled - no database changes will be made.
         if (text.length > MAX_SIZE) {
             throw new Error('Response exceeds maximum expected size');
         }
-        
+
         const jsonRegex = RE2.fromString(String.raw`\{[^}]*?(?:\{[^}]*?}[^}]*?)*}`);
         const jsonMatch = jsonRegex.exec(text);
-        
+
         if (jsonMatch) {
             try {
                 return JSON.parse(jsonMatch[0]);
@@ -864,7 +864,7 @@ EOL check cancelled - no database changes will be made.
                 );
             }
         }
-        
+
         throw new Error(`No JSON object found in response. Original parse error: ${parseError.message}`);
     }
 

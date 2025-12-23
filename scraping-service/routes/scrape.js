@@ -48,7 +48,7 @@ function enqueuePuppeteerTask(task) {
 async function handlePuppeteerScraping(url, callbackUrl, callbackData, _res) {
   return enqueuePuppeteerTask(async () => {
     let browser = null;
-    let callbackSent = false;
+    const callbackSent = false;
 
     try {
       browser = await launchBrowser();

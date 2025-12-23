@@ -209,21 +209,21 @@ exports.handler = async function(event, context) {
         console.log(`[FETCH-URL DEBUG] Extracted values: jpUrl=${jpUrl}, usUrl=${usUrl}, model=${model}`);
 
         const baseUrl = constructBaseUrl(event.headers);
-        
+
         // Mark as fetching
         await markUrlFetching(jobId, urlIndex, context);
 
         // Prepare common params for all handlers
         const handlerParams = {
-            jobId, 
-            urlIndex, 
-            url, 
-            title, 
-            snippet, 
-            model, 
-            jpUrl, 
-            usUrl, 
-            baseUrl, 
+            jobId,
+            urlIndex,
+            url,
+            title,
+            snippet,
+            model,
+            jpUrl,
+            usUrl,
+            baseUrl,
             context
         };
 
@@ -256,16 +256,16 @@ function constructBaseUrl(headers) {
 }
 
 async function handleCommonError(params) {
-    const { 
-        jobId, 
-        urlIndex, 
-        url, 
-        snippet, 
-        error, 
-        method, 
-        baseUrl, 
-        context, 
-        continuePipeline = true 
+    const {
+        jobId,
+        urlIndex,
+        url,
+        snippet,
+        error,
+        method,
+        baseUrl,
+        context,
+        continuePipeline = true
     } = params;
 
     console.log(`Saving error result for ${method} URL ${urlIndex}`);
@@ -296,7 +296,7 @@ async function handleCommonError(params) {
     }
 
     await continuePipelineAfterError({ jobId, urlIndex, allDone, baseUrl, context });
-    
+
     return {
         statusCode: 500,
         body: JSON.stringify({
@@ -310,7 +310,7 @@ async function handleCommonError(params) {
 
 async function continuePipelineAfterError(params) {
     const { jobId, allDone, baseUrl, context } = params;
-    
+
     if (allDone) {
         const job = await getJob(jobId, context);
         if (job && job.status !== 'analyzing' && job.status !== 'complete') {
@@ -333,7 +333,7 @@ async function continuePipelineAfterError(params) {
 
 async function handleRenderServiceCall(params) {
     const { payload, serviceUrl, endpoint, methodName } = params;
-    
+
     console.log(`Calling ${methodName} service: ${serviceUrl}/${endpoint}`);
 
     return await retryWithBackoff({
@@ -390,7 +390,7 @@ async function handleIdecDualSite(params) {
 
     if (!jpProxyUrl || !usProxyUrl) {
         console.error('IDEC proxy environment variables not set');
-        
+
         const allDone = await saveUrlResult(jobId, urlIndex, {
             url: params.url,
             title: null,
@@ -450,13 +450,13 @@ async function handleNbkInteractive(params) {
         if (!searchResult.hasResults || !searchResult.productUrl) {
             console.log(`NBK: No results found for model ${model}`);
             return await handleNbkNoResults({
-                jobId, 
-                urlIndex, 
-                url, 
-                snippet, 
-                model, 
-                preprocessedModel: searchResult.preprocessedModel, 
-                baseUrl, 
+                jobId,
+                urlIndex,
+                url,
+                snippet,
+                model,
+                preprocessedModel: searchResult.preprocessedModel,
+                baseUrl,
                 context
             });
         }
@@ -470,12 +470,12 @@ async function handleNbkInteractive(params) {
 
         console.log(`NBK: Successfully scraped product page (${productResult.content.length} characters)`);
         return await handleNbkSuccess({
-            jobId, 
-            urlIndex, 
-            productUrl: searchResult.productUrl, 
-            snippet, 
-            content: productResult.content, 
-            baseUrl, 
+            jobId,
+            urlIndex,
+            productUrl: searchResult.productUrl,
+            snippet,
+            content: productResult.content,
+            baseUrl,
             context
         });
 
@@ -490,15 +490,15 @@ async function handleNbkInteractive(params) {
 }
 
 async function handleNbkNoResults(params) {
-    const { 
-        jobId, 
-        urlIndex, 
-        url, 
-        snippet, 
-        model, 
-        preprocessedModel, 
-        baseUrl, 
-        context 
+    const {
+        jobId,
+        urlIndex,
+        url,
+        snippet,
+        model,
+        preprocessedModel,
+        baseUrl,
+        context
     } = params;
 
     const allDone = await saveUrlResult(jobId, urlIndex, {
@@ -523,14 +523,14 @@ async function handleNbkNoResults(params) {
 }
 
 async function handleNbkSuccess(params) {
-    const { 
-        jobId, 
-        urlIndex, 
-        productUrl, 
-        snippet, 
-        content, 
-        baseUrl, 
-        context 
+    const {
+        jobId,
+        urlIndex,
+        productUrl,
+        snippet,
+        content,
+        baseUrl,
+        context
     } = params;
 
     const allDone = await saveUrlResult(jobId, urlIndex, {
@@ -589,7 +589,7 @@ async function handleBrowserQL(params) {
 
 async function continuePipelineAfterSuccess(params) {
     const { jobId, allDone, baseUrl, context } = params;
-    
+
     if (allDone) {
         console.log(`All URLs complete for job ${jobId}, triggering analysis`);
         await triggerAnalysis(jobId, baseUrl);
@@ -629,7 +629,7 @@ function handleRenderServiceResult(serviceResult, methodPrefix) {
 
 async function handleRenderDefault(params) {
     const { jobId, urlIndex, url, title, snippet, baseUrl } = params;
-    
+
     const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
     const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
 

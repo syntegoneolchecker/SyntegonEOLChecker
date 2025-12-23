@@ -266,7 +266,7 @@ class JobPoller {
     initializeStorage() {
         const { getStore } = require('@netlify/blobs');
         const { updateJobStatus } = require('./lib/job-storage');
-        
+
         this.jobStore = getStore({
             name: 'eol-jobs',
             siteID: process.env.SITE_ID,
@@ -341,7 +341,7 @@ class JobPoller {
         if (this.attempts !== 15) return;
 
         console.log('Polling attempt 15/60 (~30s elapsed) - checking Render service health...');
-        
+
         try {
             await this.performHealthCheck();
         } catch (healthError) {
@@ -374,7 +374,7 @@ class JobPoller {
             explanation: 'EOL check skipped - scraping service appears to have crashed (health check failed at 30s). This product will be retried on the next check cycle.',
             successor: { status: 'UNKNOWN', model: null, explanation: '' }
         };
-        
+
         throw healthCheckError;
     }
 
@@ -418,9 +418,9 @@ class JobPoller {
 
     async triggerFetchUrl(job) {
         console.log(`✓ URLs ready, triggering fetch-url (attempt ${this.attempts})`);
-        
+
         await this.updateJobStatus(this.jobId, 'fetching', null, {});
-        
+
         const firstUrl = job.urls[0];
         if (!firstUrl) return;
 
@@ -464,13 +464,13 @@ class JobPoller {
     }
 
     async triggerAnalysisIfNeeded(job) {
-        const allUrlsComplete = job.urls && 
-                               job.urls.length > 0 && 
+        const allUrlsComplete = job.urls &&
+                               job.urls.length > 0 &&
                                job.urls.every(u => u.status === 'complete');
-        
-        const shouldTriggerAnalysis = allUrlsComplete && 
-                                     !this.analyzeTriggered && 
-                                     job.status !== 'analyzing' && 
+
+        const shouldTriggerAnalysis = allUrlsComplete &&
+                                     !this.analyzeTriggered &&
+                                     job.status !== 'analyzing' &&
                                      job.status !== 'complete';
 
         if (shouldTriggerAnalysis) {
@@ -481,10 +481,10 @@ class JobPoller {
 
     async triggerAnalyzeJob() {
         console.log(`✓ All URLs scraped, triggering analyze-job synchronously (attempt ${this.attempts})`);
-        
+
         try {
             const result = await this.callAnalyzeJob();
-            
+
             if (result) {
                 console.log(`✓ Analysis completed successfully: ${result.status}`);
                 return result;
@@ -510,7 +510,7 @@ class JobPoller {
 
         const analyzeData = await analyzeResponse.json();
         await this.checkJobCompletionAfterAnalysis();
-        
+
         return analyzeData.result;
     }
 
@@ -535,7 +535,7 @@ class JobPoller {
         if (error.isHealthCheckFailure) {
             throw error.result;
         }
-        
+
         console.error(`Polling error (attempt ${this.attempts}): ${error.message}`);
         await this.waitForNextPoll();
     }
@@ -619,7 +619,7 @@ exports.handler = async function(event, _context) {
 
     try {
         const { siteUrl, store } = await initializeFromEvent(event);
-        
+
         let state = await store.get('state', { type: 'json' });
         if (!state) {
             console.log('State not initialized');
@@ -631,10 +631,10 @@ exports.handler = async function(event, _context) {
         if (!shouldProceed.shouldContinue) {
             return { statusCode: 200, body: shouldProceed.reason };
         }
-        
+
         // Update state with fresh data after potential resets
         state = shouldProceed.updatedState || state;
-        
+
         console.log(`Current progress: ${state.dailyCounter}/20 checks today`);
 
         // Wake Render service on first check
@@ -651,7 +651,7 @@ exports.handler = async function(event, _context) {
 
         // Find and process next product
         const checkResult = await processNextProduct(state, siteUrl, store);
-        
+
         if (checkResult.shouldStopChain) {
             return { statusCode: 200, body: checkResult.reason };
         }
@@ -671,7 +671,7 @@ exports.handler = async function(event, _context) {
     } catch (error) {
         console.error('Background function error:', error);
         await handleErrorState(event);
-        
+
         return {
             statusCode: 500,
             body: JSON.stringify({ error: error.message })
@@ -685,12 +685,12 @@ async function initializeFromEvent(event) {
     const body = JSON.parse(event.body || '{}');
     const passedSiteUrl = body.siteUrl;
 
-    const siteUrl = passedSiteUrl || 
-                   process.env.DEPLOY_PRIME_URL || 
-                   process.env.DEPLOY_URL || 
-                   process.env.URL || 
+    const siteUrl = passedSiteUrl ||
+                   process.env.DEPLOY_PRIME_URL ||
+                   process.env.DEPLOY_URL ||
+                   process.env.URL ||
                    'https://develop--syntegoneolchecker.netlify.app';
-    
+
     console.log(`Site URL: ${siteUrl} (${passedSiteUrl ? 'passed from caller' : 'from environment'})`);
 
     const store = getStore({
@@ -714,15 +714,15 @@ async function validateAndPrepareForCheck(state, siteUrl, store) {
     const currentDate = getGMT9Date();
     if (state.lastResetDate !== currentDate) {
         console.log(`New day detected (${currentDate}), resetting counter`);
-        await updateAutoCheckState(siteUrl, { 
-            dailyCounter: 0, 
-            lastResetDate: currentDate 
+        await updateAutoCheckState(siteUrl, {
+            dailyCounter: 0,
+            lastResetDate: currentDate
         });
-        
+
         // Return updated state
         const updatedState = await store.get('state', { type: 'json' });
-        return { 
-            shouldContinue: true, 
+        return {
+            shouldContinue: true,
             updatedState,
             reason: 'New day, counter reset'
         };
@@ -750,9 +750,9 @@ async function processNextProduct(state, siteUrl, store) {
     if (!product) {
         console.log('No more products to check');
         await updateAutoCheckState(siteUrl, { isRunning: false });
-        return { 
-            shouldStopChain: true, 
-            reason: 'No products to check' 
+        return {
+            shouldStopChain: true,
+            reason: 'No products to check'
         };
     }
 
@@ -763,9 +763,9 @@ async function processNextProduct(state, siteUrl, store) {
     if (!preCheckState.enabled) {
         console.log('🛑 Auto-check disabled before starting EOL check, stopping chain');
         await updateAutoCheckState(siteUrl, { isRunning: false });
-        return { 
-            shouldStopChain: true, 
-            reason: 'Disabled before check' 
+        return {
+            shouldStopChain: true,
+            reason: 'Disabled before check'
         };
     }
 
@@ -783,7 +783,7 @@ async function processNextProduct(state, siteUrl, store) {
     });
 
     console.log(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${newCounter}/20`);
-    
+
     return {
         shouldStopChain: false,
         newCounter,
@@ -839,7 +839,7 @@ async function triggerNextCheck(siteUrl) {
 async function stopChain(siteUrl, state) {
     const reason = state.enabled ? 'daily limit reached' : 'slider disabled';
     console.log(`🛑 Chain stopped: ${reason} (enabled=${state.enabled}, counter=${state.dailyCounter}/20)`);
-    
+
     await updateAutoCheckState(siteUrl, { isRunning: false });
 }
 
@@ -847,10 +847,10 @@ async function handleErrorState(event) {
     try {
         const body = JSON.parse(event.body || '{}');
         const passedSiteUrl = body.siteUrl;
-        const errorSiteUrl = passedSiteUrl || 
-                           process.env.DEPLOY_PRIME_URL || 
-                           process.env.DEPLOY_URL || 
-                           process.env.URL || 
+        const errorSiteUrl = passedSiteUrl ||
+                           process.env.DEPLOY_PRIME_URL ||
+                           process.env.DEPLOY_URL ||
+                           process.env.URL ||
                            'https://develop--syntegoneolchecker.netlify.app';
 
         await updateAutoCheckState(errorSiteUrl, { isRunning: false });

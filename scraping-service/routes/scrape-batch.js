@@ -151,7 +151,7 @@ async function processUrls(urls) {
         for (const url of urls) {
             const result = await processSingleUrl(url, browser);
             results.push(result);
-            
+
             // Update browser reference if it was created
             if (result.browserCreated && !browser) {
                 browser = result.browser;
@@ -215,12 +215,12 @@ function shouldSkipPuppeteer(url) {
  */
 async function processWithPuppeteer(url, existingBrowser) {
     console.log(`Using Puppeteer for ${url}...`);
-    
+
     const browser = existingBrowser || await launchBrowser();
     const content = await scrapeSingleUrl(browser, url);
-    
+
     console.log(`Scraped ${url} with Puppeteer (${content.length} chars)`);
-    
+
     return {
         success: true,
         url,
@@ -256,11 +256,11 @@ function createFailureResult(url, error, method = null) {
         url,
         error
     };
-    
+
     if (method) {
         result.method = method;
     }
-    
+
     return result;
 }
 
