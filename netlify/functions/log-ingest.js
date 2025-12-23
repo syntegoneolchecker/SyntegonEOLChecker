@@ -27,7 +27,11 @@ export const handler = async (event) => {
     }
 
     // Get the logs store
-    const store = getStore('logs');
+    const store = getStore({
+      name: 'logs',
+      siteID: process.env.SITE_ID,
+      token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+    });
 
     // Create a key based on the date (YYYY-MM-DD format)
     const date = new Date(logEntry.timestamp);
