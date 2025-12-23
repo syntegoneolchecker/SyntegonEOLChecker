@@ -130,7 +130,7 @@ The CSV database has 13 columns:
 | Successor SAP Number | 9 | SAP number of replacement |
 | Stock | 10 | Current stock level |
 | Information Date | 11 | Last check timestamp |
-| Auto Check | 12 | Enable/disable for auto-check |
+| Auto Check | 12 | Enable/disable for auto-check(put "NO" to disable) |
 
 ## Development
 
