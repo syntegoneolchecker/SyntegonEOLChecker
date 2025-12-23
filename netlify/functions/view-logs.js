@@ -128,7 +128,20 @@ function generateHTML(logs, filters) {
 
   const logRows = logs.map(log => {
     const color = levelColors[log.level] || '#000';
-    const time = new Date(log.timestamp).toLocaleString();
+    // Convert UTC timestamp to GMT+9 (JST)
+    const utcDate = new Date(log.timestamp);
+    const jstDate = new Date(utcDate.getTime() + (9 * 60 * 60 * 1000));
+    const time = jstDate.toLocaleString('en-US', {
+      timeZone: 'Asia/Tokyo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }) + ' JST';
+
     const messageStr = typeof log.message === 'string'
       ? log.message
       : JSON.stringify(log.message);
