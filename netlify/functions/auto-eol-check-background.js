@@ -2,6 +2,7 @@
 // Checks ONE product and triggers next check if counter < 20
 const { getStore } = require('@netlify/blobs');
 const { parseCSV, toCSV } = require('./lib/csv-parser');
+const logger = require('./lib/logger');
 
 // Helper: Get current date in GMT+9 timezone
 function getGMT9Date() {
@@ -20,7 +21,7 @@ function getGMT9DateTime() {
 // Helper: Wake up Render scraping service (cold start)
 // Tries for up to 2 minutes with health checks every 30 seconds
 async function wakeRenderService() {
-    console.log('Waking up Render scraping service...');
+    logger.info('Waking up Render scraping service...');
     const overallStartTime = Date.now();
     const maxDuration = 120000; // 2 minutes total
     const healthCheckInterval = 30000; // Check every 30 seconds
@@ -31,7 +32,7 @@ async function wakeRenderService() {
         const attemptStartTime = Date.now();
 
         try {
-            console.log(`Health check attempt ${attempt} (elapsed: ${((Date.now() - overallStartTime) / 1000).toFixed(1)}s)...`);
+            logger.info(`Health check attempt ${attempt} (elapsed: ${((Date.now() - overallStartTime) / 1000).toFixed(1)}s)...`);
 
             const response = await fetch('https://eolscrapingservice.onrender.com/health', {
                 signal: AbortSignal.timeout(healthCheckInterval)
@@ -39,28 +40,28 @@ async function wakeRenderService() {
 
             if (response.ok) {
                 const elapsed = ((Date.now() - overallStartTime) / 1000).toFixed(1);
-                console.log(`✓ Render service responded successfully in ${elapsed}s (attempt ${attempt})`);
+                logger.info(`✓ Render service responded successfully in ${elapsed}s (attempt ${attempt})`);
                 return true;
             }
 
-            console.warn(`Attempt ${attempt} returned HTTP ${response.status}, will retry...`);
+            logger.warn(`Attempt ${attempt} returned HTTP ${response.status}, will retry...`);
 
         } catch (error) {
             const elapsed = ((Date.now() - attemptStartTime) / 1000).toFixed(1);
-            console.warn(`Attempt ${attempt} failed after ${elapsed}s: ${error.message}`);
+            logger.warn(`Attempt ${attempt} failed after ${elapsed}s: ${error.message}`);
         }
 
         // Wait before next attempt (unless we've exceeded total duration)
         const remainingTime = maxDuration - (Date.now() - overallStartTime);
         if (remainingTime > 0) {
             const waitTime = Math.min(healthCheckInterval, remainingTime);
-            console.log(`Waiting ${(waitTime / 1000).toFixed(1)}s before next health check...`);
+            logger.info(`Waiting ${(waitTime / 1000).toFixed(1)}s before next health check...`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
         }
     }
 
     const totalElapsed = ((Date.now() - overallStartTime) / 1000).toFixed(1);
-    console.error(`❌ Failed to wake Render service after ${totalElapsed}s (${attempt} attempts)`);
+    logger.error(`❌ Failed to wake Render service after ${totalElapsed}s (${attempt} attempts)`);
     return false;
 }
 
@@ -74,21 +75,21 @@ async function waitForGroqTokens(siteUrl) {
 
         // Check if resetSeconds is null or undefined (means N/A)
         if (data.resetSeconds === null || data.resetSeconds === undefined) {
-            console.log('Groq tokens fully reset (N/A)');
+            logger.info('Groq tokens fully reset (N/A)');
             return;
         }
 
         // Wait for reset if needed
         if (data.resetSeconds > 0) {
-            console.log(`Groq tokens reset in ${data.resetSeconds}s, waiting...`);
+            logger.info(`Groq tokens reset in ${data.resetSeconds}s, waiting...`);
             await new Promise(resolve => setTimeout(resolve, (data.resetSeconds + 1) * 1000));
-            console.log('Groq tokens should be reset now');
+            logger.info('Groq tokens should be reset now');
             return;
         }
 
         return true;
     } catch (error) {
-        console.error('Error checking Groq tokens:', error.message);
+        logger.error('Error checking Groq tokens:', error.message);
         return; // Proceed anyway
     }
 }
@@ -114,7 +115,7 @@ async function findNextProduct() {
         const csvContent = await csvStore.get('database.csv');
 
         if (!csvContent) {
-            console.log('No products in database');
+            logger.info('No products in database');
             return null;
         }
 
@@ -122,18 +123,18 @@ async function findNextProduct() {
         const parseResult = parseCSV(csvContent);
 
         if (!parseResult.success) {
-            console.error('CSV parsing failed:', parseResult.error);
+            logger.error('CSV parsing failed:', parseResult.error);
             throw new Error(`CSV parsing failed: ${parseResult.error}`);
         }
 
         if (parseResult.error) {
-            console.warn('CSV parsing warnings:', parseResult.error);
+            logger.warn('CSV parsing warnings:', parseResult.error);
         }
 
         const data = parseResult.data;
 
         if (data.length <= 1) {
-            console.log('No products in database (only headers)');
+            logger.info('No products in database (only headers)');
             return null;
         }
 
@@ -143,23 +144,23 @@ async function findNextProduct() {
         const autoCheckEnabledRows = rows.filter(row => isAutoCheckEnabled(row));
 
         if (autoCheckEnabledRows.length === 0) {
-            console.log('No products with Auto Check enabled');
+            logger.info('No products with Auto Check enabled');
             return null;
         }
 
-        console.log(`Total products: ${rows.length}, Auto Check enabled: ${autoCheckEnabledRows.length}, Auto Check disabled: ${rows.length - autoCheckEnabledRows.length}`);
+        logger.info(`Total products: ${rows.length}, Auto Check enabled: ${autoCheckEnabledRows.length}, Auto Check disabled: ${rows.length - autoCheckEnabledRows.length}`);
 
         // Priority 1: Products with empty Information Date (column 11)
         const unchecked = autoCheckEnabledRows.filter(row => !row[11] || row[11].trim() === '');
         if (unchecked.length > 0) {
-            console.log(`Found ${unchecked.length} unchecked products (with Auto Check enabled), selecting first`);
+            logger.info(`Found ${unchecked.length} unchecked products (with Auto Check enabled), selecting first`);
             return unchecked[0];
         }
 
         // Priority 2: Product with oldest Information Date
         const checked = autoCheckEnabledRows.filter(row => row[11] && row[11].trim() !== '');
         if (checked.length === 0) {
-            console.log('All products checked, no oldest found');
+            logger.info('All products checked, no oldest found');
             return null;
         }
 
@@ -170,11 +171,11 @@ async function findNextProduct() {
             return dateA - dateB;
         });
 
-        console.log(`Found ${checked.length} checked products (with Auto Check enabled), selecting oldest: ${checked[0][11]}`);
+        logger.info(`Found ${checked.length} checked products (with Auto Check enabled), selecting oldest: ${checked[0][11]}`);
         return checked[0];
 
     } catch (error) {
-        console.error('Error finding next product:', error);
+        logger.error('Error finding next product:', error);
         return null;
     }
 }
@@ -185,19 +186,19 @@ async function executeEOLCheck(product, siteUrl) {
     const manufacturer = product[4]; // Column 4
     const sapNumber = product[0]; // Column 0
 
-    console.log(`Executing EOL check for: ${manufacturer} ${model} (SAP: ${sapNumber})`);
+    logger.info(`Executing EOL check for: ${manufacturer} ${model} (SAP: ${sapNumber})`);
 
     if (!model || !manufacturer) {
-        console.log('Missing model or manufacturer, skipping');
+        logger.info('Missing model or manufacturer, skipping');
         return false;
     }
 
     try {
-        console.log(`Using site URL: ${siteUrl}`);
+        logger.info(`Using site URL: ${siteUrl}`);
 
         // Initialize job
         const initUrl = `${siteUrl}/.netlify/functions/initialize-job`;
-        console.log(`Calling initialize-job at: ${initUrl}`);
+        logger.info(`Calling initialize-job at: ${initUrl}`);
 
         const initResponse = await fetch(initUrl, {
             method: 'POST',
@@ -207,7 +208,7 @@ async function executeEOLCheck(product, siteUrl) {
 
         if (!initResponse.ok) {
             const errorText = await initResponse.text();
-            console.error('Job initialization failed:', initResponse.status, errorText);
+            logger.error('Job initialization failed:', initResponse.status, errorText);
             return false;
         }
 
@@ -215,28 +216,28 @@ async function executeEOLCheck(product, siteUrl) {
         const jobId = initData.jobId;
 
         if (!jobId) {
-            console.error('No job ID received');
+            logger.error('No job ID received');
             return false;
         }
 
-        console.log(`Job initialized: ${jobId}`);
+        logger.info(`Job initialized: ${jobId}`);
 
         // Poll for completion (max 60 attempts = 2 minutes)
         const result = await pollJobStatus(jobId, manufacturer, model, siteUrl);
 
         if (!result) {
-            console.error('Job polling failed');
+            logger.error('Job polling failed');
             return false;
         }
 
         // Update the product in database
         await updateProduct(sapNumber, result);
 
-        console.log(`✓ EOL check completed for ${manufacturer} ${model}`);
+        logger.info(`✓ EOL check completed for ${manufacturer} ${model}`);
         return true;
 
     } catch (error) {
-        console.error('EOL check error:', error);
+        logger.error('EOL check error:', error);
         return false;
     }
 }
@@ -276,7 +277,7 @@ class JobPoller {
     }
 
     async poll() {
-        console.log(`Polling job ${this.jobId} (max ${this.maxAttempts} attempts, 2 minutes)`);
+        logger.info(`Polling job ${this.jobId} (max ${this.maxAttempts} attempts, 2 minutes)`);
 
         while (this.attempts < this.maxAttempts && !this.completionResult) {
             this.attempts++;
@@ -333,14 +334,14 @@ class JobPoller {
     logProgress() {
         if (this.attempts % 30 === 0) {
             const elapsedMinutes = Math.round(this.attempts * 2 / 60);
-            console.log(`Polling attempt ${this.attempts}/${this.maxAttempts} (~${elapsedMinutes} min elapsed)...`);
+            logger.info(`Polling attempt ${this.attempts}/${this.maxAttempts} (~${elapsedMinutes} min elapsed)...`);
         }
     }
 
     async checkRenderHealthIfNeeded() {
         if (this.attempts !== 15) return;
 
-        console.log('Polling attempt 15/60 (~30s elapsed) - checking Render service health...');
+        logger.info('Polling attempt 15/60 (~30s elapsed) - checking Render service health...');
 
         try {
             await this.performHealthCheck();
@@ -360,12 +361,12 @@ class JobPoller {
         }
 
         const healthData = await healthResponse.json();
-        console.log(`✓ Render service healthy (memory: ${healthData.memory?.rss || 'N/A'}MB, requests: ${healthData.requestCount || 'N/A'})`);
+        logger.info(`✓ Render service healthy (memory: ${healthData.memory?.rss || 'N/A'}MB, requests: ${healthData.requestCount || 'N/A'})`);
     }
 
     async handleHealthCheckFailure(error) {
-        console.error(`⚠️  Render health check failed at attempt 15: ${error.message}`);
-        console.log('Assuming Render crashed. Skipping this check to save time.');
+        logger.error(`⚠️  Render health check failed at attempt 15: ${error.message}`);
+        logger.info('Assuming Render crashed. Skipping this check to save time.');
 
         const healthCheckError = new Error('Render health check failed');
         healthCheckError.isHealthCheckFailure = true;
@@ -379,14 +380,14 @@ class JobPoller {
     }
 
     async handleMissingJob() {
-        console.error(`Job ${this.jobId} not found in Blobs storage`);
+        logger.error(`Job ${this.jobId} not found in Blobs storage`);
         await this.waitForNextPoll();
     }
 
     async handleJobCompletion(job) {
         if (job.status === 'complete' && job.finalResult) {
             const elapsedMinutes = Math.round(this.attempts * 2 / 60);
-            console.log(`✓ Job complete after ${this.attempts} attempts (~${elapsedMinutes} min)`);
+            logger.info(`✓ Job complete after ${this.attempts} attempts (~${elapsedMinutes} min)`);
             return job.finalResult;
         }
         return null;
@@ -394,7 +395,7 @@ class JobPoller {
 
     async handleJobError(job) {
         if (job.status === 'error') {
-            console.error(`Job failed with error: ${job.error}`);
+            logger.error(`Job failed with error: ${job.error}`);
             return {
                 status: 'UNKNOWN',
                 explanation: `Job failed: ${job.error}`,
@@ -417,7 +418,7 @@ class JobPoller {
     }
 
     async triggerFetchUrl(job) {
-        console.log(`✓ URLs ready, triggering fetch-url (attempt ${this.attempts})`);
+        logger.info(`✓ URLs ready, triggering fetch-url (attempt ${this.attempts})`);
 
         await this.updateJobStatus(this.jobId, 'fetching', null, {});
 
@@ -426,9 +427,9 @@ class JobPoller {
 
         try {
             await this.fireFetchUrlRequest(firstUrl);
-            console.log(`✓ fetch-url triggered for ${firstUrl.url}`);
+            logger.info(`✓ fetch-url triggered for ${firstUrl.url}`);
         } catch (error) {
-            console.error(`Error triggering fetch-url: ${error.message}`);
+            logger.error(`Error triggering fetch-url: ${error.message}`);
         }
     }
 
@@ -442,7 +443,7 @@ class JobPoller {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         }).catch(err => {
-            console.error(`Failed to trigger fetch-url: ${err.message}`);
+            logger.error(`Failed to trigger fetch-url: ${err.message}`);
         });
     }
 
@@ -480,13 +481,13 @@ class JobPoller {
     }
 
     async triggerAnalyzeJob() {
-        console.log(`✓ All URLs scraped, triggering analyze-job synchronously (attempt ${this.attempts})`);
+        logger.info(`✓ All URLs scraped, triggering analyze-job synchronously (attempt ${this.attempts})`);
 
         try {
             const result = await this.callAnalyzeJob();
 
             if (result) {
-                console.log(`✓ Analysis completed successfully: ${result.status}`);
+                logger.info(`✓ Analysis completed successfully: ${result.status}`);
                 return result;
             }
         } catch (error) {
@@ -517,7 +518,7 @@ class JobPoller {
     async checkJobCompletionAfterAnalysis() {
         const updatedJob = await this.jobStore.get(this.jobId, { type: 'json' });
         if (updatedJob?.status === 'complete' && updatedJob.finalResult) {
-            console.log(`✓ Job complete after analysis`);
+            logger.info(`✓ Job complete after analysis`);
             return updatedJob.finalResult;
         }
         return null;
@@ -525,9 +526,9 @@ class JobPoller {
 
     handleAnalyzeJobError(error) {
         if (error.name === 'TimeoutError' || error.message.includes('timeout')) {
-            console.warn(`analyze-job timed out after 25s (likely Groq token wait), will check on next poll`);
+            logger.warn(`analyze-job timed out after 25s (likely Groq token wait), will check on next poll`);
         } else {
-            console.error(`analyze-job error: ${error.message}`);
+            logger.error(`analyze-job error: ${error.message}`);
         }
     }
 
@@ -536,7 +537,7 @@ class JobPoller {
             throw error.result;
         }
 
-        console.error(`Polling error (attempt ${this.attempts}): ${error.message}`);
+        logger.error(`Polling error (attempt ${this.attempts}): ${error.message}`);
         await this.waitForNextPoll();
     }
 
@@ -546,7 +547,7 @@ class JobPoller {
 
     handleTimeout() {
         const timeoutMinutes = Math.round(this.maxAttempts * 2 / 60);
-        console.error(`⏱️  Job ${this.jobId} timed out after ${this.maxAttempts} attempts (~${timeoutMinutes} minutes)`);
+        logger.error(`⏱️  Job ${this.jobId} timed out after ${this.maxAttempts} attempts (~${timeoutMinutes} minutes)`);
 
         return {
             status: 'UNKNOWN',
@@ -567,7 +568,7 @@ async function updateProduct(sapNumber, result) {
         const csvContent = await csvStore.get('database.csv');
 
         if (!csvContent) {
-            console.error('Database not found');
+            logger.error('Database not found');
             return;
         }
 
@@ -575,7 +576,7 @@ async function updateProduct(sapNumber, result) {
         const parseResult = parseCSV(csvContent);
 
         if (!parseResult.success) {
-            console.error('CSV parsing failed during product update:', parseResult.error);
+            logger.error('CSV parsing failed during product update:', parseResult.error);
             throw new Error(`CSV parsing failed: ${parseResult.error}`);
         }
 
@@ -585,7 +586,7 @@ async function updateProduct(sapNumber, result) {
         const rowIndex = data.findIndex((row, i) => i > 0 && row[0] === sapNumber);
 
         if (rowIndex === -1) {
-            console.error(`Product ${sapNumber} not found in database`);
+            logger.error(`Product ${sapNumber} not found in database`);
             return;
         }
 
@@ -604,25 +605,25 @@ async function updateProduct(sapNumber, result) {
         // Save updated database
         await csvStore.set('database.csv', updatedCsv);
 
-        console.log(`Database updated for ${sapNumber}`);
+        logger.info(`Database updated for ${sapNumber}`);
 
     } catch (error) {
-        console.error('Error updating product:', error);
+        logger.error('Error updating product:', error);
     }
 }
 
 // Main handler
 exports.handler = async function(event, _context) {
-    console.log('='.repeat(60));
-    console.log('Background EOL check started:', new Date().toISOString());
-    console.log('='.repeat(60));
+    logger.info('='.repeat(60));
+    logger.info('Background EOL check started:', new Date().toISOString());
+    logger.info('='.repeat(60));
 
     try {
         const { siteUrl, store } = await initializeFromEvent(event);
 
         let state = await store.get('state', { type: 'json' });
         if (!state) {
-            console.log('State not initialized');
+            logger.info('State not initialized');
             return { statusCode: 200, body: 'State not initialized' };
         }
 
@@ -635,7 +636,7 @@ exports.handler = async function(event, _context) {
         // Update state with fresh data after potential resets
         state = shouldProceed.updatedState || state;
 
-        console.log(`Current progress: ${state.dailyCounter}/20 checks today`);
+        logger.info(`Current progress: ${state.dailyCounter}/20 checks today`);
 
         // Wake Render service on first check
         if (state.dailyCounter === 0) {
@@ -669,7 +670,7 @@ exports.handler = async function(event, _context) {
         };
 
     } catch (error) {
-        console.error('Background function error:', error);
+        logger.error('Background function error:', error);
         await handleErrorState(event);
 
         return {
@@ -691,7 +692,7 @@ async function initializeFromEvent(event) {
                    process.env.URL ||
                    'https://develop--syntegoneolchecker.netlify.app';
 
-    console.log(`Site URL: ${siteUrl} (${passedSiteUrl ? 'passed from caller' : 'from environment'})`);
+    logger.info(`Site URL: ${siteUrl} (${passedSiteUrl ? 'passed from caller' : 'from environment'})`);
 
     const store = getStore({
         name: 'auto-check-state',
@@ -705,7 +706,7 @@ async function initializeFromEvent(event) {
 async function validateAndPrepareForCheck(state, siteUrl, store) {
     // Check if enabled
     if (!state.enabled) {
-        console.log('Auto-check disabled, stopping');
+        logger.info('Auto-check disabled, stopping');
         await updateAutoCheckState(siteUrl, { isRunning: false });
         return { shouldContinue: false, reason: 'Disabled' };
     }
@@ -713,7 +714,7 @@ async function validateAndPrepareForCheck(state, siteUrl, store) {
     // Check if new day (reset counter at GMT+9 midnight)
     const currentDate = getGMT9Date();
     if (state.lastResetDate !== currentDate) {
-        console.log(`New day detected (${currentDate}), resetting counter`);
+        logger.info(`New day detected (${currentDate}), resetting counter`);
         await updateAutoCheckState(siteUrl, {
             dailyCounter: 0,
             lastResetDate: currentDate
@@ -730,7 +731,7 @@ async function validateAndPrepareForCheck(state, siteUrl, store) {
 
     // Check if daily limit reached
     if (state.dailyCounter >= 20) {
-        console.log('Daily limit reached (20 checks)');
+        logger.info('Daily limit reached (20 checks)');
         await updateAutoCheckState(siteUrl, { isRunning: false });
         return { shouldContinue: false, reason: 'Daily limit reached' };
     }
@@ -748,7 +749,7 @@ async function processNextProduct(state, siteUrl, store) {
     // Find next product to check
     const product = await findNextProduct();
     if (!product) {
-        console.log('No more products to check');
+        logger.info('No more products to check');
         await updateAutoCheckState(siteUrl, { isRunning: false });
         return {
             shouldStopChain: true,
@@ -758,10 +759,10 @@ async function processNextProduct(state, siteUrl, store) {
 
     // Re-check state RIGHT BEFORE starting EOL check
     const preCheckState = await store.get('state', { type: 'json' });
-    console.log(`Pre-check state: enabled=${preCheckState.enabled}, counter=${preCheckState.dailyCounter}, isRunning=${preCheckState.isRunning}`);
+    logger.info(`Pre-check state: enabled=${preCheckState.enabled}, counter=${preCheckState.dailyCounter}, isRunning=${preCheckState.isRunning}`);
 
     if (!preCheckState.enabled) {
-        console.log('🛑 Auto-check disabled before starting EOL check, stopping chain');
+        logger.info('🛑 Auto-check disabled before starting EOL check, stopping chain');
         await updateAutoCheckState(siteUrl, { isRunning: false });
         return {
             shouldStopChain: true,
@@ -769,7 +770,7 @@ async function processNextProduct(state, siteUrl, store) {
         };
     }
 
-    console.log('✓ Slider still enabled, proceeding with EOL check');
+    logger.info('✓ Slider still enabled, proceeding with EOL check');
 
     // Execute ONE EOL check
     const success = await executeEOLCheck(product, siteUrl);
@@ -782,7 +783,7 @@ async function processNextProduct(state, siteUrl, store) {
         isRunning: true  // Explicitly maintain running state during chain
     });
 
-    console.log(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${newCounter}/20`);
+    logger.info(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${newCounter}/20`);
 
     return {
         shouldStopChain: false,
@@ -794,7 +795,7 @@ async function processNextProduct(state, siteUrl, store) {
 async function determineChainContinuation(siteUrl, store) {
     // Check if we should continue
     const freshState = await store.get('state', { type: 'json' });
-    console.log(`Post-check state: enabled=${freshState.enabled}, counter=${freshState.dailyCounter}, isRunning=${freshState.isRunning}`);
+    logger.info(`Post-check state: enabled=${freshState.enabled}, counter=${freshState.dailyCounter}, isRunning=${freshState.isRunning}`);
 
     const shouldContinue = freshState.enabled && freshState.dailyCounter < 20;
 
@@ -814,7 +815,7 @@ async function updateAutoCheckState(siteUrl, updates) {
 }
 
 async function triggerNextCheck(siteUrl) {
-    console.log('✓ Slider still enabled, triggering next check...');
+    logger.info('✓ Slider still enabled, triggering next check...');
     const nextCheckUrl = `${siteUrl}/.netlify/functions/auto-eol-check-background`;
 
     try {
@@ -827,18 +828,18 @@ async function triggerNextCheck(siteUrl) {
                 siteUrl: siteUrl
             })
         }).catch(err => {
-            console.error('Failed to trigger next check:', err.message);
+            logger.error('Failed to trigger next check:', err.message);
         });
 
-        console.log('Next check triggered');
+        logger.info('Next check triggered');
     } catch (error) {
-        console.error('Error triggering next check:', error.message);
+        logger.error('Error triggering next check:', error.message);
     }
 }
 
 async function stopChain(siteUrl, state) {
     const reason = state.enabled ? 'daily limit reached' : 'slider disabled';
-    console.log(`🛑 Chain stopped: ${reason} (enabled=${state.enabled}, counter=${state.dailyCounter}/20)`);
+    logger.info(`🛑 Chain stopped: ${reason} (enabled=${state.enabled}, counter=${state.dailyCounter}/20)`);
 
     await updateAutoCheckState(siteUrl, { isRunning: false });
 }
@@ -855,6 +856,6 @@ async function handleErrorState(event) {
 
         await updateAutoCheckState(errorSiteUrl, { isRunning: false });
     } catch (e) {
-        console.error('Failed to update state on error:', e);
+        logger.error('Failed to update state on error:', e);
     }
 }

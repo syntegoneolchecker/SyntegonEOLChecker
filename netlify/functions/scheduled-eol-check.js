@@ -2,6 +2,7 @@
 // Checks if auto-check is enabled and starts the background checking process
 const { getStore } = require('@netlify/blobs');
 const { schedule } = require('@netlify/functions');
+const logger = require('./lib/logger');
 
 // Helper: Get current date in GMT+9 timezone
 function getGMT9Date() {
@@ -25,10 +26,10 @@ function getCurrentDeploymentUrl(event, context) {
         try {
             const url = new URL(event.rawUrl);
             const siteUrl = `${url.protocol}//${url.host}`;
-            console.log(`Detected site URL from event.rawUrl: ${siteUrl}`);
+            logger.info(`Detected site URL from event.rawUrl: ${siteUrl}`);
             return siteUrl;
         } catch (error) {
-            console.warn('Failed to parse event.rawUrl:', error.message);
+            logger.warn('Failed to parse event.rawUrl:', error.message);
         }
     }
 
@@ -36,7 +37,7 @@ function getCurrentDeploymentUrl(event, context) {
     if (event?.headers?.host) {
         const protocol = event.headers['x-forwarded-proto'] || 'https';
         const siteUrl = `${protocol}://${event.headers.host}`;
-        console.log(`Detected site URL from event.headers.host: ${siteUrl}`);
+        logger.info(`Detected site URL from event.headers.host: ${siteUrl}`);
         return siteUrl;
     }
 
@@ -46,17 +47,17 @@ function getCurrentDeploymentUrl(event, context) {
             const decoded = Buffer.from(context.clientContext.custom.netlify, 'base64').toString('utf-8');
             const data = JSON.parse(decoded);
             if (data.site_url) {
-                console.log(`Detected site URL from context.clientContext: ${data.site_url}`);
+                logger.info(`Detected site URL from context.clientContext: ${data.site_url}`);
                 return data.site_url;
             }
         } catch (error) {
-            console.warn('Failed to decode context.clientContext.custom.netlify:', error.message);
+            logger.warn('Failed to decode context.clientContext.custom.netlify:', error.message);
         }
     }
 
     // Priority 4: Fallback to environment variables (rarely available for scheduled functions)
     if (process.env.SCHEDULED_FUNCTION_TARGET_URL) {
-        console.log(`Using explicit target URL: ${process.env.SCHEDULED_FUNCTION_TARGET_URL}`);
+        logger.info(`Using explicit target URL: ${process.env.SCHEDULED_FUNCTION_TARGET_URL}`);
         return process.env.SCHEDULED_FUNCTION_TARGET_URL;
     }
 
@@ -69,16 +70,16 @@ function getCurrentDeploymentUrl(event, context) {
 
     // Priority 5: Default to production URL
     const fallbackUrl = process.env.URL || 'https://syntegoneolchecker.netlify.app';
-    console.log(`Using fallback URL: ${fallbackUrl}`);
+    logger.info(`Using fallback URL: ${fallbackUrl}`);
     return fallbackUrl;
 }
 
 const handler = async (event, context) => {
-    console.log('Scheduled EOL check triggered at:', new Date().toISOString());
+    logger.info('Scheduled EOL check triggered at:', new Date().toISOString());
 
     try {
         const siteUrl = getCurrentDeploymentUrl(event, context);
-        console.log(`Using site URL: ${siteUrl}`);
+        logger.info(`Using site URL: ${siteUrl}`);
 
         const store = getStore({
             name: 'auto-check-state',
@@ -90,18 +91,18 @@ const handler = async (event, context) => {
         let state = await store.get('state', { type: 'json' });
 
         if (!state) {
-            console.log('Auto-check state not initialized, skipping');
+            logger.info('Auto-check state not initialized, skipping');
             return {
                 statusCode: 200,
                 body: JSON.stringify({ message: 'State not initialized' })
             };
         }
 
-        console.log('Current state:', state);
+        logger.info('Current state:', state);
 
         // Check if auto-check is enabled
         if (!state.enabled) {
-            console.log('Auto-check is disabled, skipping');
+            logger.info('Auto-check is disabled, skipping');
             return {
                 statusCode: 200,
                 body: JSON.stringify({ message: 'Auto-check disabled' })
@@ -110,7 +111,7 @@ const handler = async (event, context) => {
 
         // Check if already running
         if (state.isRunning) {
-            console.log('Auto-check already running, skipping');
+            logger.info('Auto-check already running, skipping');
             return {
                 statusCode: 200,
                 body: JSON.stringify({ message: 'Already running' })
@@ -120,7 +121,7 @@ const handler = async (event, context) => {
         // Check if we need to reset the daily counter (new day in GMT+9)
         const currentDate = getGMT9Date();
         if (state.lastResetDate !== currentDate) {
-            console.log(`New day detected (${currentDate}), resetting counter from ${state.dailyCounter} to 0`);
+            logger.info(`New day detected (${currentDate}), resetting counter from ${state.dailyCounter} to 0`);
             // Use set-auto-check-state to avoid race condition
             const resetResponse = await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
                 method: 'POST',
@@ -128,7 +129,7 @@ const handler = async (event, context) => {
                 body: JSON.stringify({ dailyCounter: 0, lastResetDate: currentDate })
             });
             if (!resetResponse.ok) {
-                console.error('Failed to reset counter');
+                logger.error('Failed to reset counter');
             }
             // Re-fetch state after update
             state = await store.get('state', { type: 'json' });
@@ -136,7 +137,7 @@ const handler = async (event, context) => {
 
         // Check if we've already done 20 checks today
         if (state.dailyCounter >= 20) {
-            console.log('Daily limit reached (20 checks), skipping');
+            logger.info('Daily limit reached (20 checks), skipping');
             return {
                 statusCode: 200,
                 body: JSON.stringify({ message: 'Daily limit reached' })
@@ -148,7 +149,7 @@ const handler = async (event, context) => {
         if (tavilyResponse.ok) {
             const tavilyData = await tavilyResponse.json();
             if (tavilyData.remaining <= 50) {
-                console.log(`Tavily credits too low (${tavilyData.remaining}), disabling auto-check`);
+                logger.info(`Tavily credits too low (${tavilyData.remaining}), disabling auto-check`);
                 // Use set-auto-check-state to avoid race condition
                 await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
                     method: 'POST',
@@ -163,7 +164,7 @@ const handler = async (event, context) => {
         }
 
         // All checks passed - trigger the background function
-        console.log('Triggering background EOL check...');
+        logger.info('Triggering background EOL check...');
 
         // Mark as running - use set-auto-check-state to avoid race condition
         await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
@@ -174,8 +175,8 @@ const handler = async (event, context) => {
 
         // Trigger the background function
         const backgroundUrl = `${siteUrl}/.netlify/functions/auto-eol-check-background`;
-        console.log(`Triggering background function at: ${backgroundUrl}`);
-        console.log(`Environment: DEPLOY_PRIME_URL=${process.env.DEPLOY_PRIME_URL}, DEPLOY_URL=${process.env.DEPLOY_URL}, URL=${process.env.URL}`);
+        logger.info(`Triggering background function at: ${backgroundUrl}`);
+        logger.info(`Environment: DEPLOY_PRIME_URL=${process.env.DEPLOY_PRIME_URL}, DEPLOY_URL=${process.env.DEPLOY_URL}, URL=${process.env.URL}`);
 
         const triggerResponse = await fetch(backgroundUrl, {
             method: 'POST',
@@ -186,10 +187,10 @@ const handler = async (event, context) => {
             })
         });
 
-        console.log('Background function triggered, status:', triggerResponse.status);
+        logger.info('Background function triggered, status:', triggerResponse.status);
         if (!triggerResponse.ok) {
             const errorText = await triggerResponse.text();
-            console.error('Background function error response:', errorText);
+            logger.error('Background function error response:', errorText);
         }
 
         return {
@@ -201,7 +202,7 @@ const handler = async (event, context) => {
         };
 
     } catch (error) {
-        console.error('Scheduled check error:', error);
+        logger.error('Scheduled check error:', error);
         return {
             statusCode: 500,
             body: JSON.stringify({ error: error.message })

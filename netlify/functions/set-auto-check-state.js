@@ -1,5 +1,6 @@
 // Set auto-check state in Netlify Blobs
 const { getStore } = require('@netlify/blobs');
+const logger = require('./lib/logger');
 
 exports.handler = async function(event, _context) {
     // Handle CORS
@@ -72,7 +73,7 @@ exports.handler = async function(event, _context) {
         // Save updated state
         await store.setJSON('state', state);
 
-        console.log('Auto-check state updated:', state);
+        logger.info('Auto-check state updated:', state);
 
         return {
             statusCode: 200,
@@ -87,7 +88,7 @@ exports.handler = async function(event, _context) {
         };
 
     } catch (error) {
-        console.error('Set auto-check state error:', error);
+        logger.error('Set auto-check state error:', error);
         return {
             statusCode: 500,
             headers: {

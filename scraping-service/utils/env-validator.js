@@ -1,3 +1,5 @@
+const logger = require('./logger');
+
 /**
  * Environment variable validation for scraping service
  * Validates required environment variables at startup to fail fast
@@ -36,17 +38,17 @@ function validateEnvironmentVariables() {
 
     // Log results
     if (warnings.length > 0) {
-        console.warn('⚠️  Environment variable warnings:');
-        warnings.forEach(warning => console.warn(`  - ${warning}`));
+        logger.warn('⚠️  Environment variable warnings:');
+        warnings.forEach(warning => logger.warn(`  - ${warning}`));
     }
 
     if (errors.length > 0) {
-        console.error('❌ Environment variable validation failed:');
-        errors.forEach(error => console.error(`  - ${error}`));
+        logger.error('❌ Environment variable validation failed:');
+        errors.forEach(error => logger.error(`  - ${error}`));
         throw new Error('Missing required environment variables');
     }
 
-    console.log('✓ Environment variables validated successfully');
+    logger.info('✓ Environment variables validated successfully');
 }
 
 /**
@@ -57,7 +59,7 @@ function validateAllowedOrigins() {
     const origins = process.env.ALLOWED_ORIGINS;
 
     if (!origins) {
-        console.warn('⚠️  ALLOWED_ORIGINS not set, using default localhost origins');
+        logger.warn('⚠️  ALLOWED_ORIGINS not set, using default localhost origins');
         return true;
     }
 
@@ -66,13 +68,13 @@ function validateAllowedOrigins() {
 
     for (const origin of originList) {
         if (!urlPattern.test(origin.trim())) {
-            console.error(`❌ Invalid origin format: "${origin.trim()}"`);
-            console.error('   Origins must start with http:// or https://');
+            logger.error(`❌ Invalid origin format: "${origin.trim()}"`);
+            logger.error('   Origins must start with http:// or https://');
             return false;
         }
     }
 
-    console.log(`✓ ALLOWED_ORIGINS validated: ${originList.length} origin(s) configured`);
+    logger.info(`✓ ALLOWED_ORIGINS validated: ${originList.length} origin(s) configured`);
     return true;
 }
 

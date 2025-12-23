@@ -4,6 +4,7 @@ const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { retryWithBackoff } = require('./lib/retry-helpers');
 const { triggerFetchUrl, triggerAnalyzeJob } = require('./lib/fire-and-forget');
 const config = require('./lib/config');
+const logger = require('./lib/logger');
 
 /**
  * Check if Render scraping service is healthy
@@ -15,7 +16,7 @@ async function checkRenderHealth(scrapingServiceUrl) {
         });
         return response.ok;
     } catch (error) {
-        console.error('Render health check failed:', error.message);
+        logger.error('Render health check failed:', error.message);
         return false;
     }
 }
@@ -34,12 +35,12 @@ async function scrapeNBKSearchWithBrowserQL(model) {
 
     // Preprocess model name: remove lowercase 'x' and '-'
     const preprocessedModel = model.replaceAll('x', '').replaceAll('-', '');
-    console.log(`NBK BrowserQL: Preprocessed model name: ${model} -> ${preprocessedModel}`);
+    logger.info(`NBK BrowserQL: Preprocessed model name: ${model} -> ${preprocessedModel}`);
 
     const encodedModel = encodeURIComponent(preprocessedModel);
     const searchUrl = `https://www.nbk1560.com/search/?q=${encodedModel}&SelectedLanguage=ja-JP&page=1&imgsize=1&doctype=all&sort=0&pagemax=10&htmlLang=ja`;
 
-    console.log(`NBK BrowserQL: Searching at ${searchUrl}`);
+    logger.info(`NBK BrowserQL: Searching at ${searchUrl}`);
 
     // BrowserQL mutation to search page (extract product URL only)
     const searchQuery = `
@@ -112,7 +113,7 @@ async function scrapeNBKSearchWithBrowserQL(model) {
 
     // Parse search results
     const searchInfo = JSON.parse(searchResult.data.searchInfo.value);
-    console.log(`NBK BrowserQL: Search results:`, searchInfo);
+    logger.info(`NBK BrowserQL: Search results:`, searchInfo);
 
     if (searchInfo.error) {
         throw new Error(`NBK search page evaluation error: ${searchInfo.error}`);
@@ -122,7 +123,7 @@ async function scrapeNBKSearchWithBrowserQL(model) {
     let productUrl = searchInfo.productUrl;
     if (productUrl) {
         productUrl = productUrl + '?SelectedLanguage=ja-JP';
-        console.log(`NBK BrowserQL: Added language parameter to URL: ${productUrl}`);
+        logger.info(`NBK BrowserQL: Added language parameter to URL: ${productUrl}`);
     }
 
     return {
@@ -143,7 +144,7 @@ async function scrapeNBKProductWithBrowserQL(productUrl) {
         throw new Error('BROWSERQL_API_KEY environment variable not set');
     }
 
-    console.log(`NBK BrowserQL: Scraping product page: ${productUrl}`);
+    logger.info(`NBK BrowserQL: Scraping product page: ${productUrl}`);
 
     // BrowserQL mutation to scrape product page
     const productQuery = `
@@ -187,7 +188,7 @@ async function scrapeNBKProductWithBrowserQL(productUrl) {
         throw new Error('NBK BrowserQL returned empty content');
     }
 
-    console.log(`NBK BrowserQL: Successfully scraped product page (${content.length} characters)`);
+    logger.info(`NBK BrowserQL: Successfully scraped product page (${content.length} characters)`);
 
     return {
         content,
@@ -202,12 +203,12 @@ exports.handler = async function(event, context) {
 
     try {
         const requestBody = JSON.parse(event.body);
-        console.log(`[FETCH-URL DEBUG] Raw request body:`, JSON.stringify(requestBody, null, 2));
+        logger.info(`[FETCH-URL DEBUG] Raw request body:`, JSON.stringify(requestBody, null, 2));
 
         const { jobId, urlIndex, url, title, snippet, scrapingMethod, model, jpUrl, usUrl } = requestBody;
 
-        console.log(`Fetching URL ${urlIndex} for job ${jobId}: ${url} (method: ${scrapingMethod || 'render'})`);
-        console.log(`[FETCH-URL DEBUG] Extracted values: jpUrl=${jpUrl}, usUrl=${usUrl}, model=${model}`);
+        logger.info(`Fetching URL ${urlIndex} for job ${jobId}: ${url} (method: ${scrapingMethod || 'render'})`);
+        logger.info(`[FETCH-URL DEBUG] Extracted values: jpUrl=${jpUrl}, usUrl=${usUrl}, model=${model}`);
 
         const baseUrl = constructBaseUrl(event.headers);
 
@@ -241,7 +242,7 @@ exports.handler = async function(event, context) {
         return await handler(handlerParams);
 
     } catch (error) {
-        console.error('Fetch URL error:', error);
+        logger.error('Fetch URL error:', error);
         return {
             statusCode: 500,
             body: JSON.stringify({ error: error.message })
@@ -269,7 +270,7 @@ async function handleCommonError(params) {
         continuePipeline = true
     } = params;
 
-    console.log(`Saving error result for ${method} URL ${urlIndex}`);
+    logger.info(`Saving error result for ${method} URL ${urlIndex}`);
 
     const errorMessage = error.message.includes('503') || error.message.includes('Service restarting')
         ? `[Render service was restarting - this URL will be retried on next check]`
@@ -282,7 +283,7 @@ async function handleCommonError(params) {
         fullContent: errorMessage
     }, context);
 
-    console.log(`Error result saved for ${method} URL ${urlIndex}. All done: ${allDone}`);
+    logger.info(`Error result saved for ${method} URL ${urlIndex}. All done: ${allDone}`);
 
     if (!continuePipeline) {
         return {
@@ -315,17 +316,17 @@ async function continuePipelineAfterError(params) {
     if (allDone) {
         const job = await getJob(jobId, context);
         if (job && job.status !== 'analyzing' && job.status !== 'complete') {
-            console.log(`All URLs complete (with errors) for job ${jobId}, triggering analysis`);
+            logger.info(`All URLs complete (with errors) for job ${jobId}, triggering analysis`);
             await triggerAnalysis(jobId, baseUrl);
         } else {
-            console.log(`All URLs complete but analysis already started (status: ${job?.status}), skipping duplicate trigger`);
+            logger.info(`All URLs complete but analysis already started (status: ${job?.status}), skipping duplicate trigger`);
         }
     } else {
         const job = await getJob(jobId, context);
         if (job) {
             const nextUrl = job.urls.find(u => u.status === 'pending');
             if (nextUrl) {
-                console.log(`Triggering next URL ${nextUrl.index} after error`);
+                logger.info(`Triggering next URL ${nextUrl.index} after error`);
                 await triggerFetch(jobId, nextUrl, baseUrl);
             }
         }
@@ -335,7 +336,7 @@ async function continuePipelineAfterError(params) {
 async function handleRenderServiceCall(params) {
     const { payload, serviceUrl, endpoint, methodName } = params;
 
-    console.log(`Calling ${methodName} service: ${serviceUrl}/${endpoint}`);
+    logger.info(`Calling ${methodName} service: ${serviceUrl}/${endpoint}`);
 
     return await retryWithBackoff({
         operation: async () => {
@@ -355,7 +356,7 @@ async function handleRenderServiceCall(params) {
 // Strategy handlers
 async function handleKeyenceInteractive(params) {
     const { jobId, urlIndex, model, baseUrl } = params;
-    console.log(`Using KEYENCE interactive search for model: ${model}`);
+    logger.info(`Using KEYENCE interactive search for model: ${model}`);
 
     const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
     const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
@@ -381,7 +382,7 @@ async function handleKeyenceInteractive(params) {
 
 async function handleIdecDualSite(params) {
     const { jobId, urlIndex, model, jpUrl, usUrl, baseUrl, title, snippet, context } = params;
-    console.log(`Using IDEC dual-site search for model: ${model}`);
+    logger.info(`Using IDEC dual-site search for model: ${model}`);
 
     const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
     const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
@@ -390,7 +391,7 @@ async function handleIdecDualSite(params) {
     const usProxyUrl = process.env.IDEC_US_PROXY;
 
     if (!jpProxyUrl || !usProxyUrl) {
-        console.error('IDEC proxy environment variables not set');
+        logger.error('IDEC proxy environment variables not set');
 
         const allDone = await saveUrlResult(jobId, urlIndex, {
             url: params.url,
@@ -427,7 +428,7 @@ async function handleIdecDualSite(params) {
         usUrl: usUrl
     };
 
-    console.log(`IDEC payload: model=${model}, jpUrl=${jpUrl}, usUrl=${usUrl}`);
+    logger.info(`IDEC payload: model=${model}, jpUrl=${jpUrl}, usUrl=${usUrl}`);
 
     const idecResult = await handleRenderServiceCall({
         payload: idecPayload,
@@ -443,13 +444,13 @@ async function handleIdecDualSite(params) {
 
 async function handleNbkInteractive(params) {
     const { jobId, urlIndex, model, url, snippet, baseUrl, context } = params;
-    console.log(`Using NBK full BrowserQL scraping for model: ${model}`);
+    logger.info(`Using NBK full BrowserQL scraping for model: ${model}`);
 
     try {
         const searchResult = await scrapeNBKSearchWithBrowserQL(model);
 
         if (!searchResult.hasResults || !searchResult.productUrl) {
-            console.log(`NBK: No results found for model ${model}`);
+            logger.info(`NBK: No results found for model ${model}`);
             return await handleNbkNoResults({
                 jobId,
                 urlIndex,
@@ -462,14 +463,14 @@ async function handleNbkInteractive(params) {
             });
         }
 
-        console.log(`NBK: Product URL found, scraping with BrowserQL: ${searchResult.productUrl}`);
+        logger.info(`NBK: Product URL found, scraping with BrowserQL: ${searchResult.productUrl}`);
         const productResult = await scrapeNBKProductWithBrowserQL(searchResult.productUrl);
 
         if (!productResult.success || !productResult.content) {
             throw new Error('NBK product page scraping returned no content');
         }
 
-        console.log(`NBK: Successfully scraped product page (${productResult.content.length} characters)`);
+        logger.info(`NBK: Successfully scraped product page (${productResult.content.length} characters)`);
         return await handleNbkSuccess({
             jobId,
             urlIndex,
@@ -481,7 +482,7 @@ async function handleNbkInteractive(params) {
         });
 
     } catch (error) {
-        console.error(`NBK search failed:`, error);
+        logger.error(`NBK search failed:`, error);
         return await handleCommonError({
             ...params,
             error,
@@ -509,7 +510,7 @@ async function handleNbkNoResults(params) {
         fullContent: `[NBK Search: No results found for model "${model}". Preprocessed search term: "${preprocessedModel}"]`
     }, context);
 
-    console.log(`NBK: No results saved for URL ${urlIndex}. All done: ${allDone}`);
+    logger.info(`NBK: No results saved for URL ${urlIndex}. All done: ${allDone}`);
 
     await continuePipelineAfterError({ jobId, urlIndex, allDone, baseUrl, context });
 
@@ -541,7 +542,7 @@ async function handleNbkSuccess(params) {
         fullContent: content
     }, context);
 
-    console.log(`NBK: Product page saved for URL ${urlIndex}. All done: ${allDone}`);
+    logger.info(`NBK: Product page saved for URL ${urlIndex}. All done: ${allDone}`);
 
     await continuePipelineAfterError({ jobId, urlIndex, allDone, baseUrl, context });
 
@@ -553,7 +554,7 @@ async function handleNbkSuccess(params) {
 
 async function handleBrowserQL(params) {
     const { jobId, urlIndex, url, snippet, baseUrl, context } = params;
-    console.log(`Using BrowserQL for URL ${urlIndex}`);
+    logger.info(`Using BrowserQL for URL ${urlIndex}`);
 
     try {
         const result = await scrapeWithBrowserQL(url);
@@ -565,7 +566,7 @@ async function handleBrowserQL(params) {
             fullContent: result.content
         }, context);
 
-        console.log(`BrowserQL scraping complete for URL ${urlIndex}. All done: ${allDone}`);
+        logger.info(`BrowserQL scraping complete for URL ${urlIndex}. All done: ${allDone}`);
 
         await continuePipelineAfterSuccess({ jobId, urlIndex, allDone, baseUrl, context });
 
@@ -579,7 +580,7 @@ async function handleBrowserQL(params) {
         };
 
     } catch (error) {
-        console.error(`BrowserQL scraping failed for URL ${urlIndex}:`, error);
+        logger.error(`BrowserQL scraping failed for URL ${urlIndex}:`, error);
         return await handleCommonError({
             ...params,
             error,
@@ -592,19 +593,19 @@ async function continuePipelineAfterSuccess(params) {
     const { jobId, allDone, baseUrl, context } = params;
 
     if (allDone) {
-        console.log(`All URLs complete for job ${jobId}, triggering analysis`);
+        logger.info(`All URLs complete for job ${jobId}, triggering analysis`);
         await triggerAnalysis(jobId, baseUrl);
     } else {
-        console.log(`Checking for next pending URL...`);
+        logger.info(`Checking for next pending URL...`);
         const job = await getJob(jobId, context);
 
         if (job) {
             const nextUrl = job.urls.find(u => u.status === 'pending');
             if (nextUrl) {
-                console.log(`Triggering next URL ${nextUrl.index}: ${nextUrl.url}`);
+                logger.info(`Triggering next URL ${nextUrl.index}: ${nextUrl.url}`);
                 await triggerFetch(jobId, nextUrl, baseUrl);
             } else {
-                console.log(`No more pending URLs found`);
+                logger.info(`No more pending URLs found`);
             }
         }
     }
@@ -634,23 +635,23 @@ async function handleRenderDefault(params) {
     const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
     const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
 
-    console.log('Checking Render service health...');
+    logger.info('Checking Render service health...');
     const isHealthy = await checkRenderHealth(scrapingServiceUrl);
 
     if (!isHealthy) {
-        console.warn('Render service unhealthy, waiting 10s for recovery...');
+        logger.warn('Render service unhealthy, waiting 10s for recovery...');
         await new Promise(resolve => setTimeout(resolve, 10000));
 
         const isHealthyRetry = await checkRenderHealth(scrapingServiceUrl);
         if (!isHealthyRetry) {
-            console.error('Render service still unhealthy after retry');
+            logger.error('Render service still unhealthy after retry');
             return await handleCommonError({
                 ...params,
                 error: new Error('Render service unavailable'),
                 method: 'render_service_unavailable'
             });
         }
-        console.log('Render service recovered after retry');
+        logger.info('Render service recovered after retry');
     }
 
     const renderPayload = {
@@ -662,7 +663,7 @@ async function handleRenderDefault(params) {
         snippet
     };
 
-    console.log(`Calling Render scraping service for URL ${urlIndex}: ${scrapingServiceUrl}/scrape`);
+    logger.info(`Calling Render scraping service for URL ${urlIndex}: ${scrapingServiceUrl}/scrape`);
 
     const renderResult = await handleRenderServiceCall({
         payload: renderPayload,
