@@ -54,7 +54,17 @@ exports.handler = async function(event, context) {
         }
 
         logger.debug(`Returning status for job ${jobId}: ${job.status}`);
-        return successResponse(response);
+
+        // NOTE: Frontend expects job data directly in response body, not wrapped in { success, data }
+        // so we return manually instead of using successResponse()
+        return {
+            statusCode: 200,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(response)
+        };
 
     } catch (error) {
         logger.error('Job status error:', error);
