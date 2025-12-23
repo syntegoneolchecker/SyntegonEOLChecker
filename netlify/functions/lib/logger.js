@@ -10,6 +10,8 @@
  * Logs are sent to both console (for immediate debugging) and central log storage
  */
 
+const { getStore } = require('@netlify/blobs');
+
 const LOG_LEVELS = {
     DEBUG: 0,
     INFO: 1,
@@ -33,14 +35,21 @@ try {
 }
 
 /**
- * Send log to central ingestion endpoint
+ * Write log directly to Netlify Blobs
  * This is fire-and-forget to avoid blocking the main application
  */
 async function sendToCentralLog(level, message, context) {
+    // Skip logging for log-ingest and view-logs functions to prevent recursion
+    if (functionSource.includes('log-ingest') || functionSource.includes('view-logs')) {
+        return;
+    }
+
     try {
-        // Get the site URL to construct the log ingestion endpoint
-        const siteUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:8888';
-        const logEndpoint = `${siteUrl}/.netlify/functions/log-ingest`;
+        const store = getStore({
+            name: 'logs',
+            siteID: process.env.SITE_ID,
+            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+        });
 
         const logEntry = {
             timestamp: new Date().toISOString(),
@@ -50,12 +59,26 @@ async function sendToCentralLog(level, message, context) {
             context
         };
 
-        // Fire and forget - don't await to avoid blocking
-        fetch(logEndpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(logEntry)
-        }).catch(() => {
+        // Create a key based on the date (YYYY-MM-DD format)
+        const date = new Date(logEntry.timestamp);
+        const dateKey = date.toISOString().split('T')[0];
+        const logKey = `logs-${dateKey}.jsonl`;
+
+        // Get existing logs for today (if any)
+        let existingLogs = '';
+        try {
+            existingLogs = await store.get(logKey, { type: 'text' }) || '';
+        } catch (err) {
+            // File doesn't exist yet, that's OK
+            existingLogs = '';
+        }
+
+        // Append the new log entry as a JSON line
+        const logLine = JSON.stringify(logEntry) + '\n';
+        const updatedLogs = existingLogs + logLine;
+
+        // Store back to blob - fire and forget (don't await)
+        store.set(logKey, updatedLogs).catch(() => {
             // Silently ignore errors in central logging to avoid cascading failures
         });
     } catch (error) {
