@@ -1,4 +1,5 @@
-/* exported sortTable, addRow, delRow, checkEOL, downloadExcel, loadExcel, manualSaveDatabase, toggleDeleteButtons, clearDatabase, toggleAutoCheck, manualTriggerAutoCheck */
+// Functions in this file are called from HTML onclick handlers in index.html
+// ESLint's no-unused-vars is disabled for this file (see eslint.config.js)
 
 let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
 

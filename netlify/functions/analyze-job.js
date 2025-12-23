@@ -1,5 +1,6 @@
 // Run LLM analysis on fetched results
 const { getJob, saveFinalResult, updateJobStatus } = require('./lib/job-storage');
+const RE2 = require('re2');
 
 // Check Groq API token availability before making request
 async function checkGroqTokenAvailability() {
@@ -298,7 +299,7 @@ function simpleTruncate(content, maxLength) {
 }
 
 // Helper: Truncate tables intelligently (keep product mentions, remove others)
-function truncateTablesWithProduct(content, productModel, maxLength) {
+function truncateTablesWithProduct(content, productModel, _maxLength) {
     const tableRegex = /=== TABLE START ===[\s\S]*?=== TABLE END ===/g;
     let result = content;
     let match;
