@@ -2,6 +2,8 @@
 // Used by frontend for polling manual EOL check progress
 // (Auto-checks poll Blobs directly in auto-eol-check-background)
 const { getJob } = require('./lib/job-storage');
+const { successResponse, notFoundResponse, errorResponse } = require('./lib/response-builder');
+const logger = require('./lib/logger');
 
 exports.handler = async function(event, context) {
     // Extract jobId from path
@@ -22,14 +24,12 @@ exports.handler = async function(event, context) {
     }
 
     try {
+        logger.debug(`Fetching status for job: ${jobId}`);
         const job = await getJob(jobId, context);
 
         if (!job) {
-            return {
-                statusCode: 404,
-                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ error: 'Job not found' })
-            };
+            logger.warn(`Job not found: ${jobId}`);
+            return notFoundResponse('Job');
         }
 
         // Return current job status (read-only)
@@ -53,18 +53,11 @@ exports.handler = async function(event, context) {
             response.result = job.finalResult;
         }
 
-        return {
-            statusCode: 200,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-            body: JSON.stringify(response)
-        };
+        logger.debug(`Returning status for job ${jobId}: ${job.status}`);
+        return successResponse(response);
 
     } catch (error) {
-        console.error('Job status error:', error);
-        return {
-            statusCode: 500,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'Internal server error', details: error.message })
-        };
+        logger.error('Job status error:', error);
+        return errorResponse('Internal server error', { details: error.message });
     }
 };
