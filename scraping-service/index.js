@@ -7,7 +7,6 @@ const {
   getMemoryUsageMB,
   getShutdownState,
   getRequestCount,
-  getMemoryHistory,
   MEMORY_LIMIT_MB,
   MEMORY_WARNING_MB,
 } = require("./utils/memory");
