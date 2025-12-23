@@ -2,6 +2,7 @@
 const { markUrlFetching, saveUrlResult, getJob } = require('./lib/job-storage');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { retryWithBackoff } = require('./lib/retry-helpers');
+const { triggerFetchUrl, triggerAnalyzeJob } = require('./lib/fire-and-forget');
 const config = require('./lib/config');
 
 /**
@@ -675,50 +676,36 @@ async function handleRenderDefault(params) {
     return handleRenderServiceResult(renderResult, 'render');
 }
 
-// Helper function to trigger next URL fetch
+// Helper function to trigger next URL fetch (with retry logic)
 async function triggerFetch(jobId, urlInfo, baseUrl) {
-    try {
-        const payload = {
-            jobId,
-            urlIndex: urlInfo.index,
-            url: urlInfo.url,
-            title: urlInfo.title,
-            snippet: urlInfo.snippet,
-            scrapingMethod: urlInfo.scrapingMethod
-        };
+    const payload = {
+        jobId,
+        urlIndex: urlInfo.index,
+        url: urlInfo.url,
+        title: urlInfo.title,
+        snippet: urlInfo.snippet,
+        scrapingMethod: urlInfo.scrapingMethod
+    };
 
-        // Pass model for interactive searches (KEYENCE)
-        if (urlInfo.model) {
-            payload.model = urlInfo.model;
-        }
-
-        // Pass jpUrl and usUrl for IDEC dual-site
-        if (urlInfo.jpUrl) {
-            payload.jpUrl = urlInfo.jpUrl;
-        }
-        if (urlInfo.usUrl) {
-            payload.usUrl = urlInfo.usUrl;
-        }
-
-        await fetch(`${baseUrl}/.netlify/functions/fetch-url`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-    } catch (error) {
-        console.error('Failed to trigger next fetch:', error);
+    // Pass model for interactive searches (KEYENCE)
+    if (urlInfo.model) {
+        payload.model = urlInfo.model;
     }
+
+    // Pass jpUrl and usUrl for IDEC dual-site
+    if (urlInfo.jpUrl) {
+        payload.jpUrl = urlInfo.jpUrl;
+    }
+    if (urlInfo.usUrl) {
+        payload.usUrl = urlInfo.usUrl;
+    }
+
+    // Use fire-and-forget helper with retry logic
+    await triggerFetchUrl(baseUrl, payload);
 }
 
-// Helper function to trigger LLM analysis
+// Helper function to trigger LLM analysis (with retry logic)
 async function triggerAnalysis(jobId, baseUrl) {
-    try {
-        await fetch(`${baseUrl}/.netlify/functions/analyze-job`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jobId })
-        });
-    } catch (error) {
-        console.error('Failed to trigger analysis:', error);
-    }
+    // Use fire-and-forget helper with retry logic
+    await triggerAnalyzeJob(baseUrl, jobId);
 }

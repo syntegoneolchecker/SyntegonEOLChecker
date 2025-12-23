@@ -83,4 +83,22 @@ module.exports = {
     HEALTH_CHECK_TIMEOUT_MS: 5000,      // Timeout for health check requests
     NETLIFY_FUNCTION_TIMEOUT_MS: 30000, // Netlify function timeout (30s)
     NETLIFY_BACKGROUND_TIMEOUT_MS: 900000, // Background function timeout (15min)
+    FIRE_AND_FORGET_TIMEOUT_MS: 10000,  // Timeout for fire-and-forget operations
+
+    // === SERVICE URLs ===
+    // Default URLs (can be overridden by environment variables)
+    DEFAULT_SCRAPING_SERVICE_URL: 'https://eolscrapingservice.onrender.com',
+    DEFAULT_BROWSERQL_API_URL: 'https://production-sfo.browserless.io/stealth/bql',
+
+    // === FRONTEND POLLING ===
+    FRONTEND_JOB_POLL_INTERVAL_MS: 2000,      // Frontend polls job status every 2s
+    FRONTEND_AUTO_CHECK_MONITOR_MS: 10000,    // Frontend monitors auto-check every 10s
+
+    // === AUTO-CHECK BACKGROUND ===
+    AUTO_CHECK_RENDER_WAKE_MAX_MS: 120000,    // Max time to wait for Render wake (2 min)
+    AUTO_CHECK_RENDER_WAKE_INTERVAL_MS: 30000, // Check Render health every 30s during wake
+
+    // === FIRE-AND-FORGET RETRY ===
+    FIRE_AND_FORGET_MAX_RETRIES: 2,           // Max retries for fire-and-forget operations
+    FIRE_AND_FORGET_RETRY_DELAY_MS: 1000,     // Base delay for retries (1s, 2s, 3s)
 };

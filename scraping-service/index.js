@@ -11,11 +11,25 @@ const {
   MEMORY_WARNING_MB,
 } = require("./utils/memory");
 
+const {
+  validateEnvironmentVariables,
+  validateAllowedOrigins
+} = require("./utils/env-validator");
+
 // Import route handlers
 const { handleScrapeRequest } = require("./routes/scrape");
 const { handleKeyenceScrapeRequest } = require("./routes/scrape-keyence");
 const { handleIdecDualScrapeRequest } = require("./routes/scrape-idec-dual");
 const { handleBatchScrapeRequest } = require("./routes/scrape-batch");
+
+// Validate environment variables at startup
+try {
+  validateEnvironmentVariables();
+  validateAllowedOrigins();
+} catch (error) {
+  console.error('Environment validation failed:', error.message);
+  process.exit(1);
+}
 
 const app = express();
 
@@ -37,7 +51,7 @@ app.use(
       // Allow requests with no origin (like mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin) === -1) {
+      if (!allowedOrigins.includes(origin)) {
         const msg =
           "The CORS policy for this site does not allow access from the specified origin.";
         return callback(new Error(msg), false);
