@@ -250,7 +250,7 @@ function handlePreflightAndMethodValidation(event) {
     if (event.httpMethod !== 'POST') {
         return createErrorResponse(405, 'Method Not Allowed');
     }
-    
+
     return null;
 }
 
@@ -261,7 +261,7 @@ function createCorsResponse(statusCode, body, additionalHeaders = {}) {
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         ...additionalHeaders
     };
-    
+
     return {
         statusCode,
         headers,
@@ -272,17 +272,17 @@ function createCorsResponse(statusCode, body, additionalHeaders = {}) {
 function createErrorResponse(statusCode, error, details = null) {
     const response = {
         statusCode,
-        headers: { 
-            'Access-Control-Allow-Origin': '*', 
-            'Content-Type': 'application/json' 
+        headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify({ error })
     };
-    
+
     if (details) {
         response.body = JSON.stringify({ error, details });
     }
-    
+
     return response;
 }
 
@@ -293,7 +293,7 @@ function createValidationErrorResponse(errors) {
 
 async function processManufacturerStrategy(maker, model, jobId, context) {
     const manufacturerStrategy = getManufacturerUrl(maker, model);
-    
+
     if (!manufacturerStrategy) {
         return null;
     }
@@ -336,7 +336,7 @@ async function handleExtractionStrategy(maker, model, jobId, strategy, context) 
     const productUrl = `https://www.takigen.co.jp${productPath}`;
     console.log(`Extracted ${maker} product URL: ${productUrl}`);
 
-    const urls = [createUrlEntry(0, productUrl, `${maker} ${model} Product Page`, 
+    const urls = [createUrlEntry(0, productUrl, `${maker} ${model} Product Page`,
         `Direct product page for ${maker} ${model}`, strategy.scrapingMethod)];
 
     await saveJobUrls(jobId, urls, context);
@@ -392,7 +392,7 @@ async function handleStandardValidationStrategy(maker, model, jobId, strategy, c
 
     console.log(`Job ${jobId} initialized with validated direct URL (content already scraped)`);
 
-    return createSuccessResponse(jobId, 'ready_for_analysis', 1, 'validated_direct_url', 
+    return createSuccessResponse(jobId, 'ready_for_analysis', 1, 'validated_direct_url',
         { contentLength: scrapeResult.content.length });
 }
 
@@ -412,7 +412,7 @@ async function handleDirectUrlStrategy(maker, model, jobId, strategy, context) {
 
     console.log(`Job ${jobId} initialized with direct URL strategy (1 URL, method: ${strategy.scrapingMethod})`);
 
-    return createSuccessResponse(jobId, 'urls_ready', urls.length, 'direct_url', 
+    return createSuccessResponse(jobId, 'urls_ready', urls.length, 'direct_url',
         { scrapingMethod: strategy.scrapingMethod });
 }
 
@@ -423,20 +423,20 @@ function createUrlEntry(index, url, title, snippet, scrapingMethod = null) {
         title,
         snippet
     };
-    
+
     if (scrapingMethod) {
         entry.scrapingMethod = scrapingMethod;
     }
-    
+
     return entry;
 }
 
 function createSuccessResponse(jobId, status, urlCount, strategy, additionalData = {}) {
     const response = {
         statusCode: 200,
-        headers: { 
-            'Access-Control-Allow-Origin': '*', 
-            'Content-Type': 'application/json' 
+        headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify({
             jobId,
@@ -446,13 +446,13 @@ function createSuccessResponse(jobId, status, urlCount, strategy, additionalData
             ...additionalData
         })
     };
-    
+
     return response;
 }
 
 async function performTavilySearch(maker, model, jobId, context) {
     const searchQuery = `${maker} ${model}`;
-    
+
     // Initialize Tavily client
     const tavilyClient = tavily({ apiKey: process.env.TAVILY_API_KEY });
 
@@ -470,7 +470,7 @@ async function performTavilySearch(maker, model, jobId, context) {
         return await handleNoSearchResults(maker, model, jobId, context);
     }
 
-    const urls = tavilyData.results.map((result, index) => 
+    const urls = tavilyData.results.map((result, index) =>
         createUrlEntry(index, result.url, result.title, result.content || '')
     );
 
@@ -553,7 +553,7 @@ function getTavilySearchOptions() {
 
 async function handleNoSearchResults(maker, model, jobId, context) {
     console.log(`No search results found for ${maker} ${model}`);
-    
+
     const result = {
         status: 'UNKNOWN',
         explanation: 'No search results found',
@@ -563,9 +563,9 @@ async function handleNoSearchResults(maker, model, jobId, context) {
             explanation: ''
         }
     };
-    
+
     await saveFinalResult(jobId, result, context);
-    
-    return createSuccessResponse(jobId, 'complete', 0, 'no_results', 
+
+    return createSuccessResponse(jobId, 'complete', 0, 'no_results',
         { message: 'No search results found' });
 }

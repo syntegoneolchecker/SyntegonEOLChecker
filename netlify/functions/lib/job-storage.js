@@ -54,7 +54,7 @@ async function performCleanup() {
 async function processBlob(blob) {
     try {
         const job = await store.get(blob.key, { type: 'json' });
-        
+
         if (!job) {
             return false; // Blob exists but has no data
         }
@@ -64,7 +64,7 @@ async function processBlob(blob) {
             logDeletion(blob.key, job.completedAt);
             return true;
         }
-        
+
         return false;
     } catch (error) {
         handleBlobError(error, blob.key);
@@ -74,25 +74,25 @@ async function processBlob(blob) {
 
 function shouldDeleteJob(job) {
     const FIVE_MINUTES_MS = 5 * 60 * 1000;
-    
+
     if (!(job.status === 'complete' || job.status === 'error')) {
         return false;
     }
-    
+
     if (!job.completedAt) {
         return false;
     }
-    
+
     const completedTime = new Date(job.completedAt).getTime();
     const ageMs = Date.now() - completedTime;
-    
+
     return ageMs > FIVE_MINUTES_MS;
 }
 
 function handleBlobError(error, blobKey) {
     const errorMessage = error.message || '';
     const statusCode = error.statusCode;
-    
+
     if (statusCode === 403 || errorMessage.includes('403')) {
         console.warn(`⚠️  Skipping blob ${blobKey}: Permission denied (403). This blob may be orphaned from an older version.`);
     } else if (statusCode === 404 || errorMessage.includes('404')) {

@@ -289,7 +289,7 @@ async function handleIdecDualScrapeRequest(req, res) {
 
     // Enqueue task
     return enqueuePuppeteerTask(async () => {
-        let callbackSent = false;
+        const callbackSent = false;
 
         try {
             // Try JP site first

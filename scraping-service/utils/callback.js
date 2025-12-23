@@ -11,21 +11,21 @@ const { getShutdownState } = require('./memory');
  */
 async function sendCallback(callbackUrl, payload, maxRetries = 3) {
     if (!callbackUrl) return;
-    
+
     validateCallbackUrl(callbackUrl);
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             await attemptCallback(callbackUrl, payload, attempt, maxRetries);
             return; // Success - exit function
         } catch (error) {
             const isLastAttempt = attempt === maxRetries;
-            
+
             if (isLastAttempt) {
                 console.error(`❌ All ${maxRetries} callback attempts failed - callback lost`);
                 throw error; // Propagate error so scraping endpoint can handle it
             }
-            
+
             await handleRetry(error, attempt);
         }
     }
@@ -68,7 +68,7 @@ async function attemptCallback(callbackUrl, payload, attempt, maxRetries) {
     if (!response.ok) {
         await handleFailedResponse(response, attempt, maxRetries);
     }
-    
+
     // Success!
     console.log(`✓ Callback successful (HTTP ${response.status})`);
 }
@@ -102,7 +102,7 @@ async function handleFailedResponse(response, attempt, maxRetries) {
  */
 async function handleRetry(error, attempt) {
     console.error(`Callback attempt ${attempt} failed:`, error.message);
-    
+
     const backoffMs = calculateBackoff(attempt);
     console.log(`Retrying callback in ${backoffMs}ms${getShutdownState() ? ' (restart pending)' : ''}...`);
     await delay(backoffMs);
