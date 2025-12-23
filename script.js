@@ -513,22 +513,40 @@ function buildFetchPayload(jobId, firstUrl) {
     return payload;
 }
 
-// Trigger fetch-url (fire-and-forget)
+// Trigger fetch-url (fire-and-forget with retry)
 async function triggerFetchUrl(jobId, firstUrl, attempts) {
     console.log(`✓ URLs ready, triggering fetch-url (attempt ${attempts})`);
 
     const payload = buildFetchPayload(jobId, firstUrl);
+    const maxRetries = 2;
 
-    // Fire-and-forget (Render scraping takes 30-60s, we can't wait)
-    fetch('/.netlify/functions/fetch-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    }).catch(err => {
-        console.error(`Failed to trigger fetch-url: ${err.message}`);
-    });
+    // Fire-and-forget with retry logic
+    for (let retry = 0; retry <= maxRetries; retry++) {
+        try {
+            const response = await fetch('/.netlify/functions/fetch-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(10000) // 10s timeout
+            });
 
-    console.log(`✓ fetch-url triggered for ${firstUrl.url}`);
+            if (response.ok) {
+                console.log(`✓ fetch-url triggered successfully for ${firstUrl.url}`);
+                return;
+            }
+
+            console.warn(`⚠️  fetch-url returned ${response.status} (retry ${retry}/${maxRetries})`);
+
+        } catch (err) {
+            console.error(`Failed to trigger fetch-url (retry ${retry}/${maxRetries}): ${err.message}`);
+        }
+
+        if (retry < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * (retry + 1)));
+        }
+    }
+
+    console.error(`❌ fetch-url failed after ${maxRetries + 1} attempts for ${firstUrl.url}`);
 }
 
 // Check if all URLs are complete
@@ -546,19 +564,39 @@ function shouldTriggerAnalyze(statusData, analyzeTriggered) {
            statusData.status !== 'complete';
 }
 
-// Trigger analyze-job (fire-and-forget)
+// Trigger analyze-job (fire-and-forget with retry)
 async function triggerAnalyzeJob(jobId, attempts) {
     console.log(`✓ All URLs scraped, triggering analyze-job (attempt ${attempts})`);
 
-    fetch('/.netlify/functions/analyze-job', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId })
-    }).catch(err => {
-        console.error(`Failed to trigger analyze-job: ${err.message}`);
-    });
+    const maxRetries = 2;
 
-    console.log(`✓ analyze-job triggered`);
+    // Fire-and-forget with retry logic
+    for (let retry = 0; retry <= maxRetries; retry++) {
+        try {
+            const response = await fetch('/.netlify/functions/analyze-job', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId }),
+                signal: AbortSignal.timeout(10000) // 10s timeout
+            });
+
+            if (response.ok) {
+                console.log(`✓ analyze-job triggered successfully`);
+                return;
+            }
+
+            console.warn(`⚠️  analyze-job returned ${response.status} (retry ${retry}/${maxRetries})`);
+
+        } catch (err) {
+            console.error(`Failed to trigger analyze-job (retry ${retry}/${maxRetries}): ${err.message}`);
+        }
+
+        if (retry < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * (retry + 1)));
+        }
+    }
+
+    console.error(`❌ analyze-job failed after ${maxRetries + 1} attempts`);
 }
 
 // Handle daily limit error

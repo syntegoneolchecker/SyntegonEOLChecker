@@ -61,9 +61,20 @@ async function processBlob(blob) {
         }
 
         if (shouldDeleteJob(job)) {
-            await store.delete(blob.key);
-            logDeletion(blob.key, job.completedAt);
-            return true;
+            // Race condition protection: Try to delete, but handle if already deleted
+            try {
+                await store.delete(blob.key);
+                logDeletion(blob.key, job.completedAt);
+                return true;
+            } catch (deleteError) {
+                // Another process may have deleted this job concurrently
+                if (deleteError.statusCode === 404 || deleteError.message?.includes('404')) {
+                    console.log(`Job ${blob.key} was already deleted by another process (race condition handled)`);
+                    return false;
+                }
+                // Re-throw other errors
+                throw deleteError;
+            }
         }
 
         return false;
@@ -75,15 +86,24 @@ async function processBlob(blob) {
 
 function shouldDeleteJob(job) {
     const FIVE_MINUTES_MS = 5 * 60 * 1000;
+    const ACTIVE_STATUSES = ['created', 'urls_ready', 'fetching', 'analyzing'];
 
+    // Race condition protection: Never delete jobs that are actively being processed
+    if (ACTIVE_STATUSES.includes(job.status)) {
+        return false;
+    }
+
+    // Only delete completed or errored jobs
     if (!(job.status === 'complete' || job.status === 'error')) {
         return false;
     }
 
+    // Must have a completion timestamp
     if (!job.completedAt) {
         return false;
     }
 
+    // Only delete jobs older than 5 minutes
     const completedTime = new Date(job.completedAt).getTime();
     const ageMs = Date.now() - completedTime;
 
@@ -116,6 +136,28 @@ function logCleanupResult(deletedCount) {
 }
 
 /**
+ * Generate a random string for job IDs
+ * @param {number} length - Desired length of random string
+ * @returns {string} Random alphanumeric string
+ */
+function generateRandomString(length = 12) {
+    try {
+        // Try to use crypto.getRandomValues (secure)
+        return Array.from(crypto.getRandomValues(new Uint8Array(length)))
+            .map(b => b.toString(36))
+            .join('')
+            .replaceAll('.', '') // Remove dots if any
+            .substring(0, length);
+    } catch (error) {
+        console.warn('crypto.getRandomValues failed, falling back to Math.random():', error.message);
+        // Fallback to Math.random() if crypto fails
+        return Array.from({ length }, () =>
+            Math.floor(Math.random() * 36).toString(36)
+        ).join('');
+    }
+}
+
+/**
  * Create a new job and clean up old completed jobs
  * @param {string} maker - Manufacturer name
  * @param {string} model - Product model
@@ -127,13 +169,8 @@ async function createJob(maker, model, _context) {
     // This ensures cleanup completes before creating new job
     await cleanupOldJobs(_context);
 
-    const jobId = `job_${Date.now()}_${
-    Array.from(crypto.getRandomValues(new Uint8Array(9)))
-        .map(b => b.toString(36))
-        .join('')
-        .replaceAll('.', '') // Remove dots if any
-        .substring(0, 12)
-    }`;
+    const randomPart = generateRandomString(12);
+    const jobId = `job_${Date.now()}_${randomPart}`;
 
     const job = {
         jobId,
