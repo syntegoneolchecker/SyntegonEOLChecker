@@ -12,6 +12,11 @@ jobs:
     name: SonarCloud Code Quality
     runs-on: ubuntu-latest
 
+    # Security: Limit GITHUB_TOKEN permissions (principle of least privilege)
+    # This workflow only needs to read code and doesn't write anything
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
