@@ -2,49 +2,36 @@
  * Tests for job storage operations
  */
 
+// Create a persistent mock store that will be used across all tests
+const mockStore = {
+    setJSON: jest.fn().mockResolvedValue(undefined),
+    get: jest.fn().mockResolvedValue(null),
+    delete: jest.fn().mockResolvedValue(undefined),
+    list: jest.fn().mockResolvedValue({ blobs: [] })
+};
+
 // Mock Netlify Blobs before requiring job-storage
 jest.mock('@netlify/blobs', () => ({
-    getStore: jest.fn(() => ({
-        setJSON: jest.fn().mockResolvedValue(undefined),
-        get: jest.fn().mockResolvedValue(null),
-        delete: jest.fn().mockResolvedValue(undefined),
-        list: jest.fn().mockResolvedValue({ blobs: [] })
-    }))
+    getStore: jest.fn(() => mockStore)
 }));
 
-const { getStore } = require('@netlify/blobs');
+const jobStorage = require('../netlify/functions/lib/job-storage');
 
 describe('Job Storage', () => {
-    let jobStorage;
-
     beforeEach(() => {
+        // Clear all mock calls but keep the mock functions
         jest.clearAllMocks();
-        // Reset the module cache to get fresh imports
-        jest.resetModules();
-        jobStorage = require('../netlify/functions/lib/job-storage');
     });
 
     describe('generateRandomString', () => {
-        test('should generate string of correct length', () => {
-            // Access the internal function through module exports
-            const { createJob } = jobStorage;
-
-            // Since generateRandomString is internal, we test it via createJob
-            // which uses it to create job IDs
-            return createJob('TestMaker', 'TestModel').then(jobId => {
-                expect(jobId).toMatch(/^job_\d+_[a-z0-9]{12}$/);
-            });
+        test('should generate string of correct length', async () => {
+            const jobId = await jobStorage.createJob('TestMaker', 'TestModel');
+            expect(jobId).toMatch(/^job_\d+_[a-z0-9]{12}$/);
         });
     });
 
     describe('createJob', () => {
         test('should create job with valid ID format', async () => {
-            const mockStore = {
-                setJSON: jest.fn().mockResolvedValue(undefined),
-                list: jest.fn().mockResolvedValue({ blobs: [] })
-            };
-            getStore.mockReturnValue(mockStore);
-
             const jobId = await jobStorage.createJob('SMC', 'AR20-02');
 
             expect(jobId).toMatch(/^job_\d+_[a-z0-9]{12}$/);
@@ -60,12 +47,6 @@ describe('Job Storage', () => {
         });
 
         test('should create job with all required fields', async () => {
-            const mockStore = {
-                setJSON: jest.fn().mockResolvedValue(undefined),
-                list: jest.fn().mockResolvedValue({ blobs: [] })
-            };
-            getStore.mockReturnValue(mockStore);
-
             const jobId = await jobStorage.createJob('IDEC', 'LF1B-NB3');
 
             expect(mockStore.setJSON).toHaveBeenCalledWith(
