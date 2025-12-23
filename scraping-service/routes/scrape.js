@@ -21,6 +21,7 @@ const {
   isTextFileUrl,
 } = require("../utils/extraction");
 const { sendCallback } = require("../utils/callback");
+const logger = require('./../utils/logger');
 
 // Request queue: Only allow one Puppeteer instance at a time
 // This prevents memory spikes from concurrent browser instances
@@ -59,7 +60,7 @@ async function handlePuppeteerScraping(url, callbackUrl, callbackData, _res) {
       // Conditionally enable resource blocking
       const isCloudflareProtected = url.includes("orientalmotor.co.jp");
       if (isCloudflareProtected) {
-        console.log(
+        logger.info(
           "Resource blocking DISABLED for Cloudflare-protected site (Oriental Motor)"
         );
       } else {
@@ -82,7 +83,7 @@ async function handlePuppeteerScraping(url, callbackUrl, callbackData, _res) {
       // SSRF Protection: Validate URL before Puppeteer navigation
       const urlValidation = isSafePublicUrl(url);
       if (!urlValidation.valid) {
-        console.error(
+        logger.error(
           `SSRF protection: Blocked unsafe URL for Puppeteer: ${url} - ${urlValidation.reason}`
         );
         throw new Error(`Invalid URL for scraping: ${urlValidation.reason}`);
@@ -114,7 +115,7 @@ async function handlePuppeteerScraping(url, callbackUrl, callbackData, _res) {
       // Close browser before callback
       await browser.close();
       browser = null;
-      console.log("Browser closed, memory freed");
+      logger.info("Browser closed, memory freed");
 
       // Send callback
       await sendCallback(callbackUrl, {
@@ -136,7 +137,7 @@ async function handlePuppeteerScraping(url, callbackUrl, callbackData, _res) {
         timestamp: new Date().toISOString(),
       };
     } catch (puppeteerError) {
-      console.error(
+      logger.error(
         `[${new Date().toISOString()}] Puppeteer error:`,
         puppeteerError.message
       );
@@ -155,7 +156,7 @@ async function handlePuppeteerScraping(url, callbackUrl, callbackData, _res) {
         try {
           await browser.close();
         } catch (error_) {
-          console.error("Failed to close browser:", error_.message);
+          logger.error("Failed to close browser:", error_.message);
         }
       }
 
@@ -168,7 +169,7 @@ async function handlePuppeteerScraping(url, callbackUrl, callbackData, _res) {
         try {
           await browser.close();
         } catch (error_) {
-          console.error(
+          logger.error(
             "Failed to close browser in finally block:",
             error_.message
           );
@@ -231,13 +232,13 @@ async function navigateWithTimeout(
       waitUntil: waitStrategy,
       timeout: navTimeout,
     });
-    console.log(`Navigation completed with ${waitStrategy}`);
+    logger.info(`Navigation completed with ${waitStrategy}`);
   } catch (navError) {
     if (
       navError.message.includes("timeout") ||
       navError.message.includes("Navigation timeout")
     ) {
-      console.log(
+      logger.info(
         `Navigation timed out after ${
           navTimeout / 1000
         }s, continuing with extraction`
@@ -257,8 +258,8 @@ async function navigateWithTimeout(
  * @param {Map} pendingRequests - Pending requests map
  */
 function logNetworkDiagnostics(pendingRequests) {
-  console.log(`\n=== NETWORK TIMEOUT DIAGNOSTICS ===`);
-  console.log(`Total pending requests: ${pendingRequests.size}`);
+  logger.info(`\n=== NETWORK TIMEOUT DIAGNOSTICS ===`);
+  logger.info(`Total pending requests: ${pendingRequests.size}`);
 
   if (pendingRequests.size > 0) {
     // Group by resource type
@@ -274,9 +275,9 @@ function logNetworkDiagnostics(pendingRequests) {
     }
 
     // Log summary
-    console.log(`\nPending requests by type:`);
+    logger.info(`\nPending requests by type:`);
     for (const [type, requests] of byType) {
-      console.log(`  ${type}: ${requests.length}`);
+      logger.info(`  ${type}: ${requests.length}`);
     }
 
     // Log top 10 longest pending requests
@@ -289,17 +290,17 @@ function logNetworkDiagnostics(pendingRequests) {
       .sort((a, b) => b.duration - a.duration)
       .slice(0, 10);
 
-    console.log(`\nTop 10 longest pending requests:`);
+    logger.info(`\nTop 10 longest pending requests:`);
     sortedRequests.forEach((req, i) => {
       const seconds = (req.duration / 1000).toFixed(1);
-      console.log(
+      logger.info(
         `  ${i + 1}. [${req.type}] ${seconds}s - ${req.url.substring(0, 100)}${
           req.url.length > 100 ? "..." : ""
         }`
       );
     });
   }
-  console.log(`===================================\n`);
+  logger.info(`===================================\n`);
 }
 
 /**
@@ -317,7 +318,7 @@ async function waitForRendering(isCloudflareProtected, navigationTimedOut) {
 
 async function waitForCloudflareProtected() {
   await new Promise((resolve) => setTimeout(resolve, 20000));
-  console.log("Extended 20-second wait for Cloudflare challenge completion");
+  logger.info("Extended 20-second wait for Cloudflare challenge completion");
 }
 
 async function waitForNavigationTimeout() {
@@ -340,22 +341,22 @@ async function extractContentSafely(page, navigationTimedOut, url) {
     const result = await extractPageContent(page, 10000);
 
     if (navigationTimedOut) {
-      console.log(
+      logger.info(
         `[${new Date().toISOString()}] Scraped with Puppeteer (partial - timeout): ${url}`
       );
-      console.log(
+      logger.info(
         `Content length: ${result.content.length} characters (extracted after timeout)`
       );
     } else {
-      console.log(
+      logger.info(
         `[${new Date().toISOString()}] Successfully scraped with Puppeteer: ${url}`
       );
-      console.log(`Content length: ${result.content.length} characters`);
+      logger.info(`Content length: ${result.content.length} characters`);
     }
 
     return { content: result.content, pageTitle: result.title };
   } catch (extractError) {
-    console.error(`Content extraction failed: ${extractError.message}`);
+    logger.error(`Content extraction failed: ${extractError.message}`);
     throw extractError;
   }
 }
@@ -367,7 +368,7 @@ async function extractContentSafely(page, navigationTimedOut, url) {
  */
 function validateAndFixContent(content) {
   if (!content || content.length < 50) {
-    console.warn(
+    logger.warn(
       `⚠️  Empty or invalid content (${
         content ? content.length : 0
       } chars), adding explanation`
@@ -397,7 +398,7 @@ async function handleScrapeRequest(req, res) {
 
   // Check shutdown state
   if (getShutdownState()) {
-    console.log(
+    logger.info(
       `Rejecting /scrape request during shutdown (current memory: ${
         getMemoryUsageMB().rss
       }MB)`
@@ -411,7 +412,7 @@ async function handleScrapeRequest(req, res) {
   // Track memory
   const requestCount = incrementRequestCount();
   const memBefore = trackMemoryUsage(`request_start_${requestCount}`);
-  console.log(
+  logger.info(
     `[${new Date().toISOString()}] Request #${requestCount} - Memory: ${
       memBefore.rss
     }MB RSS`
@@ -426,7 +427,7 @@ async function handleScrapeRequest(req, res) {
   const urlValidation = isSafePublicUrl(url);
   if (!urlValidation.valid) {
     const safeUrlForLog = String(url).replaceAll(/[\r\n]/g, "");
-    console.warn(
+    logger.warn(
       `SSRF protection blocked URL: ${safeUrlForLog} - Reason: ${urlValidation.reason}`
     );
     return res.status(400).json({
@@ -438,7 +439,7 @@ async function handleScrapeRequest(req, res) {
   const callbackValidation = isValidCallbackUrl(callbackUrl);
   if (!callbackValidation.valid) {
     const safeCallbackUrlForLog = String(callbackUrl).replaceAll(/[\r\n]/g, "");
-    console.warn(
+    logger.warn(
       `SSRF protection blocked callback URL: ${safeCallbackUrlForLog} - Reason: ${callbackValidation.reason}`
     );
     return res.status(400).json({
@@ -449,7 +450,7 @@ async function handleScrapeRequest(req, res) {
 
   // Check memory before starting
   if (shouldRestartDueToMemory()) {
-    console.error(`⚠️  Memory too high (${memBefore.rss}MB), forcing restart`);
+    logger.error(`⚠️  Memory too high (${memBefore.rss}MB), forcing restart`);
 
     await sendCallback(callbackUrl, {
       jobId,
@@ -469,14 +470,14 @@ async function handleScrapeRequest(req, res) {
     });
   }
 
-  console.log(`[${new Date().toISOString()}] Scraping URL: ${url}`);
+  logger.info(`[${new Date().toISOString()}] Scraping URL: ${url}`);
   if (callbackUrl) {
-    console.log(`Callback URL provided: ${callbackUrl}`);
+    logger.info(`Callback URL provided: ${callbackUrl}`);
   }
 
   try {
     // Try fast fetch first
-    console.log(`Attempting fast fetch for ${url}...`);
+    logger.info(`Attempting fast fetch for ${url}...`);
     const fastResult = await tryFastFetch(url);
 
     if (fastResult) {
@@ -500,7 +501,7 @@ async function handleScrapeRequest(req, res) {
     }
 
     // Use Puppeteer for dynamic HTML pages (fire-and-forget)
-    console.log(`Fast fetch failed, using Puppeteer for ${url}...`);
+    logger.info(`Fast fetch failed, using Puppeteer for ${url}...`);
 
     // Respond immediately with 202 Accepted - scraping will happen in background
     res.status(202).json({
@@ -518,12 +519,12 @@ async function handleScrapeRequest(req, res) {
       res
     ).catch(error => {
       // Error already logged and callback already sent in handlePuppeteerScraping
-      console.error('Background Puppeteer scraping failed:', error.message);
+      logger.error('Background Puppeteer scraping failed:', error.message);
     });
 
     return; // Response already sent
   } catch (error) {
-    console.error(
+    logger.error(
       `[${new Date().toISOString()}] Scraping error:`,
       error.message
     );
@@ -557,12 +558,12 @@ async function handleFastFetchSuccess(
   callbackData,
   res
 ) {
-  console.log(`[${new Date().toISOString()}] Fast fetch successful: ${url}`);
-  console.log(`Content length: ${fastResult.length} characters`);
+  logger.info(`[${new Date().toISOString()}] Fast fetch successful: ${url}`);
+  logger.info(`Content length: ${fastResult.length} characters`);
 
   let finalContent = fastResult;
   if (fastResult.length < 50) {
-    console.warn(
+    logger.warn(
       `⚠️  Empty or invalid content (${fastResult.length} chars), adding explanation`
     );
     finalContent = `[The website could not be scraped - received only ${fastResult.length} characters. The site may be blocking automated access or the page may be empty.]`;
@@ -597,7 +598,7 @@ async function handleFastFetchSuccess(
  * Handle PDF or text file fetch failure
  */
 async function handlePDFOrTextFileFailed(url, callbackUrl, callbackData, res) {
-  console.log(
+  logger.info(
     `[${new Date().toISOString()}] PDF/text file fetch failed, not attempting Puppeteer`
   );
 

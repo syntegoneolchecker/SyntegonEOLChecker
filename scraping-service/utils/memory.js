@@ -1,3 +1,5 @@
+const logger = require('./logger');
+
 // Memory management utilities
 const MEMORY_LIMIT_MB = 450; // Restart threshold (leaves 62MB buffer before 512MB limit)
 const MEMORY_WARNING_MB = 380; // Warning threshold (log detailed memory info)
@@ -19,7 +21,7 @@ function forceGarbageCollection() {
         const before = getMemoryUsageMB();
         globalThis.gc();
         const after = getMemoryUsageMB();
-        console.log(`GC: ${before.rss}MB → ${after.rss}MB (freed ${before.rss - after.rss}MB)`);
+        logger.info(`GC: ${before.rss}MB → ${after.rss}MB (freed ${before.rss - after.rss}MB)`);
     }
 }
 
@@ -60,8 +62,8 @@ function trackMemoryUsage(stage) {
 
     // Log warning if approaching limit
     if (memory.rss >= MEMORY_WARNING_MB) {
-        console.warn(`⚠️  Memory approaching limit: ${memory.rss}MB RSS (warning threshold: ${MEMORY_WARNING_MB}MB)`);
-        console.log(`Memory history (last 5): ${JSON.stringify(memoryHistory.slice(-5), null, 2)}`);
+        logger.warn(`⚠️  Memory approaching limit: ${memory.rss}MB RSS (warning threshold: ${MEMORY_WARNING_MB}MB)`);
+        logger.info(`Memory history (last 5): ${JSON.stringify(memoryHistory.slice(-5), null, 2)}`);
     }
 
     return memory;
@@ -75,9 +77,9 @@ function shouldRestartDueToMemory() {
     const memory = getMemoryUsageMB();
 
     if (memory.rss >= MEMORY_LIMIT_MB) {
-        console.error(`❌ Memory limit reached: ${memory.rss}MB >= ${MEMORY_LIMIT_MB}MB, scheduling restart`);
-        console.log(`Memory breakdown: Heap=${memory.heapUsed}/${memory.heapTotal}MB, External=${memory.external}MB`);
-        console.log(`Request count at restart: ${requestCount}`);
+        logger.error(`❌ Memory limit reached: ${memory.rss}MB >= ${MEMORY_LIMIT_MB}MB, scheduling restart`);
+        logger.info(`Memory breakdown: Heap=${memory.heapUsed}/${memory.heapTotal}MB, External=${memory.external}MB`);
+        logger.info(`Request count at restart: ${requestCount}`);
         return true;
     }
 
@@ -89,11 +91,11 @@ function shouldRestartDueToMemory() {
  */
 function scheduleRestartIfNeeded() {
     if (shouldRestartDueToMemory()) {
-        console.log(`\n${'='.repeat(60)}`);
-        console.log(`🔄 MEMORY LIMIT REACHED - RESTARTING`);
-        console.log(`Current memory: ${getMemoryUsageMB().rss}MB RSS`);
-        console.log(`Scheduling graceful restart in 2 seconds to free memory...`);
-        console.log(`${'='.repeat(60)}\n`);
+        logger.info(`\n${'='.repeat(60)}`);
+        logger.info(`🔄 MEMORY LIMIT REACHED - RESTARTING`);
+        logger.info(`Current memory: ${getMemoryUsageMB().rss}MB RSS`);
+        logger.info(`Scheduling graceful restart in 2 seconds to free memory...`);
+        logger.info(`${'='.repeat(60)}\n`);
 
         // Set shutdown flag to reject new requests
         isShuttingDown = true;
@@ -101,8 +103,8 @@ function scheduleRestartIfNeeded() {
         // Give time for response to be sent, then exit
         // Render will automatically restart the service
         setTimeout(() => {
-            console.log('Exiting process for restart...');
-            console.log(`Total requests processed before restart: ${requestCount}`);
+            logger.info('Exiting process for restart...');
+            logger.info(`Total requests processed before restart: ${requestCount}`);
             process.exit(0);
         }, 2000);
     }

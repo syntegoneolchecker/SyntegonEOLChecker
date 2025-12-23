@@ -21,13 +21,14 @@ const { handleScrapeRequest } = require("./routes/scrape");
 const { handleKeyenceScrapeRequest } = require("./routes/scrape-keyence");
 const { handleIdecDualScrapeRequest } = require("./routes/scrape-idec-dual");
 const { handleBatchScrapeRequest } = require("./routes/scrape-batch");
+const logger = require('./utils/logger');
 
 // Validate environment variables at startup
 try {
   validateEnvironmentVariables();
   validateAllowedOrigins();
 } catch (error) {
-  console.error('Environment validation failed:', error.message);
+  logger.error('Environment validation failed:', error.message);
   process.exit(1);
 }
 
@@ -105,7 +106,7 @@ app.use((req, res, next) => {
       "/scrape-batch",
     ].includes(req.path)
   ) {
-    console.log(`Rejecting ${req.path} request during shutdown`);
+    logger.info(`Rejecting ${req.path} request during shutdown`);
     return res.status(503).json({
       error: "Service restarting",
       retryAfter: 30, // seconds
@@ -122,6 +123,6 @@ app.post("/scrape-batch", handleBatchScrapeRequest);
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Scraping service running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
+  logger.info(`Scraping service running on port ${PORT}`);
+  logger.info(`Health check: http://localhost:${PORT}/health`);
 });

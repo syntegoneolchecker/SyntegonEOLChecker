@@ -2,6 +2,7 @@
 const { getJob, saveFinalResult, updateJobStatus } = require('./lib/job-storage');
 const { processTablesInContent, filterIrrelevantTables, smartTruncate } = require('./lib/content-truncator');
 const RE2 = require('re2');
+const logger = require('./lib/logger');
 
 // Check Groq API token availability before making request
 async function checkGroqTokenAvailability() {
@@ -31,7 +32,7 @@ async function checkGroqTokenAvailability() {
             }
         }
 
-        console.log(`Groq tokens remaining: ${remainingTokens}, reset in: ${resetSeconds || 'N/A'}s`);
+        logger.info(`Groq tokens remaining: ${remainingTokens}, reset in: ${resetSeconds || 'N/A'}s`);
 
         return {
             available: remainingTokens > 500, // Need at least 500 tokens for analysis
@@ -39,7 +40,7 @@ async function checkGroqTokenAvailability() {
             resetSeconds: resetSeconds || 0
         };
     } catch (error) {
-        console.error('Failed to check Groq token availability:', error.message);
+        logger.error('Failed to check Groq token availability:', error.message);
         // If check fails, assume tokens available and let actual call handle it
         return { available: true, remainingTokens: null, resetSeconds: 0 };
     }
@@ -78,7 +79,7 @@ exports.handler = async function(event, context) {
     try {
         const { jobId } = JSON.parse(event.body);
 
-        console.log(`Starting analysis for job ${jobId}`);
+        logger.info(`Starting analysis for job ${jobId}`);
 
         const job = await getJob(jobId, context);
 
@@ -96,9 +97,9 @@ exports.handler = async function(event, context) {
         const tokenCheck = await checkGroqTokenAvailability();
         if (!tokenCheck.available && tokenCheck.resetSeconds > 0) {
             const waitMs = Math.ceil(tokenCheck.resetSeconds * 1000) + 1000; // Add 1s buffer
-            console.log(`⏳ Groq tokens low (${tokenCheck.remainingTokens}), waiting ${waitMs}ms for rate limit reset...`);
+            logger.info(`⏳ Groq tokens low (${tokenCheck.remainingTokens}), waiting ${waitMs}ms for rate limit reset...`);
             await new Promise(resolve => setTimeout(resolve, waitMs));
-            console.log(`✓ Wait complete, proceeding with analysis`);
+            logger.info(`✓ Wait complete, proceeding with analysis`);
         }
 
         // Format results for LLM
@@ -110,7 +111,7 @@ exports.handler = async function(event, context) {
         // Save final result
         await saveFinalResult(jobId, analysis, context);
 
-        console.log(`Analysis complete for job ${jobId}`);
+        logger.info(`Analysis complete for job ${jobId}`);
 
         return {
             statusCode: 200,
@@ -118,7 +119,7 @@ exports.handler = async function(event, context) {
         };
 
     } catch (error) {
-        console.error('Analysis error:', error);
+        logger.error('Analysis error:', error);
 
         try {
             const { jobId } = JSON.parse(event.body);
@@ -147,7 +148,7 @@ exports.handler = async function(event, context) {
             // For other errors, update status as normal
             await updateJobStatus(jobId, 'error', error.message, context);
         } catch (e) {
-            console.log(`Exception thrown: ${e}`);
+            logger.info(`Exception thrown: ${e}`);
         }
 
         return {
@@ -181,7 +182,7 @@ function formatResults(job) {
             processedContent = filterIrrelevantTables(processedContent, job.model);
 
             if (processedContent.length > MAX_CONTENT_LENGTH) {
-                console.log(`Truncating URL #${index + 1} content from ${processedContent.length} to ${MAX_CONTENT_LENGTH} chars`);
+                logger.info(`Truncating URL #${index + 1} content from ${processedContent.length} to ${MAX_CONTENT_LENGTH} chars`);
                 processedContent = smartTruncate(processedContent, MAX_CONTENT_LENGTH, job.model);
             }
 
@@ -194,7 +195,7 @@ function formatResults(job) {
         resultSection += '\n========================================\n';
 
         if (totalChars + resultSection.length > MAX_TOTAL_CHARS) {
-            console.log(`Stopping at URL #${index + 1} - total char limit (${MAX_TOTAL_CHARS}) would be exceeded`);
+            logger.info(`Stopping at URL #${index + 1} - total char limit (${MAX_TOTAL_CHARS}) would be exceeded`);
             formatted += `\n[Note: Remaining URLs omitted to stay within token limits]\n`;
             break;
         }
@@ -203,7 +204,7 @@ function formatResults(job) {
         totalChars += resultSection.length;
     }
 
-    console.log(`Final formatted content: ${totalChars} characters (~${Math.round(totalChars / 4)} tokens)`);
+    logger.info(`Final formatted content: ${totalChars} characters (~${Math.round(totalChars / 4)} tokens)`);
     return formatted.trim();
 }
 
@@ -214,7 +215,7 @@ class GroqAnalyzer {
 
     async analyze(maker, model, searchContext) {
         const prompt = this.buildPrompt(maker, model, searchContext);
-        console.log('This is the entire prompt:\n' + prompt);
+        logger.info('This is the entire prompt:\n' + prompt);
 
         try {
             const response = await this.callWithRetry(prompt);
@@ -338,7 +339,7 @@ class GroqAnalyzer {
 
     async handleFailedRequest(response, attempt) {
         const errorText = await response.text();
-        console.error(`Groq API error (attempt ${attempt}):`, errorText);
+        logger.error(`Groq API error (attempt ${attempt}):`, errorText);
 
         if (response.status === 429) {
             if (errorText.includes('tokens per day (TPD)')) {
@@ -373,7 +374,7 @@ class GroqAnalyzer {
 
     createDailyLimitError(errorText) {
         const retryInfo = this.extractRetryTime(errorText);
-        console.error(this.formatDailyLimitMessage(retryInfo.message));
+        logger.error(this.formatDailyLimitMessage(retryInfo.message));
 
         const error = new Error(
             `Daily token limit reached (rolling 24h window). Analysis cancelled.${retryInfo.message}`
@@ -408,7 +409,7 @@ EOL check cancelled - no database changes will be made.
     async handleRetry(error, attempt) {
         if (error.isDailyLimit) throw error;
 
-        console.error(`Groq API attempt ${attempt} failed:`, error.message);
+        logger.error(`Groq API attempt ${attempt} failed:`, error.message);
 
         if (attempt < this.MAX_RETRIES) {
             await this.wait(this.calculateBackoffTime(attempt));
@@ -422,13 +423,13 @@ EOL check cancelled - no database changes will be made.
     }
 
     async wait(ms) {
-        console.log(`⏳ Waiting ${ms}ms...`);
+        logger.info(`⏳ Waiting ${ms}ms...`);
         await new Promise(resolve => setTimeout(resolve, ms));
     }
 
     async processResponse(response) {
         const groqData = await response.json();
-        console.log('Groq response:', JSON.stringify(groqData));
+        logger.info('Groq response:', JSON.stringify(groqData));
 
         const generatedText = this.extractGeneratedText(groqData);
         const parsedResult = this.parseResponseText(generatedText);
@@ -492,9 +493,9 @@ EOL check cancelled - no database changes will be made.
 
     handleError(error) {
         if (error.isDailyLimit) {
-            console.error('Daily token limit error handled');
+            logger.error('Daily token limit error handled');
         } else {
-            console.error('Groq API analysis failed:', error.message);
+            logger.error('Groq API analysis failed:', error.message);
         }
     }
 }

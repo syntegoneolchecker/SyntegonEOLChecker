@@ -6,6 +6,8 @@
  * - WARN: Warnings and errors only (good for production)
  * - ERROR: Errors only (best for production)
  * - NONE: Silent (not recommended)
+ *
+ * Logs are sent to both console (for immediate debugging) and central log storage
  */
 
 const LOG_LEVELS = {
@@ -19,6 +21,72 @@ const LOG_LEVELS = {
 // Get current log level from environment, default to INFO
 const currentLevel = LOG_LEVELS[process.env.LOG_LEVEL?.toUpperCase()] ?? LOG_LEVELS.INFO;
 
+// Detect the source context (function name)
+let functionSource = 'netlify-unknown';
+try {
+    // Try to get the function name from AWS Lambda context or Netlify context
+    if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+        functionSource = `netlify/${process.env.AWS_LAMBDA_FUNCTION_NAME}`;
+    }
+} catch (e) {
+    // Ignore errors
+}
+
+/**
+ * Send log to central ingestion endpoint
+ * This is fire-and-forget to avoid blocking the main application
+ */
+async function sendToCentralLog(level, message, context) {
+    try {
+        // Get the site URL to construct the log ingestion endpoint
+        const siteUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:8888';
+        const logEndpoint = `${siteUrl}/.netlify/functions/log-ingest`;
+
+        const logEntry = {
+            timestamp: new Date().toISOString(),
+            level,
+            source: functionSource,
+            message,
+            context
+        };
+
+        // Fire and forget - don't await to avoid blocking
+        fetch(logEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(logEntry)
+        }).catch(() => {
+            // Silently ignore errors in central logging to avoid cascading failures
+        });
+    } catch (error) {
+        // Silently ignore errors in central logging
+    }
+}
+
+/**
+ * Format arguments for logging
+ */
+function formatMessage(...args) {
+    return args.map(arg => {
+        if (typeof arg === 'string') return arg;
+        if (arg instanceof Error) return `${arg.name}: ${arg.message}\n${arg.stack}`;
+        return JSON.stringify(arg);
+    }).join(' ');
+}
+
+/**
+ * Extract context object from arguments
+ */
+function extractContext(...args) {
+    const contextObj = {};
+    args.forEach((arg, index) => {
+        if (typeof arg === 'object' && arg !== null && !(arg instanceof Error)) {
+            Object.assign(contextObj, arg);
+        }
+    });
+    return Object.keys(contextObj).length > 0 ? contextObj : undefined;
+}
+
 const logger = {
     /**
      * Debug-level logging (most verbose)
@@ -27,6 +95,9 @@ const logger = {
     debug: (...args) => {
         if (currentLevel <= LOG_LEVELS.DEBUG) {
             console.log('[DEBUG]', ...args);
+            const message = formatMessage(...args);
+            const context = extractContext(...args);
+            sendToCentralLog('DEBUG', message, context);
         }
     },
 
@@ -37,6 +108,9 @@ const logger = {
     info: (...args) => {
         if (currentLevel <= LOG_LEVELS.INFO) {
             console.log('[INFO]', ...args);
+            const message = formatMessage(...args);
+            const context = extractContext(...args);
+            sendToCentralLog('INFO', message, context);
         }
     },
 
@@ -47,6 +121,9 @@ const logger = {
     warn: (...args) => {
         if (currentLevel <= LOG_LEVELS.WARN) {
             console.warn('[WARN]', ...args);
+            const message = formatMessage(...args);
+            const context = extractContext(...args);
+            sendToCentralLog('WARN', message, context);
         }
     },
 
@@ -57,6 +134,9 @@ const logger = {
     error: (...args) => {
         if (currentLevel <= LOG_LEVELS.ERROR) {
             console.error('[ERROR]', ...args);
+            const message = formatMessage(...args);
+            const context = extractContext(...args);
+            sendToCentralLog('ERROR', message, context);
         }
     },
 

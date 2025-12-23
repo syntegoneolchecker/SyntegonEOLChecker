@@ -1,5 +1,6 @@
 // Reset database - clears all data from Netlify Blobs
 const { getStore } = require('@netlify/blobs');
+const logger = require('./lib/logger');
 
 exports.handler = async function(event, _context) {
     if (event.httpMethod !== 'POST') {
@@ -20,7 +21,7 @@ exports.handler = async function(event, _context) {
         // Delete the main database blob
         await store.delete('database.csv');
 
-        console.log('Database cleared successfully');
+        logger.info('Database cleared successfully');
 
         return {
             statusCode: 200,
@@ -31,7 +32,7 @@ exports.handler = async function(event, _context) {
             })
         };
     } catch (error) {
-        console.error('Reset error:', error);
+        logger.error('Reset error:', error);
         return {
             statusCode: 500,
             headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },

@@ -1,3 +1,5 @@
+const logger = require('./lib/logger');
+
 exports.handler = async function(_event, _context) {
     try {
         // Call Tavily usage endpoint
@@ -10,7 +12,7 @@ exports.handler = async function(_event, _context) {
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('Tavily usage API error:', errorText);
+            logger.error('Tavily usage API error:', errorText);
             return {
                 statusCode: response.status,
                 body: JSON.stringify({
@@ -40,7 +42,7 @@ exports.handler = async function(_event, _context) {
         };
 
     } catch (error) {
-        console.error('Error in get-tavily-usage function:', error);
+        logger.error('Error in get-tavily-usage function:', error);
         return {
             statusCode: 500,
             body: JSON.stringify({
