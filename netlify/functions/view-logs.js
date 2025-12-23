@@ -18,7 +18,11 @@ export const handler = async (event) => {
     const format = params.format || 'html'; // 'html' or 'json'
 
     // Get the logs store
-    const store = getStore('logs');
+    const store = getStore({
+      name: 'logs',
+      siteID: process.env.SITE_ID,
+      token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+    });
 
     // Determine which date(s) to fetch
     const datesToFetch = [];
