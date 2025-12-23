@@ -1,7 +1,7 @@
 // Reset database - clears all data from Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 
-exports.handler = async function(event, context) {
+exports.handler = async function(event, _context) {
     if (event.httpMethod !== 'POST') {
         return {
             statusCode: 405,

@@ -612,7 +612,7 @@ async function updateProduct(sapNumber, result) {
 }
 
 // Main handler
-exports.handler = async function(event, context) {
+exports.handler = async function(event, _context) {
     console.log('='.repeat(60));
     console.log('Background EOL check started:', new Date().toISOString());
     console.log('='.repeat(60));

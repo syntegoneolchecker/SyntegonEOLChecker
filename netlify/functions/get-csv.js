@@ -1,7 +1,7 @@
 const { getStore } = require('@netlify/blobs');
 const { parseCSV } = require('./lib/csv-parser');
 
-exports.handler = async function(event, context) {
+exports.handler = async function(_event, _context) {
     try {
         console.log('Getting Netlify Blobs store...');
         const store = getStore({

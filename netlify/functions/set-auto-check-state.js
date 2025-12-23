@@ -1,7 +1,7 @@
 // Set auto-check state in Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 
-exports.handler = async function(event, context) {
+exports.handler = async function(event, _context) {
     // Handle CORS
     if (event.httpMethod === 'OPTIONS') {
         return {

@@ -3,7 +3,7 @@ const { toCSV } = require('./lib/csv-parser');
 const { validateCsvData } = require('./lib/validators');
 const config = require('./lib/config');
 
-exports.handler = async function(event, context) {
+exports.handler = async function(event, _context) {
     // Only allow POST requests
     if (event.httpMethod !== 'POST') {
         return {
