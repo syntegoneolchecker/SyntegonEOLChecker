@@ -130,7 +130,7 @@ async function handleOperationError(result, operationName, attempt, onError) {
     };
 
     if (result.timedOut) {
-        response.lastError = new Error(`Timeout after ${timeoutMs}ms`);
+        response.lastError = new Error(`${operationName} operation timed out`);
         return response;
     }
 
@@ -177,7 +177,7 @@ async function handleHttpResponseError(httpResponse, operationName, attempt) {
     };
 }
 
-async function backoffBeforeRetry(attempt, operationName, isRenderRestarting, maxRetries) {
+async function backoffBeforeRetry(attempt, operationName, isRenderRestarting, _maxRetries) {
     let backoffMs;
 
     if (isRenderRestarting) {

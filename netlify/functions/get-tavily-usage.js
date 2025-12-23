@@ -1,4 +1,4 @@
-exports.handler = async function(event, context) {
+exports.handler = async function(_event, _context) {
     try {
         // Call Tavily usage endpoint
         const response = await fetch('https://api.tavily.com/usage', {

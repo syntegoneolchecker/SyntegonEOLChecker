@@ -1,3 +1,5 @@
+/* exported sortTable, addRow, delRow, checkEOL, downloadExcel, loadExcel, manualSaveDatabase, toggleDeleteButtons, clearDatabase, toggleAutoCheck, manualTriggerAutoCheck */
+
 let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
 
 // Sorting state
@@ -32,7 +34,7 @@ async function init() {
 // UTILITY FUNCTIONS
 // ============================================================================
 
-function showStatus(message, type = 'success', permanent = true) {
+function showStatus(message, type = 'success', _permanent = true) {
     const status = document.getElementById('status');
     status.textContent = message;
     status.className = type;
@@ -1395,11 +1397,11 @@ async function autoDisableOnLowCredits(state) {
 }
 
 // Monitor auto-check state periodically
-let autoCheckMonitoringInterval = null;
+let _autoCheckMonitoringInterval = null;
 
 function startAutoCheckMonitoring() {
     // Check every 10 seconds
-    autoCheckMonitoringInterval = setInterval(async () => {
+    _autoCheckMonitoringInterval = setInterval(async () => {
         try {
             const response = await fetch('/.netlify/functions/get-auto-check-state');
             if (!response.ok) return;

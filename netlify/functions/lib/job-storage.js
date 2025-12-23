@@ -13,9 +13,9 @@ function getJobStore() {
 /**
  * Delete a job from storage
  * @param {string} jobId - Job ID to delete
- * @param {Object} context - Netlify function context (optional)
+ * @param {Object} _context - Netlify function context (optional)
  */
-async function deleteJob(jobId, context) {
+async function deleteJob(jobId, _context) {
     const store = getJobStore();
     await store.delete(jobId);
     console.log(`Deleted job ${jobId} from storage`);
@@ -24,9 +24,9 @@ async function deleteJob(jobId, context) {
 /**
  * Clean up old completed jobs (completed more than 5 minutes ago)
  * Called automatically on every new job creation to prevent blob storage bloat
- * @param {Object} context - Netlify function context (optional)
+ * @param {Object} _context - Netlify function context (optional)
  */
-async function cleanupOldJobs(context) {
+async function cleanupOldJobs(_context) {
     try {
         const deletedCount = await performCleanup();
         logCleanupResult(deletedCount);
@@ -52,6 +52,7 @@ async function performCleanup() {
 }
 
 async function processBlob(blob) {
+    const store = getJobStore();
     try {
         const job = await store.get(blob.key, { type: 'json' });
 
@@ -121,10 +122,10 @@ function logCleanupResult(deletedCount) {
  * @param {Object} context - Netlify function context (optional)
  * @returns {Promise<string>} Promise that resolves to Job ID
  */
-async function createJob(maker, model, context) {
+async function createJob(maker, model, _context) {
     // Clean up old jobs first (await to prevent race conditions)
     // This ensures cleanup completes before creating new job
-    await cleanupOldJobs(context);
+    await cleanupOldJobs(_context);
 
     const jobId = `job_${Date.now()}_${
     Array.from(crypto.getRandomValues(new Uint8Array(9)))
@@ -154,7 +155,7 @@ async function createJob(maker, model, context) {
 }
 
 // Save URLs to job
-async function saveJobUrls(jobId, urls, context) {
+async function saveJobUrls(jobId, urls, _context) {
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
@@ -176,7 +177,7 @@ async function saveJobUrls(jobId, urls, context) {
 }
 
 // Get job
-async function getJob(jobId, context) {
+async function getJob(jobId, _context) {
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
     return job;
@@ -190,7 +191,7 @@ async function getJob(jobId, context) {
  * @param {Object} context - Netlify function context (optional)
  * @param {Object} metadata - Additional metadata to store (optional)
  */
-async function updateJobStatus(jobId, status, error, context, metadata = {}) {
+async function updateJobStatus(jobId, status, error, _context, metadata = {}) {
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
@@ -218,7 +219,7 @@ async function updateJobStatus(jobId, status, error, context, metadata = {}) {
 }
 
 // Mark URL as fetching
-async function markUrlFetching(jobId, urlIndex, context) {
+async function markUrlFetching(jobId, urlIndex, _context) {
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
@@ -235,7 +236,7 @@ async function markUrlFetching(jobId, urlIndex, context) {
 }
 
 // Save URL result and return whether all URLs are complete
-async function saveUrlResult(jobId, urlIndex, result, context) {
+async function saveUrlResult(jobId, urlIndex, result, _context) {
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
@@ -261,7 +262,7 @@ async function saveUrlResult(jobId, urlIndex, result, context) {
 }
 
 // Save final analysis result
-async function saveFinalResult(jobId, result, context) {
+async function saveFinalResult(jobId, result, _context) {
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
@@ -280,7 +281,7 @@ async function saveFinalResult(jobId, result, context) {
 /**
  * Replace all URLs in a job (used for Tavily fallback)
  */
-async function replaceJobUrls(jobId, newUrls, context) {
+async function replaceJobUrls(jobId, newUrls, _context) {
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
@@ -305,7 +306,7 @@ async function replaceJobUrls(jobId, newUrls, context) {
 /**
  * Add a single URL to a job (used when IDEC validation succeeds)
  */
-async function addUrlToJob(jobId, urlData, context) {
+async function addUrlToJob(jobId, urlData, _context) {
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 

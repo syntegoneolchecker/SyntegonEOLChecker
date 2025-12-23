@@ -45,7 +45,7 @@ function enqueuePuppeteerTask(task) {
  * @param {Object} res - Express response object
  * @returns {Promise<void>}
  */
-async function handlePuppeteerScraping(url, callbackUrl, callbackData, res) {
+async function handlePuppeteerScraping(url, callbackUrl, callbackData, _res) {
   return enqueuePuppeteerTask(async () => {
     let browser = null;
     const callbackSent = false;

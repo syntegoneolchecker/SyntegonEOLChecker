@@ -1,4 +1,4 @@
-exports.handler = async function(event, context) {
+exports.handler = async function(_event, _context) {
     try {
         // Make a minimal API call to Groq just to get rate limit headers
         // Using smallest possible prompt to minimize token usage
