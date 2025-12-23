@@ -547,15 +547,11 @@ async function handleFastFetchSuccess(
   console.log(`Content length: ${fastResult.length} characters`);
 
   let finalContent = fastResult;
-  if (!fastResult || fastResult.length < 50) {
+  if (fastResult.length < 50) {
     console.warn(
-      `⚠️  Empty or invalid content (${
-        fastResult ? fastResult.length : 0
-      } chars), adding explanation`
+      `⚠️  Empty or invalid content (${fastResult.length} chars), adding explanation`
     );
-    finalContent = `[The website could not be scraped - received only ${
-      fastResult ? fastResult.length : 0
-    } characters. The site may be blocking automated access or the page may be empty.]`;
+    finalContent = `[The website could not be scraped - received only ${fastResult.length} characters. The site may be blocking automated access or the page may be empty.]`;
   }
 
   const result = {
