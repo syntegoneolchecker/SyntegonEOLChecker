@@ -22,24 +22,6 @@ async function checkRenderHealth(scrapingServiceUrl) {
 }
 
 /**
- * Check if content indicates Omron "page not found" message
- * Returns true if error message detected, false otherwise
- */
-function isOmronPageNotFound(content) {
-    if (!content) return false;
-
-    // Check for Omron's specific "page not found" message
-    const errorMessage = '大変申し訳ございませんお探しのページが見つかりませんでした';
-
-    if (content.includes(errorMessage)) {
-        logger.info(`Detected Omron page not found message`);
-        return true;
-    }
-
-    return false;
-}
-
-/**
  * Scrape NBK search page using BrowserQL to extract product URL
  * Step 1 of 2-step process: BrowserQL search (bypasses Cloudflare) → extract product URL
  * Uses same BrowserQL endpoint as shared scraper but with NBK-specific DOM extraction
@@ -372,8 +354,8 @@ async function handleIdecDualSite(params) {
     const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
     const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
 
-    const jpProxyUrl = process.env.IDEC_JP_PROXY;
-    const usProxyUrl = process.env.IDEC_US_PROXY;
+    const jpProxyUrl = process.env.JP_PROXY;
+    const usProxyUrl = process.env.US_PROXY;
 
     if (!jpProxyUrl || !usProxyUrl) {
         logger.error('IDEC proxy environment variables not set');
@@ -537,123 +519,90 @@ async function handleNbkSuccess(params) {
     };
 }
 
+/**
+ * Handle Omron dual-page scraping via Render service with Japanese proxy
+ *
+ * Omron website requires proxy access due to regional restrictions (403 errors without proxy).
+ * The Render service must implement 'scrape-omron-dual' endpoint with the following logic:
+ *
+ * 1. Scrape primaryUrl through jpProxyUrl
+ * 2. Check if page contains: '大変申し訳ございませんお探しのページが見つかりませんでした'
+ * 3. If error message found, scrape fallbackUrl through jpProxyUrl
+ * 4. Return successful page content via callback
+ *
+ * @param {Object} params - Handler parameters including jobId, urlIndex, url, etc.
+ */
 async function handleOmronDualPage(params) {
-    const { jobId, urlIndex, url, snippet, baseUrl, context } = params;
+    const { jobId, urlIndex, url, title, snippet, baseUrl, context } = params;
     logger.info(`Using Omron dual-page strategy for job ${jobId}, URL ${urlIndex}`);
 
-    try {
-        // Step 1: Try primary URL (preprocessed model name)
-        const primaryUrl = url; // This is already the preprocessed URL from initialize-job
-        logger.info(`Omron: Scraping primary URL: ${primaryUrl}`);
+    const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
+    const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
 
-        const primaryResponse = await fetch(primaryUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-        });
+    const jpProxyUrl = process.env.JP_PROXY;
 
-        if (!primaryResponse.ok) {
-            throw new Error(`HTTP error: ${primaryResponse.status}`);
-        }
-
-        const primaryHtml = await primaryResponse.text();
-        logger.info(`Omron: Primary URL fetched (${primaryHtml.length} characters)`);
-
-        // Step 2: Check if page contains error message
-        if (isOmronPageNotFound(primaryHtml)) {
-            logger.info(`Omron: Primary URL not found, trying fallback URL`);
-            return await handleOmronFallback(params);
-        }
-
-        // Primary URL success - save result
-        logger.info(`Omron: Primary URL successful, saving result`);
-        const allDone = await saveUrlResult(jobId, urlIndex, {
-            url: primaryUrl,
-            title: 'Omron Product Page',
-            snippet,
-            fullContent: primaryHtml
-        }, context);
-
-        logger.info(`Omron: Primary URL result saved. All done: ${allDone}`);
-        await continuePipelineAfterSuccess({ jobId, urlIndex, allDone, baseUrl, context });
-
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ success: true, method: 'omron_primary' })
-        };
-
-    } catch (error) {
-        logger.error(`Omron dual-page error:`, error);
-        return await handleCommonError({
-            ...params,
-            error,
-            method: 'omron_dual_page'
-        });
-    }
-}
-
-async function handleOmronFallback(params) {
-    const { jobId, urlIndex, snippet, baseUrl, context } = params;
-
-    try {
-        // Get fallback URL from job data (passed from initialize-job)
-        const job = await getJob(jobId, context);
-        const urlData = job.urls.find(u => u.index === urlIndex);
-        const fallbackUrl = urlData?.fallbackUrl;
-
-        if (!fallbackUrl) {
-            throw new Error('Omron fallback URL not found in job data');
-        }
-
-        logger.info(`Omron: Scraping fallback URL: ${fallbackUrl}`);
-
-        const fallbackResponse = await fetch(fallbackUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-        });
-
-        if (!fallbackResponse.ok) {
-            throw new Error(`HTTP error: ${fallbackResponse.status}`);
-        }
-
-        const fallbackHtml = await fallbackResponse.text();
-        logger.info(`Omron: Fallback URL fetched (${fallbackHtml.length} characters)`);
-
-        // Check if fallback page has meaningful content or is empty
-        const hasNoContent = fallbackHtml.length < 500 || !fallbackHtml.includes('keyword');
-
-        const content = hasNoContent
-            ? '[Omron: No results found on both primary and fallback URLs]'
-            : fallbackHtml;
+    if (!jpProxyUrl) {
+        logger.error('JP_PROXY environment variable not set');
 
         const allDone = await saveUrlResult(jobId, urlIndex, {
-            url: fallbackUrl,
-            title: 'Omron Closed Products Search',
+            url: url,
+            title: null,
             snippet,
-            fullContent: content
+            fullContent: '[Omron proxy configuration error - JP_PROXY environment variable not set]'
         }, context);
 
-        logger.info(`Omron: Fallback URL result saved. All done: ${allDone}`);
-        await continuePipelineAfterSuccess({ jobId, urlIndex, allDone, baseUrl, context });
+        if (allDone) {
+            await triggerAnalysis(jobId, baseUrl);
+        }
 
         return {
-            statusCode: 200,
+            statusCode: 500,
             body: JSON.stringify({
-                success: true,
-                method: 'omron_fallback',
-                noResults: hasNoContent
+                success: false,
+                error: 'JP_PROXY environment variable not set',
+                method: 'omron_config_error'
             })
         };
+    }
 
-    } catch (error) {
-        logger.error(`Omron fallback error:`, error);
+    // Get fallback URL from job data
+    const job = await getJob(jobId, context);
+    const urlData = job.urls.find(u => u.index === urlIndex);
+    const fallbackUrl = urlData?.fallbackUrl;
+
+    if (!fallbackUrl) {
+        logger.error('Omron fallback URL not found in job data');
         return await handleCommonError({
             ...params,
-            error,
-            method: 'omron_fallback'
+            error: new Error('Fallback URL not found in job data'),
+            method: 'omron_missing_fallback'
         });
     }
+
+    const omronPayload = {
+        callbackUrl,
+        jobId,
+        urlIndex,
+        title,
+        snippet,
+        extractionMode: 'omron_dual_page',
+        jpProxyUrl: jpProxyUrl,
+        primaryUrl: url,
+        fallbackUrl: fallbackUrl
+    };
+
+    logger.info(`Omron payload: primaryUrl=${url}, fallbackUrl=${fallbackUrl}`);
+
+    const omronResult = await handleRenderServiceCall({
+        payload: omronPayload,
+        serviceUrl: scrapingServiceUrl,
+        endpoint: 'scrape-omron-dual',
+        jobId,
+        urlIndex,
+        methodName: 'Omron dual-page'
+    });
+
+    return handleRenderServiceResult(omronResult, 'omron_dual_page');
 }
 
 async function handleBrowserQL(params) {

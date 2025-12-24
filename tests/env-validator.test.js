@@ -18,8 +18,8 @@ describe('Environment Validator', () => {
         delete process.env.NETLIFY_TOKEN;
         delete process.env.BROWSERQL_API_KEY;
         delete process.env.SCRAPING_SERVICE_URL;
-        delete process.env.IDEC_JP_PROXY;
-        delete process.env.IDEC_US_PROXY;
+        delete process.env.JP_PROXY;
+        delete process.env.US_PROXY;
 
         // Reset modules to get fresh imports
         jest.resetModules();
@@ -137,38 +137,38 @@ describe('Environment Validator', () => {
         });
     });
 
-    describe('validateIdecProxies', () => {
+    describe('validateProxies', () => {
         test('should return false if both proxies are missing', () => {
-            const result = envValidator.validateIdecProxies();
+            const result = envValidator.validateProxies();
 
             expect(result).toBe(false);
             expect(console.warn).toHaveBeenCalledWith(
                 '[WARN]',
-                expect.stringContaining('IDEC proxy URLs not configured')
+                expect.stringContaining('Proxy URLs not configured')
             );
         });
 
         test('should return false if only JP proxy is present', () => {
-            process.env.IDEC_JP_PROXY = 'http://jp-proxy.com';
+            process.env.JP_PROXY = 'http://jp-proxy.com';
 
-            const result = envValidator.validateIdecProxies();
+            const result = envValidator.validateProxies();
 
             expect(result).toBe(false);
         });
 
         test('should return false if only US proxy is present', () => {
-            process.env.IDEC_US_PROXY = 'http://us-proxy.com';
+            process.env.US_PROXY = 'http://us-proxy.com';
 
-            const result = envValidator.validateIdecProxies();
+            const result = envValidator.validateProxies();
 
             expect(result).toBe(false);
         });
 
         test('should return true if both proxies are present', () => {
-            process.env.IDEC_JP_PROXY = 'http://jp-proxy.com';
-            process.env.IDEC_US_PROXY = 'http://us-proxy.com';
+            process.env.JP_PROXY = 'http://jp-proxy.com';
+            process.env.US_PROXY = 'http://us-proxy.com';
 
-            const result = envValidator.validateIdecProxies();
+            const result = envValidator.validateProxies();
 
             expect(result).toBe(true);
         });
