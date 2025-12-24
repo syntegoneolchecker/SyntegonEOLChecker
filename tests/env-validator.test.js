@@ -123,6 +123,7 @@ describe('Environment Validator', () => {
 
             expect(result).toBe(false);
             expect(console.warn).toHaveBeenCalledWith(
+                '[WARN]',
                 expect.stringContaining('BROWSERQL_API_KEY not set')
             );
         });
@@ -142,6 +143,7 @@ describe('Environment Validator', () => {
 
             expect(result).toBe(false);
             expect(console.warn).toHaveBeenCalledWith(
+                '[WARN]',
                 expect.stringContaining('IDEC proxy URLs not configured')
             );
         });
