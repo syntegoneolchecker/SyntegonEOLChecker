@@ -22,6 +22,24 @@ async function checkRenderHealth(scrapingServiceUrl) {
 }
 
 /**
+ * Check if content indicates Omron "page not found" message
+ * Returns true if error message detected, false otherwise
+ */
+function isOmronPageNotFound(content) {
+    if (!content) return false;
+
+    // Check for Omron's specific "page not found" message
+    const errorMessage = '大変申し訳ございませんお探しのページが見つかりませんでした';
+
+    if (content.includes(errorMessage)) {
+        logger.info(`Detected Omron page not found message`);
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * Scrape NBK search page using BrowserQL to extract product URL
  * Step 1 of 2-step process: BrowserQL search (bypasses Cloudflare) → extract product URL
  * Uses same BrowserQL endpoint as shared scraper but with NBK-specific DOM extraction
@@ -168,10 +186,10 @@ exports.handler = async function(event, context) {
         logger.info(`[FETCH-URL DEBUG] ===== INVOCATION START ===== Time: ${invocationTimestamp}`);
         logger.info(`[FETCH-URL DEBUG] Raw request body:`, JSON.stringify(requestBody, null, 2));
 
-        const { jobId, urlIndex, url, title, snippet, scrapingMethod, model, jpUrl, usUrl } = requestBody;
+        const { jobId, urlIndex, url, title, snippet, scrapingMethod, model, jpUrl, usUrl, fallbackUrl } = requestBody;
 
         logger.info(`[FETCH-URL DEBUG] Fetching URL ${urlIndex} for job ${jobId}: ${url} (method: ${scrapingMethod || 'render'})`);
-        logger.info(`[FETCH-URL DEBUG] Extracted values: jpUrl=${jpUrl}, usUrl=${usUrl}, model=${model}`);
+        logger.info(`[FETCH-URL DEBUG] Extracted values: jpUrl=${jpUrl}, usUrl=${usUrl}, model=${model}, fallbackUrl=${fallbackUrl}`);
 
         const baseUrl = constructBaseUrl(event.headers);
 
@@ -190,6 +208,7 @@ exports.handler = async function(event, context) {
             model,
             jpUrl,
             usUrl,
+            fallbackUrl,
             baseUrl,
             context
         };
@@ -199,6 +218,7 @@ exports.handler = async function(event, context) {
             'keyence_interactive': handleKeyenceInteractive,
             'idec_dual_site': handleIdecDualSite,
             'nbk_interactive': handleNbkInteractive,
+            'omron_dual_page': handleOmronDualPage,
             'browserql': handleBrowserQL,
             'default': handleRenderDefault
         };
@@ -515,6 +535,125 @@ async function handleNbkSuccess(params) {
         statusCode: 200,
         body: JSON.stringify({ success: true, method: 'nbk_browserql_complete' })
     };
+}
+
+async function handleOmronDualPage(params) {
+    const { jobId, urlIndex, url, snippet, baseUrl, context } = params;
+    logger.info(`Using Omron dual-page strategy for job ${jobId}, URL ${urlIndex}`);
+
+    try {
+        // Step 1: Try primary URL (preprocessed model name)
+        const primaryUrl = url; // This is already the preprocessed URL from initialize-job
+        logger.info(`Omron: Scraping primary URL: ${primaryUrl}`);
+
+        const primaryResponse = await fetch(primaryUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+
+        if (!primaryResponse.ok) {
+            throw new Error(`HTTP error: ${primaryResponse.status}`);
+        }
+
+        const primaryHtml = await primaryResponse.text();
+        logger.info(`Omron: Primary URL fetched (${primaryHtml.length} characters)`);
+
+        // Step 2: Check if page contains error message
+        if (isOmronPageNotFound(primaryHtml)) {
+            logger.info(`Omron: Primary URL not found, trying fallback URL`);
+            return await handleOmronFallback(params);
+        }
+
+        // Primary URL success - save result
+        logger.info(`Omron: Primary URL successful, saving result`);
+        const allDone = await saveUrlResult(jobId, urlIndex, {
+            url: primaryUrl,
+            title: 'Omron Product Page',
+            snippet,
+            fullContent: primaryHtml
+        }, context);
+
+        logger.info(`Omron: Primary URL result saved. All done: ${allDone}`);
+        await continuePipelineAfterSuccess({ jobId, urlIndex, allDone, baseUrl, context });
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ success: true, method: 'omron_primary' })
+        };
+
+    } catch (error) {
+        logger.error(`Omron dual-page error:`, error);
+        return await handleCommonError({
+            ...params,
+            error,
+            method: 'omron_dual_page'
+        });
+    }
+}
+
+async function handleOmronFallback(params) {
+    const { jobId, urlIndex, snippet, baseUrl, context } = params;
+
+    try {
+        // Get fallback URL from job data (passed from initialize-job)
+        const job = await getJob(jobId, context);
+        const urlData = job.urls.find(u => u.index === urlIndex);
+        const fallbackUrl = urlData?.fallbackUrl;
+
+        if (!fallbackUrl) {
+            throw new Error('Omron fallback URL not found in job data');
+        }
+
+        logger.info(`Omron: Scraping fallback URL: ${fallbackUrl}`);
+
+        const fallbackResponse = await fetch(fallbackUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+
+        if (!fallbackResponse.ok) {
+            throw new Error(`HTTP error: ${fallbackResponse.status}`);
+        }
+
+        const fallbackHtml = await fallbackResponse.text();
+        logger.info(`Omron: Fallback URL fetched (${fallbackHtml.length} characters)`);
+
+        // Check if fallback page has meaningful content or is empty
+        const hasNoContent = fallbackHtml.length < 500 || !fallbackHtml.includes('keyword');
+
+        const content = hasNoContent
+            ? '[Omron: No results found on both primary and fallback URLs]'
+            : fallbackHtml;
+
+        const allDone = await saveUrlResult(jobId, urlIndex, {
+            url: fallbackUrl,
+            title: 'Omron Closed Products Search',
+            snippet,
+            fullContent: content
+        }, context);
+
+        logger.info(`Omron: Fallback URL result saved. All done: ${allDone}`);
+        await continuePipelineAfterSuccess({ jobId, urlIndex, allDone, baseUrl, context });
+
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                success: true,
+                method: 'omron_fallback',
+                noResults: hasNoContent
+            })
+        };
+
+    } catch (error) {
+        logger.error(`Omron fallback error:`, error);
+        return await handleCommonError({
+            ...params,
+            error,
+            method: 'omron_fallback'
+        });
+    }
 }
 
 async function handleBrowserQL(params) {
