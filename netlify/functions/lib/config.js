@@ -13,7 +13,7 @@
 
 module.exports = {
     // === JOB MANAGEMENT ===
-    JOB_CLEANUP_DELAY_MINUTES: 1440,  // Delete completed jobs after 5 minutes
+    JOB_CLEANUP_DELAY_MINUTES: 1440,  // Delete completed jobs after 24 hours (1440 minutes)
     JOB_POLL_MAX_ATTEMPTS: 60,     // Max polling attempts (60 × 2s = 2 min)
     JOB_POLL_INTERVAL_MS: 2000,    // Poll interval between status checks
 
