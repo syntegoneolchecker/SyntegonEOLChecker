@@ -1,3 +1,5 @@
+const logger = require('./logger');
+
 // Log storage management using Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 const config = require('./config');
@@ -23,7 +25,7 @@ async function cleanupOldLogs() {
         logCleanupResult(deletedCount);
     } catch (error) {
         // Don't fail job creation if cleanup fails
-        console.error('Log cleanup error (non-fatal):', error.message);
+        logger.error('Log cleanup error (non-fatal):', error.message);
     }
 }
 
@@ -64,7 +66,7 @@ async function processLogBlob(blob, store) {
             } catch (deleteError) {
                 // Another process may have deleted this log concurrently
                 if (deleteError.statusCode === 404 || deleteError.message?.includes('404')) {
-                    console.log(`Log ${blob.key} was already deleted by another process (race condition handled)`);
+                    logger.info(`Log ${blob.key} was already deleted by another process (race condition handled)`);
                     return false;
                 }
                 // Re-throw other errors
@@ -90,23 +92,23 @@ function handleBlobError(error, blobKey) {
     const statusCode = error.statusCode;
 
     if (statusCode === 403 || errorMessage.includes('403')) {
-        console.warn(`⚠️  Skipping log blob ${blobKey}: Permission denied (403). This blob may be orphaned from an older version.`);
+        logger.warn(`⚠️  Skipping log blob ${blobKey}: Permission denied (403). This blob may be orphaned from an older version.`);
     } else if (statusCode === 404 || errorMessage.includes('404')) {
-        console.log(`Log blob ${blobKey} was already deleted`);
+        logger.info(`Log blob ${blobKey} was already deleted`);
     } else {
-        console.error(`Error processing log blob ${blobKey} during cleanup:`, errorMessage);
+        logger.error(`Error processing log blob ${blobKey} during cleanup:`, errorMessage);
     }
 }
 
 function logDeletion(blobKey, timestampMs) {
     const ageMs = Date.now() - timestampMs;
     const ageHours = Math.round(ageMs / 1000 / 60 / 60);
-    console.log(`Cleaned up old log ${blobKey} (age: ${ageHours}h)`);
+    logger.info(`Cleaned up old log ${blobKey} (age: ${ageHours}h)`);
 }
 
 function logCleanupResult(deletedCount) {
     if (deletedCount > 0) {
-        console.log(`✓ Log cleanup complete: deleted ${deletedCount} old log(s)`);
+        logger.info(`✓ Log cleanup complete: deleted ${deletedCount} old log(s)`);
     }
 }
 

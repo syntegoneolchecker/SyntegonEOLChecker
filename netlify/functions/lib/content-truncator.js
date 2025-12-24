@@ -1,3 +1,5 @@
+const logger = require('./logger');
+
 /**
  * Content truncation utilities for analyze-job
  * Extracts and truncates scraped content while preserving product mentions
@@ -138,11 +140,11 @@ function smartTruncate(content, maxLength, productModel) {
 
     // Check if product name is present in content
     if (!contentLower.includes(productLower)) {
-        console.log(`Product "${productModel}" not found in content, using simple truncation`);
+        logger.info(`Product "${productModel}" not found in content, using simple truncation`);
         return simpleTruncate(content, maxLength);
     }
 
-    console.log(`Product "${productModel}" found in content, using advanced truncation`);
+    logger.info(`Product "${productModel}" found in content, using advanced truncation`);
 
     // Step 1: Process tables (remove non-product tables, truncate product tables)
     let processedContent = truncateTablesWithProduct(content, productModel);
@@ -154,7 +156,7 @@ function smartTruncate(content, maxLength, productModel) {
 
     // Step 3: Final check - if STILL too long, hard truncate but preserve first product mention
     if (processedContent.length > maxLength) {
-        console.log(`Content still too long after section extraction, applying final truncation`);
+        logger.info(`Content still too long after section extraction, applying final truncation`);
         processedContent = finalTruncate(processedContent, productModel, maxLength);
     }
 
@@ -263,7 +265,7 @@ function truncateTableRows(tableContent, productModel) {
 
     keptLines.push(lines[tableEnd]); // TABLE END marker
 
-    console.log(`Truncated table from ${lines.length} rows to ${keptLines.length} rows`);
+    logger.info(`Truncated table from ${lines.length} rows to ${keptLines.length} rows`);
     return keptLines.join('\n');
 }
 
@@ -290,7 +292,7 @@ function extractProductSections(content, productModel, maxLength) {
         return content.length <= maxLength ? content : content.substring(0, maxLength - 3) + '...';
     }
 
-    console.log(`Found ${mentions.length} product mentions, extracting sections`);
+    logger.info(`Found ${mentions.length} product mentions, extracting sections`);
 
     // Extract sections with context
     const sections = mentions.map(mentionIndex => {

@@ -1,3 +1,5 @@
+const logger = require('./logger');
+
 /**
  * Parse CSV content into array of arrays
  * Handles quoted fields properly (e.g., "field with, comma")
@@ -86,7 +88,7 @@ function parseCSV(csvContent) {
 
         // Return with warnings if there were non-fatal errors
         if (errors.length > 0) {
-            console.warn('CSV parsing warnings:', errors);
+            logger.warn('CSV parsing warnings:', errors);
             return {
                 success: true, // Still return data, but with warnings
                 data: data,
@@ -97,7 +99,7 @@ function parseCSV(csvContent) {
         return { success: true, data: data, error: null };
 
     } catch (error) {
-        console.error('CSV parsing error:', error);
+        logger.error('CSV parsing error:', error);
         return {
             success: false,
             data: [],

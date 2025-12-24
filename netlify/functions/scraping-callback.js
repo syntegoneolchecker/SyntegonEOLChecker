@@ -90,6 +90,7 @@ exports.handler = async function(event, context) {
     }
 
     const startTime = Date.now();
+    const invocationTimestamp = new Date().toISOString();
     let jobId, urlIndex;
 
     try {
@@ -97,7 +98,8 @@ exports.handler = async function(event, context) {
         jobId = _jobId;
         urlIndex = _urlIndex;
 
-        logger.info(`[CALLBACK START] Job ${jobId}, URL ${urlIndex} (${content?.length || 0} chars)`);
+        logger.info(`[CALLBACK DEBUG] ===== CALLBACK START ===== Time: ${invocationTimestamp}`);
+        logger.info(`[CALLBACK DEBUG] Job ${jobId}, URL ${urlIndex} (${content?.length || 0} chars)`);
 
         // Construct base URL from request headers
         const protocol = event.headers['x-forwarded-proto'] || 'https';
@@ -107,6 +109,7 @@ exports.handler = async function(event, context) {
         // Save the result WITH RETRY LOGIC
         let allDone;
         try {
+            logger.info(`[CALLBACK DEBUG] Attempting to save URL result for job ${jobId}, URL ${urlIndex}`);
             allDone = await retryBlobsOperation(
                 `saveUrlResult(${jobId}, ${urlIndex})`,
                 async () => await saveUrlResult(jobId, urlIndex, {
@@ -116,8 +119,9 @@ exports.handler = async function(event, context) {
                     fullContent: content
                 }, context)
             );
+            logger.info(`[CALLBACK DEBUG] URL result saved successfully. All URLs done: ${allDone}`);
         } catch (error) {
-            logger.error(`CRITICAL: Failed to save URL result after retries:`, error);
+            logger.error(`[CALLBACK DEBUG] CRITICAL: Failed to save URL result after retries:`, error);
             return {
                 statusCode: 500,
                 body: JSON.stringify({
@@ -127,31 +131,32 @@ exports.handler = async function(event, context) {
             };
         }
 
-        logger.info(`Result saved. All URLs done: ${allDone}`);
-
         // Get job for next URL triggering
+        logger.info(`[CALLBACK DEBUG] Retrieving job ${jobId} to check for next steps`);
         const job = await getJob(jobId, context);
 
         // Continue pipeline: trigger next URL or let polling loop handle analysis
         if (allDone) {
             // All URLs complete - let polling loop detect and trigger analysis
             // We don't trigger analysis here to avoid 30s timeout (analyze-job can take 30-60s waiting for Groq tokens)
-            logger.info(`✓ All URLs complete for job ${jobId}. Polling loop will trigger analysis.`);
+            logger.info(`[CALLBACK DEBUG] ✓ All URLs complete for job ${jobId}. Polling loop will trigger analysis.`);
         } else {
             // Find and trigger next pending URL
-            logger.info(`Checking for next pending URL...`);
+            logger.info(`[CALLBACK DEBUG] Checking for next pending URL...`);
 
             if (job) {
+                logger.info(`[CALLBACK DEBUG] Job retrieved. Total URLs: ${job.urls?.length}`);
                 const nextUrl = job.urls.find(u => u.status === 'pending');
 
                 if (nextUrl) {
-                    logger.info(`Triggering next URL ${nextUrl.index}: ${nextUrl.url}`);
+                    logger.info(`[CALLBACK DEBUG] Found pending URL ${nextUrl.index}: ${nextUrl.url}. Triggering fetch.`);
                     await triggerFetch(jobId, nextUrl, baseUrl);
+                    logger.info(`[CALLBACK DEBUG] Next URL ${nextUrl.index} triggered successfully`);
                 } else {
-                    logger.info(`No more pending URLs found (this should not happen)`);
+                    logger.warn(`[CALLBACK DEBUG] No more pending URLs found (this should not happen)`);
                 }
             } else {
-                logger.error(`Failed to get job ${jobId} for next URL trigger`);
+                logger.error(`[CALLBACK DEBUG] Failed to get job ${jobId} for next URL trigger`);
             }
         }
 

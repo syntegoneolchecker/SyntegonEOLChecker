@@ -643,42 +643,62 @@ async function pollJobStatus(jobId, manufacturer, model, checkButton) {
         attempts++;
 
         try {
-            console.log(`Polling job status (attempt ${attempts})...`);
+            console.log(`[POLL DEBUG] Polling job status (attempt ${attempts})...`);
             const statusData = await getJobStatus(jobId);
-            console.log('Job status:', statusData);
+            console.log(`[POLL DEBUG] Job status received:`, JSON.stringify({
+                status: statusData.status,
+                urlCount: statusData.urlCount,
+                completedUrls: statusData.completedUrls,
+                urlsLength: statusData.urls?.length,
+                firstUrlStatus: statusData.urls?.[0]?.status
+            }));
+
+            // Log trigger flags
+            console.log(`[POLL DEBUG] Trigger flags: fetchTriggered=${fetchTriggered}, analyzeTriggered=${analyzeTriggered}`);
 
             // Update progress display
             updateJobProgress(statusData, manufacturer, model, checkButton);
 
             // Check if job is complete
             if (statusData.status === 'complete') {
-                console.log('Job complete:', statusData);
+                console.log('[POLL DEBUG] Job complete, returning result');
                 return statusData.result;
             }
 
             // Check for errors
             if (statusData.status === 'error') {
+                console.log('[POLL DEBUG] Job error detected');
                 handleDailyLimitError(statusData);
                 throw new Error(statusData.error || 'Job failed');
             }
 
             // Trigger fetch-url if URLs are ready
-            if (shouldTriggerFetch(statusData, fetchTriggered)) {
+            const shouldFetch = shouldTriggerFetch(statusData, fetchTriggered);
+            console.log(`[POLL DEBUG] shouldTriggerFetch=${shouldFetch} (status=${statusData.status}, fetchTriggered=${fetchTriggered}, hasUrls=${statusData.urls && statusData.urls.length > 0})`);
+
+            if (shouldFetch) {
+                console.log(`[POLL DEBUG] Triggering fetch-url for URL index 0:`, statusData.urls[0].url);
                 await triggerFetchUrl(jobId, statusData.urls[0], attempts);
                 fetchTriggered = true;
+                console.log(`[POLL DEBUG] fetch-url triggered, setting fetchTriggered=true`);
             }
 
             // Trigger analyze-job if all scraping is complete
-            if (shouldTriggerAnalyze(statusData, analyzeTriggered)) {
+            const shouldAnalyze = shouldTriggerAnalyze(statusData, analyzeTriggered);
+            console.log(`[POLL DEBUG] shouldTriggerAnalyze=${shouldAnalyze} (allUrlsComplete=${areAllUrlsComplete(statusData)}, analyzeTriggered=${analyzeTriggered}, status=${statusData.status})`);
+
+            if (shouldAnalyze) {
+                console.log(`[POLL DEBUG] Triggering analyze-job`);
                 await triggerAnalyzeJob(jobId, attempts);
                 analyzeTriggered = true;
+                console.log(`[POLL DEBUG] analyze-job triggered, setting analyzeTriggered=true`);
             }
 
             // Wait before next poll
             await new Promise(resolve => setTimeout(resolve, 2000));
 
         } catch (error) {
-            console.error('Polling error:', error);
+            console.error('[POLL DEBUG] Polling error:', error);
             throw error;
         }
     }

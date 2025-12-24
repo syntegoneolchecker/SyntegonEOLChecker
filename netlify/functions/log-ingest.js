@@ -5,6 +5,7 @@
  */
 
 import { getStore } from '@netlify/blobs';
+const logger = require('./lib/logger');
 
 export const handler = async (event) => {
   // Only accept POST requests
@@ -59,7 +60,7 @@ export const handler = async (event) => {
       body: JSON.stringify({ success: true, stored: logKey })
     };
   } catch (error) {
-    console.error('Error ingesting log:', error);
+    logger.error('Error ingesting log:', error);
     return {
       statusCode: 500,
       body: JSON.stringify({ error: 'Failed to ingest log', message: error.message })
