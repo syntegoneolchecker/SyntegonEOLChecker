@@ -528,7 +528,7 @@ async function triggerFetchUrl(jobId, firstUrl, attempts) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
-                signal: AbortSignal.timeout(60000) // 60s timeout (scraping can take time)
+                signal: AbortSignal.timeout(120000) // 120s timeout (scraping can take time)
             });
 
             if (response.ok) {
@@ -585,7 +585,7 @@ async function triggerAnalyzeJob(jobId, attempts) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ jobId }),
-                signal: AbortSignal.timeout(60000) // 60s timeout (analysis can take time)
+                signal: AbortSignal.timeout(120000) // 120s timeout (analysis can take time)
             });
 
             if (response.ok) {
