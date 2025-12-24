@@ -12,6 +12,7 @@ const {
   scheduleRestartIfNeeded,
   getShutdownState,
   incrementRequestCount,
+  getRequestCount,
   forceGarbageCollection,
 } = require("../utils/memory");
 const { isSafePublicUrl, isValidCallbackUrl } = require("../utils/validation");
@@ -385,7 +386,7 @@ function validateAndFixContent(content) {
  */
 function performCleanup() {
   forceGarbageCollection();
-  const requestCount = incrementRequestCount();
+  const requestCount = getRequestCount();
   trackMemoryUsage(`request_complete_${requestCount}_puppeteer`);
   scheduleRestartIfNeeded();
 }
@@ -587,7 +588,7 @@ async function handleFastFetchSuccess(
   });
 
   forceGarbageCollection();
-  const requestCount = incrementRequestCount();
+  const requestCount = getRequestCount();
   trackMemoryUsage(`request_complete_${requestCount}_fast_fetch`);
   scheduleRestartIfNeeded();
 

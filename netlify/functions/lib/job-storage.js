@@ -1,5 +1,6 @@
 // Job storage using Netlify Blobs
 const { getStore } = require('@netlify/blobs');
+const config = require('./config');
 
 // Helper to get configured store
 function getJobStore() {
@@ -85,7 +86,7 @@ async function processBlob(blob) {
 }
 
 function shouldDeleteJob(job) {
-    const FIVE_MINUTES_MS = 5 * 60 * 1000;
+    const CLEANUP_DELAY_MS = config.JOB_CLEANUP_DELAY_MINUTES * 60 * 1000;
     const ACTIVE_STATUSES = ['created', 'urls_ready', 'fetching', 'analyzing'];
 
     // Race condition protection: Never delete jobs that are actively being processed
@@ -103,11 +104,11 @@ function shouldDeleteJob(job) {
         return false;
     }
 
-    // Only delete jobs older than 5 minutes
+    // Only delete jobs older than configured delay
     const completedTime = new Date(job.completedAt).getTime();
     const ageMs = Date.now() - completedTime;
 
-    return ageMs > FIVE_MINUTES_MS;
+    return ageMs > CLEANUP_DELAY_MS;
 }
 
 function handleBlobError(error, blobKey) {
@@ -233,7 +234,7 @@ async function updateJobStatus(jobId, status, error, _context, metadata = {}) {
     const job = await store.get(jobId, { type: 'json' });
 
     if (!job) {
-        throw new Error(`Job ${jobId} not found. Jobs are automatically deleted 5 minutes after completion.`);
+        throw new Error(`Job ${jobId} not found. Jobs are automatically deleted ${config.JOB_CLEANUP_DELAY_MINUTES} minutes after completion.`);
     }
 
     job.status = status;

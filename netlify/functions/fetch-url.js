@@ -22,17 +22,11 @@ async function checkRenderHealth(scrapingServiceUrl) {
 }
 
 /**
- * Scrape NBK search page using BrowserQL to extract product URL
- * Step 1 of 2-step hybrid process: BrowserQL search (bypasses Cloudflare) → Render with language parameter (forces Japanese site)
- * Appends ?SelectedLanguage=ja-JP to force Japanese content
+ * Scrape NBK search page using shared BrowserQL scraper to extract product URL
+ * Step 1 of 2-step process: BrowserQL search (bypasses Cloudflare) → extract product URL
+ * Uses shared scraper like Oriental Motor for consistency
  */
 async function scrapeNBKSearchWithBrowserQL(model) {
-    const browserqlApiKey = process.env.BROWSERQL_API_KEY;
-
-    if (!browserqlApiKey) {
-        throw new Error('BROWSERQL_API_KEY environment variable not set');
-    }
-
     // Preprocess model name: remove lowercase 'x' and '-'
     const preprocessedModel = model.replaceAll('x', '').replaceAll('-', '');
     logger.info(`NBK BrowserQL: Preprocessed model name: ${model} -> ${preprocessedModel}`);
@@ -42,156 +36,58 @@ async function scrapeNBKSearchWithBrowserQL(model) {
 
     logger.info(`NBK BrowserQL: Searching at ${searchUrl}`);
 
-    // BrowserQL mutation to search page (extract product URL only)
-    const searchQuery = `
-        mutation NBKSearch($searchUrl: String!) {
-            goto(url: $searchUrl, waitUntil: networkIdle) {
-                status
-            }
+    // Use shared BrowserQL scraper (same as Oriental Motor)
+    const result = await scrapeWithBrowserQL(searchUrl);
 
-            searchInfo: evaluate(content: """
-            (() => {
-                try {
-                    const bodyDiv = document.querySelector('.topListSection-body');
-                    const items = bodyDiv ? bodyDiv.querySelectorAll('._item') : [];
-                    const hasResults = items.length > 0;
+    // Parse the content to extract product URL
+    const content = result.content;
+    let hasResults = false;
+    let productUrl = null;
 
-                    let productUrl = null;
-                    if (hasResults) {
-                        const firstItem = items[0];
-                        const linkElement = firstItem.querySelector('a._link');
-                        if (linkElement) {
-                            const href = linkElement.getAttribute('href') || '';
-                            productUrl = href.startsWith('http')
-                                ? href
-                                : \`https://www.nbk1560.com\${href}\`;
-                        }
-                    }
+    try {
+        // Check if there are search results by looking for specific markers in the content
+        // The search results page contains product listings
+        if (content.includes('topListSection') || content.includes('検索結果')) {
+            hasResults = true;
 
-                    return JSON.stringify({
-                        hasResults,
-                        productUrl,
-                        error: null
-                    });
-                } catch (e) {
-                    return JSON.stringify({
-                        hasResults: false,
-                        productUrl: null,
-                        error: (e?.message ?? String(e))
-                    });
-                }
-            })()
-            """) {
-                value
+            // Try to extract product URL from content
+            // NBK search results include product URLs in the format: /ja/products/...
+            const urlMatch = content.match(/\/ja\/products\/[^\s"'<>]+/);
+            if (urlMatch) {
+                productUrl = `https://www.nbk1560.com${urlMatch[0]}?SelectedLanguage=ja-JP`;
+                logger.info(`NBK BrowserQL: Extracted product URL: ${productUrl}`);
             }
         }
-    `;
-
-    const searchResponse = await fetch(`https://production-sfo.browserless.io/stealth/bql?token=${browserqlApiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            query: searchQuery,
-            variables: { searchUrl }
-        })
-    });
-
-    if (!searchResponse.ok) {
-        const errorText = await searchResponse.text();
-        throw new Error(`NBK BrowserQL search failed: ${searchResponse.status} - ${errorText}`);
-    }
-
-    const searchResult = await searchResponse.json();
-
-    if (searchResult.errors) {
-        throw new Error(`NBK BrowserQL search errors: ${JSON.stringify(searchResult.errors)}`);
-    }
-
-    if (!searchResult.data?.searchInfo) {
-        throw new Error('NBK BrowserQL search returned no data');
-    }
-
-    // Parse search results
-    const searchInfo = JSON.parse(searchResult.data.searchInfo.value);
-    logger.info(`NBK BrowserQL: Search results:`, searchInfo);
-
-    if (searchInfo.error) {
-        throw new Error(`NBK search page evaluation error: ${searchInfo.error}`);
-    }
-
-    // Append language parameter to force Japanese site
-    let productUrl = searchInfo.productUrl;
-    if (productUrl) {
-        productUrl = productUrl + '?SelectedLanguage=ja-JP';
-        logger.info(`NBK BrowserQL: Added language parameter to URL: ${productUrl}`);
+    } catch (e) {
+        logger.warn(`NBK BrowserQL: Error parsing search results: ${e.message}`);
     }
 
     return {
-        hasResults: searchInfo.hasResults,
-        productUrl: productUrl,
-        preprocessedModel: preprocessedModel
+        hasResults,
+        productUrl,
+        preprocessedModel
     };
 }
 
 /**
- * Scrape NBK product page using BrowserQL (with language parameter)
+ * Scrape NBK product page using shared BrowserQL scraper
  * Step 2 of 2-step process: Product page scraping (bypasses Cloudflare)
+ * Uses shared scraper like Oriental Motor for consistency
  */
 async function scrapeNBKProductWithBrowserQL(productUrl) {
-    const browserqlApiKey = process.env.BROWSERQL_API_KEY;
-
-    if (!browserqlApiKey) {
-        throw new Error('BROWSERQL_API_KEY environment variable not set');
-    }
-
     logger.info(`NBK BrowserQL: Scraping product page: ${productUrl}`);
 
-    // BrowserQL mutation to scrape product page
-    const productQuery = `
-        mutation NBKProductPage($productUrl: String!) {
-            goto(url: $productUrl, waitUntil: networkIdle) {
-                status
-            }
-            productContent: text(selector: "body") {
-                text
-            }
-        }
-    `;
+    // Use shared BrowserQL scraper (same as Oriental Motor)
+    const result = await scrapeWithBrowserQL(productUrl);
 
-    const productResponse = await fetch(`https://production-sfo.browserless.io/stealth/bql?token=${browserqlApiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            query: productQuery,
-            variables: { productUrl }
-        })
-    });
-
-    if (!productResponse.ok) {
-        const errorText = await productResponse.text();
-        throw new Error(`NBK BrowserQL product page failed: ${productResponse.status} - ${errorText}`);
-    }
-
-    const productResult = await productResponse.json();
-
-    if (productResult.errors) {
-        throw new Error(`NBK BrowserQL product errors: ${JSON.stringify(productResult.errors)}`);
-    }
-
-    if (!productResult.data?.productContent) {
-        throw new Error('NBK BrowserQL product page returned no data');
-    }
-
-    const content = productResult.data.productContent.text;
-
-    if (!content) {
+    if (!result.content) {
         throw new Error('NBK BrowserQL returned empty content');
     }
 
-    logger.info(`NBK BrowserQL: Successfully scraped product page (${content.length} characters)`);
+    logger.info(`NBK BrowserQL: Successfully scraped product page (${result.content.length} characters)`);
 
     return {
-        content,
+        content: result.content,
         success: true
     };
 }
