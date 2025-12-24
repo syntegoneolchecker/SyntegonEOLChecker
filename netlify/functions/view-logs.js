@@ -39,28 +39,27 @@ export const handler = async (event) => {
     }
 
     // Fetch all logs from requested dates
+    // Since logs are now stored as individual blobs, we need to list and aggregate them
     let allLogs = [];
     for (const dateKey of datesToFetch) {
-      const logKey = `logs-${dateKey}.jsonl`;
       try {
-        const logsContent = await store.get(logKey, { type: 'text' });
-        if (logsContent) {
-          // Parse each line as JSON
-          const lines = logsContent.trim().split('\n');
-          const parsedLogs = lines
-            .filter(line => line.trim())
-            .map(line => {
-              try {
-                return JSON.parse(line);
-              } catch (e) {
-                return null;
-              }
-            })
-            .filter(log => log !== null);
-          allLogs = allLogs.concat(parsedLogs);
+        // List all blobs for this date
+        const { blobs } = await store.list({ prefix: `logs-${dateKey}-` });
+
+        // Fetch each log blob
+        for (const blob of blobs) {
+          try {
+            const logEntry = await store.get(blob.key, { type: 'json' });
+            if (logEntry) {
+              allLogs.push(logEntry);
+            }
+          } catch (err) {
+            // Skip individual logs that can't be read
+            continue;
+          }
         }
       } catch (err) {
-        // Log file doesn't exist for this date, skip
+        // No logs for this date, skip
         continue;
       }
     }

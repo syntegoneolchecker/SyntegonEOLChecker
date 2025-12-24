@@ -17,6 +17,9 @@ module.exports = {
     JOB_POLL_MAX_ATTEMPTS: 60,     // Max polling attempts (60 × 2s = 2 min)
     JOB_POLL_INTERVAL_MS: 2000,    // Poll interval between status checks
 
+    // === LOG MANAGEMENT ===
+    LOG_RETENTION_DAYS: 1,         // Delete logs older than 1 day
+
     // === GROQ LLM LIMITS ===
     GROQ_MIN_TOKENS_REQUIRED: 500,      // Min tokens needed before starting analysis
     GROQ_DAILY_TOKEN_LIMIT: 200000,     // Daily token limit (rolling 24h window)

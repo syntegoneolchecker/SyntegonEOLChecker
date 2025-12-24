@@ -59,7 +59,26 @@ function getFunctionName() {
 }
 
 /**
+ * Generate a random string for unique log IDs
+ */
+function generateRandomId(length = 8) {
+    try {
+        return Array.from(crypto.getRandomValues(new Uint8Array(length)))
+            .map(b => b.toString(36))
+            .join('')
+            .replaceAll('.', '')
+            .substring(0, length);
+    } catch (error) {
+        // Fallback to Math.random() if crypto fails
+        return Array.from({ length }, () =>
+            Math.floor(Math.random() * 36).toString(36)
+        ).join('');
+    }
+}
+
+/**
  * Write log directly to Netlify Blobs
+ * Each log entry gets its own blob to prevent race conditions
  * This is fire-and-forget to avoid blocking the main application
  */
 async function sendToCentralLog(level, message, context) {
@@ -78,34 +97,26 @@ async function sendToCentralLog(level, message, context) {
             token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
         });
 
+        const timestamp = new Date().toISOString();
         const logEntry = {
-            timestamp: new Date().toISOString(),
+            timestamp,
             level,
             source: functionSource,
             message,
             context
         };
 
-        // Create a key based on the date (YYYY-MM-DD format)
-        const date = new Date(logEntry.timestamp);
+        // Create a unique key for this log entry to prevent race conditions
+        // Format: logs-YYYY-MM-DD-timestamp-randomId.json
+        const date = new Date(timestamp);
         const dateKey = date.toISOString().split('T')[0];
-        const logKey = `logs-${dateKey}.jsonl`;
+        const timestampMs = date.getTime();
+        const randomId = generateRandomId(8);
+        const logKey = `logs-${dateKey}-${timestampMs}-${randomId}.json`;
 
-        // Get existing logs for today (if any)
-        let existingLogs = '';
-        try {
-            existingLogs = await store.get(logKey, { type: 'text' }) || '';
-        } catch (err) {
-            // File doesn't exist yet, that's OK
-            existingLogs = '';
-        }
-
-        // Append the new log entry as a JSON line
-        const logLine = JSON.stringify(logEntry) + '\n';
-        const updatedLogs = existingLogs + logLine;
-
-        // Store back to blob - fire and forget (don't await)
-        store.set(logKey, updatedLogs).catch(() => {
+        // Store as individual blob - fire and forget (don't await)
+        // No race condition possible because each log gets a unique blob
+        store.setJSON(logKey, logEntry).catch(() => {
             // Silently ignore errors in central logging to avoid cascading failures
         });
     } catch (error) {
