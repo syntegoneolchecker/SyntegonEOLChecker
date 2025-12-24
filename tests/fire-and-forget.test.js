@@ -81,6 +81,7 @@ describe('Fire and Forget', () => {
 
             expect(fetch).toHaveBeenCalledTimes(3); // Initial + 2 retries
             expect(console.error).toHaveBeenCalledWith(
+                '[ERROR]',
                 expect.stringContaining('test-fail failed after 3 attempts'),
                 expect.any(String)
             );
