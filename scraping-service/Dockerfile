@@ -1,5 +1,8 @@
 FROM node:20-slim
 
+# Set production environment to avoid installing dev dependencies
+ENV NODE_ENV=production
+
 # Install Chromium dependencies and build tools for native modules
 # Security: Use --no-install-recommends to avoid installing unnecessary packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -56,25 +59,26 @@ COPY package*.json ./
 # Install dependencies (re2 requires build tools for native compilation)
 # Security: Use --ignore-scripts to prevent execution of package lifecycle scripts
 # Note: Native module compilation (node-gyp) still runs, only package.json scripts are ignored
-RUN npm install --ignore-scripts \
+RUN npm ci --only=production --ignore-scripts \
     && npm rebuild \
     && apt-get purge -y --auto-remove python3 make g++
 
-# Copy application files
-COPY index.js .
-COPY routes/ ./routes/
-COPY utils/ ./utils/
-COPY config/ ./config/
-
-# Change ownership of application files to node user
+# Change ownership to node user before installing Chrome
 RUN chown -R node:node /app
 
-# Switch to non-root user
+# Switch to non-root user BEFORE installing Chrome
 USER node
 
 # Install Chrome as node user (will install to /home/node/.cache/puppeteer)
-# This ensures the node user has permissions to access Chrome
+# This layer will be cached as long as package.json doesn't change
+# CRITICAL: This must happen BEFORE copying application code
 RUN npx puppeteer browsers install chrome
+
+# Copy application files (changing these won't invalidate Chrome installation cache)
+COPY --chown=node:node index.js .
+COPY --chown=node:node routes/ ./routes/
+COPY --chown=node:node utils/ ./utils/
+COPY --chown=node:node config/ ./config/
 
 # Expose port
 EXPOSE 3000
