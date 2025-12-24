@@ -325,6 +325,9 @@ function generateHTML(logs, filters) {
         <div class="filter-group">
           <a href="?format=json${filters.days ? '&days=' + filters.days : ''}" style="padding: 8px 16px; background: #28a745; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 600;">Export JSON</a>
         </div>
+        <div class="filter-group">
+          <button type="button" onclick="clearAllLogs()" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">Clear Logs</button>
+        </div>
       </form>
     </div>
 
@@ -352,6 +355,40 @@ function generateHTML(logs, filters) {
       `}
     </div>
   </div>
+  <script>
+    async function clearAllLogs() {
+      if (!confirm('Are you sure you want to delete ALL logs? This action cannot be undone.')) {
+        return;
+      }
+
+      const button = event.target;
+      const originalText = button.textContent;
+      button.textContent = 'Clearing...';
+      button.disabled = true;
+
+      try {
+        const response = await fetch('/.netlify/functions/clear-logs', {
+          method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          alert(\`Successfully cleared \${result.deletedCount} log(s).\`);
+          // Reload the page to show empty logs
+          window.location.reload();
+        } else {
+          alert(\`Error clearing logs: \${result.error}\`);
+          button.textContent = originalText;
+          button.disabled = false;
+        }
+      } catch (error) {
+        alert(\`Error clearing logs: \${error.message}\`);
+        button.textContent = originalText;
+        button.disabled = false;
+      }
+    }
+  </script>
 </body>
 </html>
   `;
