@@ -20,6 +20,7 @@ const {
 const { handleScrapeRequest } = require("./routes/scrape");
 const { handleKeyenceScrapeRequest } = require("./routes/scrape-keyence");
 const { handleIdecDualScrapeRequest } = require("./routes/scrape-idec-dual");
+const { handleOmronDualScrapeRequest } = require("./routes/scrape-omron-dual");
 const { handleBatchScrapeRequest } = require("./routes/scrape-batch");
 const logger = require('./utils/logger');
 
@@ -103,6 +104,7 @@ app.use((req, res, next) => {
       "/scrape",
       "/scrape-keyence",
       "/scrape-idec-dual",
+      "/scrape-omron-dual",
       "/scrape-batch",
     ].includes(req.path)
   ) {
@@ -119,6 +121,7 @@ app.use((req, res, next) => {
 app.post("/scrape", handleScrapeRequest);
 app.post("/scrape-keyence", handleKeyenceScrapeRequest);
 app.post("/scrape-idec-dual", handleIdecDualScrapeRequest);
+app.post("/scrape-omron-dual", handleOmronDualScrapeRequest);
 app.post("/scrape-batch", handleBatchScrapeRequest);
 
 // Start server
