@@ -56,16 +56,16 @@ function validateScrapingServiceUrl() {
 }
 
 /**
- * Validate IDEC proxy URLs (required for IDEC dual-site scraping)
+ * Validate proxy URLs (required for IDEC and Omron scraping)
  * @returns {boolean} True if both proxies are configured
  */
-function validateIdecProxies() {
-    const jpProxy = process.env.IDEC_JP_PROXY;
-    const usProxy = process.env.IDEC_US_PROXY;
+function validateProxies() {
+    const jpProxy = process.env.JP_PROXY;
+    const usProxy = process.env.US_PROXY;
 
     if (!jpProxy || !usProxy) {
-        logger.warn('⚠️  IDEC proxy URLs not configured - IDEC dual-site scraping will fail');
-        logger.warn('   Missing:', !jpProxy ? 'IDEC_JP_PROXY' : 'IDEC_US_PROXY');
+        logger.warn('⚠️  Proxy URLs not configured - IDEC and Omron scraping will fail');
+        logger.warn('   Missing:', !jpProxy ? 'JP_PROXY' : 'US_PROXY');
         return false;
     }
 
@@ -116,8 +116,8 @@ function validateAllEnvVars() {
         warnings.push('BrowserQL not configured - some manufacturers may fail');
     }
 
-    if (!validateIdecProxies()) {
-        warnings.push('IDEC proxies not configured - IDEC manufacturer will fail');
+    if (!validateProxies()) {
+        warnings.push('Proxies not configured - IDEC and Omron manufacturers will fail');
     }
 
     if (warnings.length > 0) {
@@ -138,7 +138,7 @@ module.exports = {
     validateCommonEnvVars,
     validateBrowserQLKey,
     validateScrapingServiceUrl,
-    validateIdecProxies,
+    validateProxies,
     validateBlobsToken,
     validateAllEnvVars
 };
