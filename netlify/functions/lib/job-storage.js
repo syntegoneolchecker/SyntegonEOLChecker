@@ -275,6 +275,7 @@ async function markUrlFetching(jobId, urlIndex, _context) {
 
 // Save URL result and return whether all URLs are complete
 async function saveUrlResult(jobId, urlIndex, result, _context) {
+    console.log(`[STORAGE DEBUG] saveUrlResult called for job ${jobId}, URL ${urlIndex}`);
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
@@ -282,20 +283,28 @@ async function saveUrlResult(jobId, urlIndex, result, _context) {
         throw new Error(`Job ${jobId} not found`);
     }
 
+    console.log(`[STORAGE DEBUG] Job retrieved. Current URL statuses: [${job.urls?.map(u => `${u.index}:${u.status}`).join(', ')}]`);
+
     // Save the result
     job.urlResults[urlIndex] = result;
 
     // Mark URL as complete
     const url = job.urls.find(u => u.index === urlIndex);
     if (url) {
+        const previousStatus = url.status;
         url.status = 'complete';
+        console.log(`[STORAGE DEBUG] URL ${urlIndex} status changed: ${previousStatus} -> complete`);
+    } else {
+        console.warn(`[STORAGE DEBUG] URL ${urlIndex} not found in job.urls array!`);
     }
 
+    console.log(`[STORAGE DEBUG] Saving job to blob storage...`);
     await store.setJSON(jobId, job);
-    console.log(`Saved result for URL ${urlIndex} in job ${jobId}`);
+    console.log(`[STORAGE DEBUG] Job saved successfully. URL statuses after save: [${job.urls?.map(u => `${u.index}:${u.status}`).join(', ')}]`);
 
     // Check if all URLs are complete
     const allComplete = job.urls.every(u => u.status === 'complete');
+    console.log(`[STORAGE DEBUG] All URLs complete check: ${allComplete} (${job.urls.filter(u => u.status === 'complete').length}/${job.urls.length})`);
     return allComplete;
 }
 

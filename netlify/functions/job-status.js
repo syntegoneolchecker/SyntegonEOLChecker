@@ -24,13 +24,15 @@ exports.handler = async function(event, context) {
     }
 
     try {
-        logger.debug(`Fetching status for job: ${jobId}`);
+        logger.debug(`[STATUS DEBUG] Fetching status for job: ${jobId}`);
         const job = await getJob(jobId, context);
 
         if (!job) {
-            logger.warn(`Job not found: ${jobId}`);
+            logger.warn(`[STATUS DEBUG] Job not found: ${jobId}`);
             return notFoundResponse('Job');
         }
+
+        logger.debug(`[STATUS DEBUG] Job retrieved: status=${job.status}, urls=${job.urls?.length}, completed=${job.urls?.filter(u => u.status === 'complete').length}`);
 
         // Return current job status (read-only)
         const response = {
@@ -53,7 +55,7 @@ exports.handler = async function(event, context) {
             response.result = job.finalResult;
         }
 
-        logger.debug(`Returning status for job ${jobId}: ${job.status}`);
+        logger.debug(`[STATUS DEBUG] Returning status for job ${jobId}: ${job.status}, URLs: [${job.urls?.map(u => `${u.index}:${u.status}`).join(', ')}]`);
 
         // NOTE: Frontend expects job data directly in response body, not wrapped in { success, data }
         // so we return manually instead of using successResponse()

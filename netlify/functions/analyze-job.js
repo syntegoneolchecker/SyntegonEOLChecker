@@ -76,22 +76,30 @@ exports.handler = async function(event, context) {
         return { statusCode: 405, body: 'Method Not Allowed' };
     }
 
+    const invocationTimestamp = new Date().toISOString();
+
     try {
         const { jobId } = JSON.parse(event.body);
 
-        logger.info(`Starting analysis for job ${jobId}`);
+        logger.info(`[ANALYZE DEBUG] ===== ANALYSIS START ===== Time: ${invocationTimestamp}`);
+        logger.info(`[ANALYZE DEBUG] Starting analysis for job ${jobId}`);
 
         const job = await getJob(jobId, context);
 
         if (!job) {
+            logger.warn(`[ANALYZE DEBUG] Job ${jobId} not found`);
             return {
                 statusCode: 404,
                 body: JSON.stringify({ error: 'Job not found' })
             };
         }
 
+        logger.info(`[ANALYZE DEBUG] Job retrieved. Current status: ${job.status}, URLs: ${job.urls?.length}, Completed: ${job.urls?.filter(u => u.status === 'complete').length}`);
+
         // Update status to analyzing
+        logger.info(`[ANALYZE DEBUG] Updating job status to 'analyzing'`);
         await updateJobStatus(jobId, 'analyzing', null, context);
+        logger.info(`[ANALYZE DEBUG] Job status updated to 'analyzing'`);
 
         // FIX: Check Groq token availability BEFORE analysis
         const tokenCheck = await checkGroqTokenAvailability();

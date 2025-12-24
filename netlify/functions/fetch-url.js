@@ -161,19 +161,24 @@ exports.handler = async function(event, context) {
         return { statusCode: 405, body: 'Method Not Allowed' };
     }
 
+    const invocationTimestamp = new Date().toISOString();
+
     try {
         const requestBody = JSON.parse(event.body);
+        logger.info(`[FETCH-URL DEBUG] ===== INVOCATION START ===== Time: ${invocationTimestamp}`);
         logger.info(`[FETCH-URL DEBUG] Raw request body:`, JSON.stringify(requestBody, null, 2));
 
         const { jobId, urlIndex, url, title, snippet, scrapingMethod, model, jpUrl, usUrl } = requestBody;
 
-        logger.info(`Fetching URL ${urlIndex} for job ${jobId}: ${url} (method: ${scrapingMethod || 'render'})`);
+        logger.info(`[FETCH-URL DEBUG] Fetching URL ${urlIndex} for job ${jobId}: ${url} (method: ${scrapingMethod || 'render'})`);
         logger.info(`[FETCH-URL DEBUG] Extracted values: jpUrl=${jpUrl}, usUrl=${usUrl}, model=${model}`);
 
         const baseUrl = constructBaseUrl(event.headers);
 
         // Mark as fetching
+        logger.info(`[FETCH-URL DEBUG] About to mark URL ${urlIndex} as fetching for job ${jobId}`);
         await markUrlFetching(jobId, urlIndex, context);
+        logger.info(`[FETCH-URL DEBUG] URL ${urlIndex} marked as fetching for job ${jobId}`);
 
         // Prepare common params for all handlers
         const handlerParams = {
@@ -514,11 +519,14 @@ async function handleNbkSuccess(params) {
 
 async function handleBrowserQL(params) {
     const { jobId, urlIndex, url, snippet, baseUrl, context } = params;
-    logger.info(`Using BrowserQL for URL ${urlIndex}`);
+    logger.info(`[BROWSERQL DEBUG] Using BrowserQL for URL ${urlIndex} in job ${jobId}`);
 
     try {
+        logger.info(`[BROWSERQL DEBUG] Starting BrowserQL scrape for ${url}`);
         const result = await scrapeWithBrowserQL(url);
+        logger.info(`[BROWSERQL DEBUG] BrowserQL scrape completed, content length: ${result.content.length}`);
 
+        logger.info(`[BROWSERQL DEBUG] Saving URL result for job ${jobId}, URL ${urlIndex}`);
         const allDone = await saveUrlResult(jobId, urlIndex, {
             url,
             title: result.title,
@@ -526,9 +534,11 @@ async function handleBrowserQL(params) {
             fullContent: result.content
         }, context);
 
-        logger.info(`BrowserQL scraping complete for URL ${urlIndex}. All done: ${allDone}`);
+        logger.info(`[BROWSERQL DEBUG] BrowserQL scraping complete for URL ${urlIndex}. All done: ${allDone}`);
 
+        logger.info(`[BROWSERQL DEBUG] Calling continuePipelineAfterSuccess with allDone=${allDone}`);
         await continuePipelineAfterSuccess({ jobId, urlIndex, allDone, baseUrl, context });
+        logger.info(`[BROWSERQL DEBUG] continuePipelineAfterSuccess completed`);
 
         return {
             statusCode: 200,
@@ -540,7 +550,7 @@ async function handleBrowserQL(params) {
         };
 
     } catch (error) {
-        logger.error(`BrowserQL scraping failed for URL ${urlIndex}:`, error);
+        logger.error(`[BROWSERQL DEBUG] BrowserQL scraping failed for URL ${urlIndex}:`, error);
         return await handleCommonError({
             ...params,
             error,
@@ -552,21 +562,28 @@ async function handleBrowserQL(params) {
 async function continuePipelineAfterSuccess(params) {
     const { jobId, allDone, baseUrl, context } = params;
 
+    logger.info(`[PIPELINE DEBUG] continuePipelineAfterSuccess called for job ${jobId}, allDone=${allDone}`);
+
     if (allDone) {
-        logger.info(`All URLs complete for job ${jobId}, triggering analysis`);
+        logger.info(`[PIPELINE DEBUG] All URLs complete for job ${jobId}, triggering analysis`);
         await triggerAnalysis(jobId, baseUrl);
+        logger.info(`[PIPELINE DEBUG] Analysis triggered for job ${jobId}`);
     } else {
-        logger.info(`Checking for next pending URL...`);
+        logger.info(`[PIPELINE DEBUG] Checking for next pending URL...`);
         const job = await getJob(jobId, context);
 
         if (job) {
+            logger.info(`[PIPELINE DEBUG] Job retrieved, checking for pending URLs. Total URLs: ${job.urls?.length}`);
             const nextUrl = job.urls.find(u => u.status === 'pending');
             if (nextUrl) {
-                logger.info(`Triggering next URL ${nextUrl.index}: ${nextUrl.url}`);
+                logger.info(`[PIPELINE DEBUG] Found pending URL ${nextUrl.index}: ${nextUrl.url}, triggering fetch`);
                 await triggerFetch(jobId, nextUrl, baseUrl);
+                logger.info(`[PIPELINE DEBUG] Next URL ${nextUrl.index} triggered`);
             } else {
-                logger.info(`No more pending URLs found`);
+                logger.info(`[PIPELINE DEBUG] No more pending URLs found`);
             }
+        } else {
+            logger.warn(`[PIPELINE DEBUG] Failed to retrieve job ${jobId}`);
         }
     }
 }
@@ -667,6 +684,8 @@ async function triggerFetch(jobId, urlInfo, baseUrl) {
 
 // Helper function to trigger LLM analysis (with retry logic)
 async function triggerAnalysis(jobId, baseUrl) {
+    logger.info(`[TRIGGER DEBUG] triggerAnalysis called for job ${jobId}`);
     // Use fire-and-forget helper with retry logic
     await triggerAnalyzeJob(baseUrl, jobId);
+    logger.info(`[TRIGGER DEBUG] triggerAnalyzeJob completed for job ${jobId}`);
 }
