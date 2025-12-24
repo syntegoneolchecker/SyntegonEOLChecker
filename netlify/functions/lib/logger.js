@@ -23,15 +23,39 @@ const LOG_LEVELS = {
 // Get current log level from environment, default to INFO
 const currentLevel = LOG_LEVELS[process.env.LOG_LEVEL?.toUpperCase()] ?? LOG_LEVELS.INFO;
 
-// Detect the source context (function name)
-let functionSource = 'netlify-unknown';
-try {
-    // Try to get the function name from AWS Lambda context or Netlify context
-    if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
-        functionSource = `netlify/${process.env.AWS_LAMBDA_FUNCTION_NAME}`;
+/**
+ * Get the function name from the call stack
+ * Extracts the actual function filename (e.g., 'initialize-job.js')
+ */
+function getFunctionName() {
+    try {
+        // Create error to get stack trace
+        const err = new Error();
+        const stack = err.stack || '';
+
+        // Look for lines containing '/netlify/functions/'
+        const lines = stack.split('\n');
+        for (const line of lines) {
+            const match = line.match(/\/netlify\/functions\/([^\/\s:]+)\.js/);
+            if (match && match[1] !== 'logger' && match[1] !== 'view-logs' && match[1] !== 'log-ingest') {
+                return `netlify/${match[1]}`;
+            }
+        }
+
+        // Fallback: check AWS_LAMBDA_FUNCTION_NAME but clean it
+        if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+            const name = process.env.AWS_LAMBDA_FUNCTION_NAME;
+            // If it's a hash (64 chars of hex), return unknown
+            if (name.length === 64 && /^[a-f0-9]+$/.test(name)) {
+                return 'netlify-unknown';
+            }
+            return `netlify/${name}`;
+        }
+
+        return 'netlify-unknown';
+    } catch (e) {
+        return 'netlify-unknown';
     }
-} catch (e) {
-    // Ignore errors
 }
 
 /**
@@ -39,12 +63,15 @@ try {
  * This is fire-and-forget to avoid blocking the main application
  */
 async function sendToCentralLog(level, message, context) {
-    // Skip logging for log-ingest and view-logs functions to prevent recursion
-    if (functionSource.includes('log-ingest') || functionSource.includes('view-logs')) {
-        return;
-    }
-
     try {
+        // Get function name dynamically for each log
+        const functionSource = getFunctionName();
+
+        // Skip logging for log-ingest and view-logs functions to prevent recursion
+        if (functionSource.includes('log-ingest') || functionSource.includes('view-logs')) {
+            return;
+        }
+
         const store = getStore({
             name: 'logs',
             siteID: process.env.SITE_ID,
