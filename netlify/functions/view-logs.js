@@ -129,7 +129,7 @@ function generateHTML(logs, filters) {
     const color = levelColors[log.level] || '#000';
     // Convert UTC timestamp to GMT+9 (JST)
     const utcDate = new Date(log.timestamp);
-    const jstDate = new Date(utcDate.getTime() + (9 * 60 * 60 * 1000));
+    const jstDate = new Date(utcDate.getTime());
     const time = jstDate.toLocaleString('en-US', {
       timeZone: 'Asia/Tokyo',
       year: 'numeric',
