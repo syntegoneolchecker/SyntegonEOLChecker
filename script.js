@@ -491,7 +491,8 @@ function shouldTriggerFetch(statusData, fetchTriggered) {
     return statusData.status === 'urls_ready' &&
            !fetchTriggered &&
            statusData.urls &&
-           statusData.urls.length > 0;
+           statusData.urls.length > 0 &&
+           statusData.urls[0].status === 'pending'; // Only trigger if URL is still pending
 }
 
 // Build fetch-url payload
@@ -527,7 +528,7 @@ async function triggerFetchUrl(jobId, firstUrl, attempts) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
-                signal: AbortSignal.timeout(10000) // 10s timeout
+                signal: AbortSignal.timeout(60000) // 60s timeout (scraping can take time)
             });
 
             if (response.ok) {
@@ -538,6 +539,13 @@ async function triggerFetchUrl(jobId, firstUrl, attempts) {
             console.warn(`⚠️  fetch-url returned ${response.status} (retry ${retry}/${maxRetries})`);
 
         } catch (err) {
+            // If timeout occurred, the function is likely still running server-side
+            // Do NOT retry to avoid duplicate executions
+            if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+                console.log(`⏱️  fetch-url request timed out after 60s - function likely still running server-side, NOT retrying to avoid duplicates`);
+                return; // Exit without retrying
+            }
+
             console.error(`Failed to trigger fetch-url (retry ${retry}/${maxRetries}): ${err.message}`);
         }
 
@@ -577,7 +585,7 @@ async function triggerAnalyzeJob(jobId, attempts) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ jobId }),
-                signal: AbortSignal.timeout(10000) // 10s timeout
+                signal: AbortSignal.timeout(60000) // 60s timeout (analysis can take time)
             });
 
             if (response.ok) {
@@ -588,6 +596,13 @@ async function triggerAnalyzeJob(jobId, attempts) {
             console.warn(`⚠️  analyze-job returned ${response.status} (retry ${retry}/${maxRetries})`);
 
         } catch (err) {
+            // If timeout occurred, the function is likely still running server-side
+            // Do NOT retry to avoid duplicate executions
+            if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+                console.log(`⏱️  analyze-job request timed out after 60s - function likely still running server-side, NOT retrying to avoid duplicates`);
+                return; // Exit without retrying
+            }
+
             console.error(`Failed to trigger analyze-job (retry ${retry}/${maxRetries}): ${err.message}`);
         }
 
