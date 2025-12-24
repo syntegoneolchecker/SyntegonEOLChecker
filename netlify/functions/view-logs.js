@@ -6,6 +6,7 @@
  */
 
 import { getStore } from '@netlify/blobs';
+const logger = require('./lib/logger');
 
 export const handler = async (event) => {
   try {
@@ -108,7 +109,7 @@ export const handler = async (event) => {
       body: html
     };
   } catch (error) {
-    console.error('Error viewing logs:', error);
+    logger.error('Error viewing logs:', error);
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'text/plain' },

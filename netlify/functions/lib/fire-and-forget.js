@@ -4,6 +4,7 @@
  */
 
 const appConfig = require('./config');
+const logger = require('./logger');
 
 /**
  * Fire-and-forget fetch with retry logic
@@ -32,31 +33,31 @@ async function fireAndForgetFetch(url, options = {}, config = {}) {
             });
 
             if (response.ok) {
-                console.log(`✓ ${operationName} succeeded (attempt ${attempt + 1}/${maxRetries + 1})`);
+                logger.info(`✓ ${operationName} succeeded (attempt ${attempt + 1}/${maxRetries + 1})`);
                 return;
             }
 
             // Non-OK response
             const errorText = await response.text().catch(() => 'Unable to read response');
             lastError = new Error(`HTTP ${response.status}: ${errorText}`);
-            console.warn(`⚠️  ${operationName} failed with status ${response.status} (attempt ${attempt + 1}/${maxRetries + 1})`);
+            logger.warn(`⚠️  ${operationName} failed with status ${response.status} (attempt ${attempt + 1}/${maxRetries + 1})`);
 
         } catch (error) {
             lastError = error;
-            console.warn(`⚠️  ${operationName} error: ${error.message} (attempt ${attempt + 1}/${maxRetries + 1})`);
+            logger.warn(`⚠️  ${operationName} error: ${error.message} (attempt ${attempt + 1}/${maxRetries + 1})`);
         }
 
         // Don't retry on last attempt
         if (attempt < maxRetries) {
-            console.log(`Retrying ${operationName} in ${retryDelayMs}ms...`);
+            logger.info(`Retrying ${operationName} in ${retryDelayMs}ms...`);
             await new Promise(resolve => setTimeout(resolve, retryDelayMs));
         }
     }
 
     // All retries failed
-    console.error(`❌ ${operationName} failed after ${maxRetries + 1} attempts:`, lastError?.message || 'Unknown error');
-    console.error(`   URL: ${url}`);
-    console.error(`   This operation will not be retried. Manual intervention may be required.`);
+    logger.error(`❌ ${operationName} failed after ${maxRetries + 1} attempts:`, lastError?.message || 'Unknown error');
+    logger.error(`   URL: ${url}`);
+    logger.error(`   This operation will not be retried. Manual intervention may be required.`);
 }
 
 /**

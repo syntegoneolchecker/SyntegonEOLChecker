@@ -1,6 +1,7 @@
 // Job storage using Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 const config = require('./config');
+const logger = require('./logger');
 
 // Helper to get configured store
 function getJobStore() {
@@ -19,7 +20,7 @@ function getJobStore() {
 async function deleteJob(jobId, _context) {
     const store = getJobStore();
     await store.delete(jobId);
-    console.log(`Deleted job ${jobId} from storage`);
+    logger.info(`Deleted job ${jobId} from storage`);
 }
 
 /**
@@ -33,7 +34,7 @@ async function cleanupOldJobs(_context) {
         logCleanupResult(deletedCount);
     } catch (error) {
         // Don't fail job creation if cleanup fails
-        console.error('Job cleanup error (non-fatal):', error.message);
+        logger.error('Job cleanup error (non-fatal):', error.message);
     }
 }
 
@@ -70,7 +71,7 @@ async function processBlob(blob) {
             } catch (deleteError) {
                 // Another process may have deleted this job concurrently
                 if (deleteError.statusCode === 404 || deleteError.message?.includes('404')) {
-                    console.log(`Job ${blob.key} was already deleted by another process (race condition handled)`);
+                    logger.info(`Job ${blob.key} was already deleted by another process (race condition handled)`);
                     return false;
                 }
                 // Re-throw other errors
@@ -116,23 +117,23 @@ function handleBlobError(error, blobKey) {
     const statusCode = error.statusCode;
 
     if (statusCode === 403 || errorMessage.includes('403')) {
-        console.warn(`⚠️  Skipping blob ${blobKey}: Permission denied (403). This blob may be orphaned from an older version.`);
+        logger.warn(`⚠️  Skipping blob ${blobKey}: Permission denied (403). This blob may be orphaned from an older version.`);
     } else if (statusCode === 404 || errorMessage.includes('404')) {
-        console.log(`Blob ${blobKey} was already deleted`);
+        logger.info(`Blob ${blobKey} was already deleted`);
     } else {
-        console.error(`Error processing blob ${blobKey} during cleanup:`, errorMessage);
+        logger.error(`Error processing blob ${blobKey} during cleanup:`, errorMessage);
     }
 }
 
 function logDeletion(blobKey, completedAt) {
     const ageMs = Date.now() - new Date(completedAt).getTime();
     const ageMinutes = Math.round(ageMs / 1000 / 60);
-    console.log(`Cleaned up old job ${blobKey} (completed ${ageMinutes}m ago)`);
+    logger.info(`Cleaned up old job ${blobKey} (completed ${ageMinutes}m ago)`);
 }
 
 function logCleanupResult(deletedCount) {
     if (deletedCount > 0) {
-        console.log(`✓ Cleanup complete: deleted ${deletedCount} old job(s)`);
+        logger.info(`✓ Cleanup complete: deleted ${deletedCount} old job(s)`);
     }
 }
 
@@ -150,7 +151,7 @@ function generateRandomString(length = 12) {
             .replaceAll('.', '') // Remove dots if any
             .substring(0, length);
     } catch (error) {
-        console.warn('crypto.getRandomValues failed, falling back to Math.random():', error.message);
+        logger.warn('crypto.getRandomValues failed, falling back to Math.random():', error.message);
         // Fallback to Math.random() if crypto fails
         return Array.from({ length }, () =>
             Math.floor(Math.random() * 36).toString(36)
@@ -188,7 +189,7 @@ async function createJob(maker, model, _context) {
     const store = getJobStore();
     await store.setJSON(jobId, job);
 
-    console.log(`Created job ${jobId} for ${maker} ${model}`);
+    logger.info(`Created job ${jobId} for ${maker} ${model}`);
     return jobId;
 }
 
@@ -211,7 +212,7 @@ async function saveJobUrls(jobId, urls, _context) {
     job.status = 'urls_ready';
 
     await store.setJSON(jobId, job);
-    console.log(`Saved ${urls.length} URLs to job ${jobId}`);
+    logger.info(`Saved ${urls.length} URLs to job ${jobId}`);
 }
 
 // Get job
@@ -253,7 +254,7 @@ async function updateJobStatus(jobId, status, error, _context, metadata = {}) {
     }
 
     await store.setJSON(jobId, job);
-    console.log(`Updated job ${jobId} status to ${status}`);
+    logger.info(`Updated job ${jobId} status to ${status}`);
 }
 
 // Mark URL as fetching
@@ -269,13 +270,13 @@ async function markUrlFetching(jobId, urlIndex, _context) {
     if (url) {
         url.status = 'fetching';
         await store.setJSON(jobId, job);
-        console.log(`Marked URL ${urlIndex} as fetching for job ${jobId}`);
+        logger.info(`Marked URL ${urlIndex} as fetching for job ${jobId}`);
     }
 }
 
 // Save URL result and return whether all URLs are complete
 async function saveUrlResult(jobId, urlIndex, result, _context) {
-    console.log(`[STORAGE DEBUG] saveUrlResult called for job ${jobId}, URL ${urlIndex}`);
+    logger.info(`[STORAGE DEBUG] saveUrlResult called for job ${jobId}, URL ${urlIndex}`);
     const store = getJobStore();
     const job = await store.get(jobId, { type: 'json' });
 
@@ -283,7 +284,7 @@ async function saveUrlResult(jobId, urlIndex, result, _context) {
         throw new Error(`Job ${jobId} not found`);
     }
 
-    console.log(`[STORAGE DEBUG] Job retrieved. Current URL statuses: [${job.urls?.map(u => `${u.index}:${u.status}`).join(', ')}]`);
+    logger.info(`[STORAGE DEBUG] Job retrieved. Current URL statuses: [${job.urls?.map(u => `${u.index}:${u.status}`).join(', ')}]`);
 
     // Save the result
     job.urlResults[urlIndex] = result;
@@ -293,18 +294,18 @@ async function saveUrlResult(jobId, urlIndex, result, _context) {
     if (url) {
         const previousStatus = url.status;
         url.status = 'complete';
-        console.log(`[STORAGE DEBUG] URL ${urlIndex} status changed: ${previousStatus} -> complete`);
+        logger.info(`[STORAGE DEBUG] URL ${urlIndex} status changed: ${previousStatus} -> complete`);
     } else {
-        console.warn(`[STORAGE DEBUG] URL ${urlIndex} not found in job.urls array!`);
+        logger.warn(`[STORAGE DEBUG] URL ${urlIndex} not found in job.urls array!`);
     }
 
-    console.log(`[STORAGE DEBUG] Saving job to blob storage...`);
+    logger.info(`[STORAGE DEBUG] Saving job to blob storage...`);
     await store.setJSON(jobId, job);
-    console.log(`[STORAGE DEBUG] Job saved successfully. URL statuses after save: [${job.urls?.map(u => `${u.index}:${u.status}`).join(', ')}]`);
+    logger.info(`[STORAGE DEBUG] Job saved successfully. URL statuses after save: [${job.urls?.map(u => `${u.index}:${u.status}`).join(', ')}]`);
 
     // Check if all URLs are complete
     const allComplete = job.urls.every(u => u.status === 'complete');
-    console.log(`[STORAGE DEBUG] All URLs complete check: ${allComplete} (${job.urls.filter(u => u.status === 'complete').length}/${job.urls.length})`);
+    logger.info(`[STORAGE DEBUG] All URLs complete check: ${allComplete} (${job.urls.filter(u => u.status === 'complete').length}/${job.urls.length})`);
     return allComplete;
 }
 
@@ -322,7 +323,7 @@ async function saveFinalResult(jobId, result, _context) {
     job.completedAt = new Date().toISOString();
 
     await store.setJSON(jobId, job);
-    console.log(`Saved final result for job ${jobId}`);
+    logger.info(`Saved final result for job ${jobId}`);
 }
 
 /**
@@ -347,7 +348,7 @@ async function replaceJobUrls(jobId, newUrls, _context) {
 
     await store.setJSON(jobId, job);
 
-    console.log(`Replaced URLs for job ${jobId}: ${newUrls.length} new URLs`);
+    logger.info(`Replaced URLs for job ${jobId}: ${newUrls.length} new URLs`);
 }
 
 /**
@@ -371,7 +372,7 @@ async function addUrlToJob(jobId, urlData, _context) {
 
     await store.setJSON(jobId, job);
 
-    console.log(`Added URL to job ${jobId}: ${urlData.url}`);
+    logger.info(`Added URL to job ${jobId}: ${urlData.url}`);
 
     return newIndex;
 }

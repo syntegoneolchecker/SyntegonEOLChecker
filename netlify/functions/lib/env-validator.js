@@ -1,3 +1,5 @@
+const logger = require('./logger');
+
 /**
  * Environment variable validation for Netlify functions
  * Each function should validate its required environment variables
@@ -18,7 +20,7 @@ function validateCommonEnvVars() {
 
     if (missing.length > 0) {
         const errorMsg = `Missing required environment variables: ${missing.join(', ')}`;
-        console.error('❌', errorMsg);
+        logger.error('❌', errorMsg);
         throw new Error(errorMsg);
     }
 }
@@ -29,7 +31,7 @@ function validateCommonEnvVars() {
  */
 function validateBrowserQLKey() {
     if (!process.env.BROWSERQL_API_KEY) {
-        console.warn('⚠️  BROWSERQL_API_KEY not set - Cloudflare-protected sites may fail');
+        logger.warn('⚠️  BROWSERQL_API_KEY not set - Cloudflare-protected sites may fail');
         return false;
     }
     return true;
@@ -62,8 +64,8 @@ function validateIdecProxies() {
     const usProxy = process.env.IDEC_US_PROXY;
 
     if (!jpProxy || !usProxy) {
-        console.warn('⚠️  IDEC proxy URLs not configured - IDEC dual-site scraping will fail');
-        console.warn('   Missing:', !jpProxy ? 'IDEC_JP_PROXY' : 'IDEC_US_PROXY');
+        logger.warn('⚠️  IDEC proxy URLs not configured - IDEC dual-site scraping will fail');
+        logger.warn('   Missing:', !jpProxy ? 'IDEC_JP_PROXY' : 'IDEC_US_PROXY');
         return false;
     }
 
@@ -119,17 +121,17 @@ function validateAllEnvVars() {
     }
 
     if (warnings.length > 0) {
-        console.warn('⚠️  Environment warnings:');
-        warnings.forEach(w => console.warn(`   ${w}`));
+        logger.warn('⚠️  Environment warnings:');
+        warnings.forEach(w => logger.warn(`   ${w}`));
     }
 
     if (errors.length > 0) {
-        console.error('❌ Environment validation failed:');
-        errors.forEach(e => console.error(`   ${e}`));
+        logger.error('❌ Environment validation failed:');
+        errors.forEach(e => logger.error(`   ${e}`));
         throw new Error('Missing required environment variables');
     }
 
-    console.log('✓ Environment variables validated');
+    logger.info('✓ Environment variables validated');
 }
 
 module.exports = {
