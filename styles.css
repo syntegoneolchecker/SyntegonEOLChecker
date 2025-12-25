@@ -223,7 +223,7 @@ button {
 }
 
 button:hover {
-    background: #28323C;
+    background: #019966;
 }
 
 button:disabled {
@@ -233,12 +233,12 @@ button:disabled {
 }
 
 .check-eol {
-    background: #2196F3;
+    background: #01be83;
     min-width: 100px;
 }
 
 .check-eol:hover:not(:disabled) {
-    background: #0b7dda;
+    background: #019966;
 }
 
 .delete {
