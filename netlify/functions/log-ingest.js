@@ -4,10 +4,10 @@
  * Logs are stored in daily files, one JSON line per log entry
  */
 
-import { getStore } from '@netlify/blobs';
+const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
 
-export const handler = async (event) => {
+exports.handler = async (event) => {
   // Only accept POST requests
   if (event.httpMethod !== 'POST') {
     return {
@@ -43,7 +43,7 @@ export const handler = async (event) => {
     let existingLogs = '';
     try {
       existingLogs = await store.get(logKey, { type: 'text' }) || '';
-    } catch (err) {
+    } catch {
       // File doesn't exist yet, that's OK
       existingLogs = '';
     }

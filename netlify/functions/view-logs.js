@@ -5,10 +5,10 @@
  * Returns logs sorted chronologically
  */
 
-import { getStore } from '@netlify/blobs';
+const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
 
-export const handler = async (event) => {
+exports.handler = async (event) => {
   try {
     const params = event.queryStringParameters || {};
     const date = params.date; // YYYY-MM-DD format, defaults to today
@@ -41,7 +41,7 @@ export const handler = async (event) => {
 
     // Fetch all logs from requested dates
     // Since logs are now stored as individual blobs, we need to list and aggregate them
-    let allLogs = [];
+    const allLogs = [];
     for (const dateKey of datesToFetch) {
       try {
         // List all blobs for this date
@@ -54,12 +54,12 @@ export const handler = async (event) => {
             if (logEntry) {
               allLogs.push(logEntry);
             }
-          } catch (err) {
+          } catch {
             // Skip individual logs that can't be read
             continue;
           }
         }
-      } catch (err) {
+      } catch {
         // No logs for this date, skip
         continue;
       }

@@ -53,7 +53,7 @@ function getFunctionName() {
         }
 
         return 'netlify-unknown';
-    } catch (e) {
+    } catch {
         return 'netlify-unknown';
     }
 }
@@ -68,7 +68,7 @@ function generateRandomId(length = 8) {
             .join('')
             .replaceAll('.', '')
             .substring(0, length);
-    } catch (error) {
+    } catch {
         // Fallback to Math.random() if crypto fails
         return Array.from({ length }, () =>
             Math.floor(Math.random() * 36).toString(36)
@@ -119,7 +119,7 @@ async function sendToCentralLog(level, message, context) {
         store.setJSON(logKey, logEntry).catch(() => {
             // Silently ignore errors in central logging to avoid cascading failures
         });
-    } catch (error) {
+    } catch {
         // Silently ignore errors in central logging
     }
 }
@@ -140,7 +140,7 @@ function formatMessage(...args) {
  */
 function extractContext(...args) {
     const contextObj = {};
-    args.forEach((arg, index) => {
+    args.forEach((arg, _index) => {
         if (typeof arg === 'object' && arg !== null && !(arg instanceof Error)) {
             Object.assign(contextObj, arg);
         }

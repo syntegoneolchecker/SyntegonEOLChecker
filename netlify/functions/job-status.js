@@ -2,7 +2,7 @@
 // Used by frontend for polling manual EOL check progress
 // (Auto-checks poll Blobs directly in auto-eol-check-background)
 const { getJob } = require('./lib/job-storage');
-const { successResponse, notFoundResponse, errorResponse } = require('./lib/response-builder');
+const { _successResponse, notFoundResponse, errorResponse } = require('./lib/response-builder');
 const logger = require('./lib/logger');
 
 exports.handler = async function(event, context) {

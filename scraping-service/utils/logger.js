@@ -56,7 +56,7 @@ async function sendToCentralLog(level, message, context) {
         }).catch(() => {
             // Silently ignore errors in central logging to avoid cascading failures
         });
-    } catch (error) {
+    } catch {
         // Silently ignore errors in central logging
     }
 }
@@ -77,7 +77,7 @@ function formatMessage(...args) {
  */
 function extractContext(...args) {
     const contextObj = {};
-    args.forEach((arg, index) => {
+    args.forEach((arg, _index) => {
         if (typeof arg === 'object' && arg !== null && !(arg instanceof Error)) {
             Object.assign(contextObj, arg);
         }
