@@ -19,6 +19,10 @@
 
         // Store user info for later use
         window.currentUser = data.user;
+
+        // Authentication successful - show the page content
+        document.body.classList.remove('auth-loading');
+        document.body.classList.add('auth-verified');
     } catch (error) {
         console.error('Authentication check failed:', error);
         // Redirect to login on error

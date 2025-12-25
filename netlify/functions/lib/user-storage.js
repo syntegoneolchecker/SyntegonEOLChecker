@@ -16,11 +16,23 @@ const TOKENS_BLOB_KEY = 'verification-tokens';
 const LOGIN_ATTEMPTS_BLOB_KEY = 'login-attempts';
 
 /**
+ * Get configured Netlify Blobs store
+ * @returns {Object} Netlify Blobs store instance
+ */
+function getAuthStore() {
+    return getStore({
+        name: 'auth-data',
+        siteID: process.env.SITE_ID,
+        token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+    });
+}
+
+/**
  * Get all users from storage
  * @returns {Promise<Array>} Array of user objects
  */
 async function getUsers() {
-    const store = getStore('auth-data');
+    const store = getAuthStore();
     const usersBlob = await store.get(USERS_BLOB_KEY, { type: 'json' });
     return usersBlob || [];
 }
@@ -31,7 +43,7 @@ async function getUsers() {
  * @returns {Promise<void>}
  */
 async function saveUsers(users) {
-    const store = getStore('auth-data');
+    const store = getAuthStore();
     const maxRetries = 5;
 
     for (let i = 0; i < maxRetries; i++) {
@@ -133,7 +145,7 @@ async function deleteUser(email) {
  * @returns {Promise<void>}
  */
 async function storeVerificationToken(token, data) {
-    const store = getStore('auth-data');
+    const store = getAuthStore();
     const tokens = await store.get(TOKENS_BLOB_KEY, { type: 'json' }) || {};
 
     tokens[token] = {
@@ -150,7 +162,7 @@ async function storeVerificationToken(token, data) {
  * @returns {Promise<Object|null>} Token data or null if invalid/expired
  */
 async function getVerificationToken(token) {
-    const store = getStore('auth-data');
+    const store = getAuthStore();
     const tokens = await store.get(TOKENS_BLOB_KEY, { type: 'json' }) || {};
 
     const tokenData = tokens[token];
@@ -172,7 +184,7 @@ async function getVerificationToken(token) {
  * @returns {Promise<void>}
  */
 async function deleteVerificationToken(token) {
-    const store = getStore('auth-data');
+    const store = getAuthStore();
     const tokens = await store.get(TOKENS_BLOB_KEY, { type: 'json' }) || {};
 
     delete tokens[token];
@@ -185,7 +197,7 @@ async function deleteVerificationToken(token) {
  * @returns {Promise<number>} Number of failed attempts
  */
 async function recordFailedLogin(email) {
-    const store = getStore('auth-data');
+    const store = getAuthStore();
     const attempts = await store.get(LOGIN_ATTEMPTS_BLOB_KEY, { type: 'json' }) || {};
     const normalizedEmail = normalizeEmail(email);
 
@@ -210,7 +222,7 @@ async function recordFailedLogin(email) {
  * @returns {Promise<void>}
  */
 async function clearFailedLogins(email) {
-    const store = getStore('auth-data');
+    const store = getAuthStore();
     const attempts = await store.get(LOGIN_ATTEMPTS_BLOB_KEY, { type: 'json' }) || {};
     const normalizedEmail = normalizeEmail(email);
 
@@ -224,7 +236,7 @@ async function clearFailedLogins(email) {
  * @returns {Promise<number>} Number of failed attempts
  */
 async function getFailedLoginCount(email) {
-    const store = getStore('auth-data');
+    const store = getAuthStore();
     const attempts = await store.get(LOGIN_ATTEMPTS_BLOB_KEY, { type: 'json' }) || {};
     const normalizedEmail = normalizeEmail(email);
 
@@ -248,7 +260,7 @@ function normalizeEmail(email) {
  * @returns {Promise<number>} Number of tokens removed
  */
 async function cleanupExpiredTokens() {
-    const store = getStore('auth-data');
+    const store = getAuthStore();
     const tokens = await store.get(TOKENS_BLOB_KEY, { type: 'json' }) || {};
 
     const now = new Date();
