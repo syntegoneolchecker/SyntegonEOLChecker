@@ -56,6 +56,7 @@ exports.handler = async (event) => {
 
     logger.info(`✓ Log clear complete: deleted ${deletedCount} log(s), ${errorCount} error(s)`);
 
+    const errorCountNumber = errorCount > 0 ? ` with ${errorCount} error(s)` : '';
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -64,7 +65,7 @@ exports.handler = async (event) => {
         deletedCount,
         errorCount,
         errors: errors.length > 0 ? errors : undefined,
-        message: `Successfully deleted ${deletedCount} log(s)${errorCount > 0 ? ` with ${errorCount} error(s)` : ''}`
+        message: `Successfully deleted ${deletedCount} log(s)${errorCountNumber}`
       }, null, 2)
     };
   } catch (error) {

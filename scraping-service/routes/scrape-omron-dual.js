@@ -211,7 +211,6 @@ async function handleOmronDualScrapeRequest(req, res) {
                     snippet: snippet || '',
                     url: primaryUrl
                 });
-                callbackSent = true;
 
                 forceGarbageCollection();
                 trackMemoryUsage(`omron_dual_complete_${requestCount}_primary_error`);
@@ -233,7 +232,6 @@ async function handleOmronDualScrapeRequest(req, res) {
                     snippet: snippet || 'Omron product page',
                     url: primaryResult.url
                 });
-                callbackSent = true;
 
                 forceGarbageCollection();
                 trackMemoryUsage(`omron_dual_complete_${requestCount}_primary_success`);
@@ -257,7 +255,6 @@ async function handleOmronDualScrapeRequest(req, res) {
                     snippet: snippet || '',
                     url: fallbackUrl
                 });
-                callbackSent = true;
 
                 forceGarbageCollection();
                 trackMemoryUsage(`omron_dual_complete_${requestCount}_both_failed`);

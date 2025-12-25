@@ -55,7 +55,7 @@ async function processLogBlob(blob, store) {
             return false;
         }
 
-        const timestampMs = parseInt(keyParts[2], 10);
+        const timestampMs = Number.parseInt(keyParts[2], 10);
 
         if (shouldDeleteLog(timestampMs)) {
             // Try to delete, handle race conditions
