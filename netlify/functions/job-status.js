@@ -55,8 +55,8 @@ exports.handler = async function(event, context) {
             response.result = job.finalResult;
         }
 
-        const indexStatus = `${u.index}:${u.status}`;
-        logger.debug(`[STATUS DEBUG] Returning status for job ${jobId}: ${job.status}, URLs: [${job.urls?.map(u => indexStatus).join(', ')}]`);
+        const formatUrlStatus = (u) => `${u.index}:${u.status}`;
+        logger.debug(`[STATUS DEBUG] Returning status for job ${jobId}: ${job.status}, URLs: [${job.urls?.map(formatUrlStatus).join(', ')}]`);
 
         // NOTE: Frontend expects job data directly in response body, not wrapped in { success, data }
         // so we return manually instead of using successResponse()

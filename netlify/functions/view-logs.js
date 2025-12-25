@@ -23,7 +23,7 @@ const getDatesToFetch = (specifiedDate, days) => {
   if (specifiedDate) {
     return [specifiedDate];
   }
-  
+
   const dates = [];
   for (let i = 0; i < days; i++) {
     const date = new Date();
@@ -37,40 +37,40 @@ const getDatesToFetch = (specifiedDate, days) => {
 const filterLogs = (logs, filters) => {
   const { source, level, search } = filters;
   let filtered = logs;
-  
+
   if (source) {
     const sourceLower = source.toLowerCase();
-    filtered = filtered.filter(log => 
+    filtered = filtered.filter(log =>
       log.source.toLowerCase().includes(sourceLower)
     );
   }
-  
+
   if (level) {
     const levelUpper = level.toUpperCase();
-    filtered = filtered.filter(log => 
+    filtered = filtered.filter(log =>
       log.level.toUpperCase() === levelUpper
     );
   }
-  
+
   if (search) {
     const searchLower = search.toLowerCase();
-    filtered = filtered.filter(log => 
+    filtered = filtered.filter(log =>
       JSON.stringify(log).toLowerCase().includes(searchLower)
     );
   }
-  
+
   return filtered;
 };
 
 // Log fetching - separate concern
 const fetchLogsForDates = async (store, dates) => {
   const allLogs = [];
-  
+
   for (const dateKey of dates) {
     const dateLogs = await fetchLogsForDate(store, dateKey);
     allLogs.push(...dateLogs);
   }
-  
+
   return allLogs;
 };
 
@@ -84,10 +84,10 @@ const fetchLogsForDate = async (store, dateKey) => {
 };
 
 const fetchLogBlobs = async (store, blobs) => {
-  const logPromises = blobs.map(blob => 
+  const logPromises = blobs.map(blob =>
     store.get(blob.key, { type: 'json' }).catch(() => null)
   );
-  
+
   const results = await Promise.allSettled(logPromises);
   return results
     .filter(result => result.status === 'fulfilled' && result.value)
@@ -106,7 +106,7 @@ const formatResponse = (filteredLogs, filters, format) => {
       }, null, 2)
     };
   }
-  
+
   const html = generateHTML(filteredLogs, filters);
   return {
     statusCode: 200,
@@ -130,21 +130,21 @@ exports.handler = async (event) => {
   try {
     const params = event.queryStringParameters || {};
     const { date, source, level, search, days, format } = parseParams(params);
-    
+
     const store = getStore({
       name: 'logs',
       siteID: process.env.SITE_ID,
       token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
     });
-    
+
     const datesToFetch = getDatesToFetch(date, days);
     const allLogs = await fetchLogsForDates(store, datesToFetch);
-    
+
     const filters = { source, level, search };
     const filteredLogs = filterLogs(allLogs, filters);
-    
+
     filteredLogs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    
+
     return formatResponse(filteredLogs, filters, format);
   } catch (error) {
     return errorResponse(error);

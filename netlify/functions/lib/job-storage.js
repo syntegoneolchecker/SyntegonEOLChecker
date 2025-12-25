@@ -284,8 +284,8 @@ async function saveUrlResult(jobId, urlIndex, result, _context) {
         throw new Error(`Job ${jobId} not found`);
     }
 
-    const indexStatus = `${u.index}:${u.status}`;
-    logger.info(`[STORAGE DEBUG] Job retrieved. Current URL statuses: [${job.urls?.map(u => indexStatus).join(', ')}]`);
+    const formatUrlStatus = (u) => `${u.index}:${u.status}`;
+    logger.info(`[STORAGE DEBUG] Job retrieved. Current URL statuses: [${job.urls?.map(formatUrlStatus).join(', ')}]`);
 
     // Save the result
     job.urlResults[urlIndex] = result;
@@ -302,7 +302,7 @@ async function saveUrlResult(jobId, urlIndex, result, _context) {
 
     logger.info(`[STORAGE DEBUG] Saving job to blob storage...`);
     await store.setJSON(jobId, job);
-    logger.info(`[STORAGE DEBUG] Job saved successfully. URL statuses after save: [${job.urls?.map(u => indexStatus).join(', ')}]`);
+    logger.info(`[STORAGE DEBUG] Job saved successfully. URL statuses after save: [${job.urls?.map(formatUrlStatus).join(', ')}]`);
 
     // Check if all URLs are complete
     const allComplete = job.urls.every(u => u.status === 'complete');
