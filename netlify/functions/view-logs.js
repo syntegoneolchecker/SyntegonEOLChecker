@@ -140,7 +140,7 @@ exports.handler = async (event) => {
     const datesToFetch = getDatesToFetch(date, days);
     const allLogs = await fetchLogsForDates(store, datesToFetch);
 
-    const filters = { source, level, search };
+    const filters = { source, level, search, days };
     const filteredLogs = filterLogs(allLogs, filters);
 
     filteredLogs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
