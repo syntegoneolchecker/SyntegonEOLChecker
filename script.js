@@ -143,7 +143,7 @@ async function updateButtonStates() {
 }
 
 function render() {
-    const sortableColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]; // All data columns are sortable
+    const sortableColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // All data columns are sortable
 
     const t = document.getElementById('table');
     t.innerHTML = data.map((r, i) =>
