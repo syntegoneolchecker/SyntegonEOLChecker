@@ -30,13 +30,13 @@ const currentLevel = LOG_LEVELS[process.env.LOG_LEVEL?.toUpperCase()] ?? LOG_LEV
 function getFunctionName() {
     try {
         // Create error to get stack trace
-        const err = new Error();
+        const err = new Error("Error for stack trace");
         const stack = err.stack || '';
 
         // Look for lines containing '/netlify/functions/'
         const lines = stack.split('\n');
         for (const line of lines) {
-            const match = line.match(/\/netlify\/functions\/([^\/\s:]+)\.js/);
+            const match = new RegExp(/\/netlify\/functions\/([^/\s:]+)\.js/).exec(line);
             if (match && match[1] !== 'logger' && match[1] !== 'view-logs' && match[1] !== 'log-ingest') {
                 return `netlify/${match[1]}`;
             }

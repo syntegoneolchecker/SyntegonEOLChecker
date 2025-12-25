@@ -59,12 +59,11 @@ COPY package*.json ./
 # Install dependencies (re2 requires build tools for native compilation)
 # Security: Use --ignore-scripts to prevent execution of package lifecycle scripts
 # Note: Native module compilation (node-gyp) still runs, only package.json scripts are ignored
+# Install dependencies and set permissions
 RUN npm ci --only=production --ignore-scripts \
     && npm rebuild \
-    && apt-get purge -y --auto-remove python3 make g++
-
-# Change ownership to node user before installing Chrome
-RUN chown -R node:node /app
+    && apt-get purge -y --auto-remove python3 make g++ \
+    && chown -R node:node /app
 
 # Switch to non-root user BEFORE installing Chrome
 USER node

@@ -8,113 +8,146 @@
 const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
 
+// Parameter parsing - separate concern
+const parseParams = (params) => ({
+  date: params.date,
+  source: params.source,
+  level: params.level,
+  search: params.search,
+  days: Math.max(1, Number.parseInt(params.days) || 1),
+  format: params.format === 'json' ? 'json' : 'html'
+});
+
+// Date calculation - separate concern
+const getDatesToFetch = (specifiedDate, days) => {
+  if (specifiedDate) {
+    return [specifiedDate];
+  }
+  
+  const dates = [];
+  for (let i = 0; i < days; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    dates.push(date.toISOString().split('T')[0]);
+  }
+  return dates;
+};
+
+// Log filtering - separate concern with clear predicates
+const filterLogs = (logs, filters) => {
+  const { source, level, search } = filters;
+  let filtered = logs;
+  
+  if (source) {
+    const sourceLower = source.toLowerCase();
+    filtered = filtered.filter(log => 
+      log.source.toLowerCase().includes(sourceLower)
+    );
+  }
+  
+  if (level) {
+    const levelUpper = level.toUpperCase();
+    filtered = filtered.filter(log => 
+      log.level.toUpperCase() === levelUpper
+    );
+  }
+  
+  if (search) {
+    const searchLower = search.toLowerCase();
+    filtered = filtered.filter(log => 
+      JSON.stringify(log).toLowerCase().includes(searchLower)
+    );
+  }
+  
+  return filtered;
+};
+
+// Log fetching - separate concern
+const fetchLogsForDates = async (store, dates) => {
+  const allLogs = [];
+  
+  for (const dateKey of dates) {
+    const dateLogs = await fetchLogsForDate(store, dateKey);
+    allLogs.push(...dateLogs);
+  }
+  
+  return allLogs;
+};
+
+const fetchLogsForDate = async (store, dateKey) => {
+  try {
+    const { blobs } = await store.list({ prefix: `logs-${dateKey}-` });
+    return await fetchLogBlobs(store, blobs);
+  } catch {
+    return [];
+  }
+};
+
+const fetchLogBlobs = async (store, blobs) => {
+  const logPromises = blobs.map(blob => 
+    store.get(blob.key, { type: 'json' }).catch(() => null)
+  );
+  
+  const results = await Promise.allSettled(logPromises);
+  return results
+    .filter(result => result.status === 'fulfilled' && result.value)
+    .map(result => result.value);
+};
+
+// Response formatting - separate concern
+const formatResponse = (filteredLogs, filters, format) => {
+  if (format === 'json') {
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        count: filteredLogs.length,
+        logs: filteredLogs
+      }, null, 2)
+    };
+  }
+  
+  const html = generateHTML(filteredLogs, filters);
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'text/html' },
+    body: html
+  };
+};
+
+// Error response - separate concern
+const errorResponse = (error) => {
+  logger.error('Error viewing logs:', error);
+  return {
+    statusCode: 500,
+    headers: { 'Content-Type': 'text/plain' },
+    body: `Error viewing logs: ${error.message}`
+  };
+};
+
+// Main handler - orchestrates the workflow
 exports.handler = async (event) => {
   try {
     const params = event.queryStringParameters || {};
-    const date = params.date; // YYYY-MM-DD format, defaults to today
-    const source = params.source; // 'netlify' or 'render' or specific function name
-    const level = params.level; // 'DEBUG', 'INFO', 'WARN', 'ERROR'
-    const search = params.search; // Search term in message
-    const days = parseInt(params.days || '1'); // Number of days to fetch (default: 1)
-    const format = params.format || 'html'; // 'html' or 'json'
-
-    // Get the logs store
+    const { date, source, level, search, days, format } = parseParams(params);
+    
     const store = getStore({
       name: 'logs',
       siteID: process.env.SITE_ID,
       token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
     });
-
-    // Determine which date(s) to fetch
-    const datesToFetch = [];
-    if (date) {
-      // Specific date requested
-      datesToFetch.push(date);
-    } else {
-      // Fetch last N days
-      for (let i = 0; i < days; i++) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        datesToFetch.push(d.toISOString().split('T')[0]);
-      }
-    }
-
-    // Fetch all logs from requested dates
-    // Since logs are now stored as individual blobs, we need to list and aggregate them
-    const allLogs = [];
-    for (const dateKey of datesToFetch) {
-      try {
-        // List all blobs for this date
-        const { blobs } = await store.list({ prefix: `logs-${dateKey}-` });
-
-        // Fetch each log blob
-        for (const blob of blobs) {
-          try {
-            const logEntry = await store.get(blob.key, { type: 'json' });
-            if (logEntry) {
-              allLogs.push(logEntry);
-            }
-          } catch {
-            // Skip individual logs that can't be read
-            continue;
-          }
-        }
-      } catch {
-        // No logs for this date, skip
-        continue;
-      }
-    }
-
-    // Apply filters
-    let filteredLogs = allLogs;
-
-    if (source) {
-      filteredLogs = filteredLogs.filter(log =>
-        log.source.toLowerCase().includes(source.toLowerCase())
-      );
-    }
-
-    if (level) {
-      filteredLogs = filteredLogs.filter(log =>
-        log.level.toUpperCase() === level.toUpperCase()
-      );
-    }
-
-    if (search) {
-      filteredLogs = filteredLogs.filter(log =>
-        JSON.stringify(log).toLowerCase().includes(search.toLowerCase())
-      );
-    }
-
-    // Sort chronologically (oldest first)
+    
+    const datesToFetch = getDatesToFetch(date, days);
+    const allLogs = await fetchLogsForDates(store, datesToFetch);
+    
+    const filters = { source, level, search };
+    const filteredLogs = filterLogs(allLogs, filters);
+    
     filteredLogs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-    // Return based on format
-    if (format === 'json') {
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          count: filteredLogs.length,
-          logs: filteredLogs
-        }, null, 2)
-      };
-    }
-
-    // HTML format
-    const html = generateHTML(filteredLogs, { source, level, search, days });
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'text/html' },
-      body: html
-    };
+    
+    return formatResponse(filteredLogs, filters, format);
   } catch (error) {
-    logger.error('Error viewing logs:', error);
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'text/plain' },
-      body: `Error viewing logs: ${error.message}`
-    };
+    return errorResponse(error);
   }
 };
 
@@ -130,7 +163,7 @@ function generateHTML(logs, filters) {
     const color = levelColors[log.level] || '#000';
     // Convert UTC timestamp to GMT+9 (JST)
     const utcDate = new Date(log.timestamp);
-    const jstDate = new Date(utcDate.getTime());
+    const jstDate = new Date(utcDate);
     const time = jstDate.toLocaleString('en-US', {
       timeZone: 'Asia/Tokyo',
       year: 'numeric',
@@ -402,5 +435,5 @@ function escapeHtml(text) {
     '"': '&quot;',
     "'": '&#039;'
   };
-  return text.replace(/[&<>"']/g, m => map[m]);
+  return text.replaceAll(/[&<>"']/g, m => map[m]);
 }

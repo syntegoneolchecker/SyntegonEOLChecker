@@ -88,16 +88,18 @@ function getManufacturerUrl(maker, model) {
             };
 
         case 'オムロン':
-            // Preprocess model: replace spaces and / with _
-            const preprocessedModel = model.trim().replaceAll(' ', '_').replaceAll('/', '_');
-            const encodedPreprocessedModel = encodeURIComponent(preprocessedModel);
-            return {
-                url: `https://www.fa.omron.co.jp/product/item/${encodedPreprocessedModel}`,
-                scrapingMethod: 'omron_dual_page', // Try primary URL first, fallback to closed/search if error
-                model: model, // Pass original model for fallback URL
-                primaryUrl: `https://www.fa.omron.co.jp/product/item/${encodedPreprocessedModel}`,
-                fallbackUrl: `https://www.fa.omron.co.jp/product/closed/search?keyword=${encodedModel}`
-            };
+            {
+                // Preprocess model: replace spaces and / with _
+                const preprocessedModel = model.trim().replaceAll(' ', '_').replaceAll('/', '_');
+                const encodedPreprocessedModel = encodeURIComponent(preprocessedModel);
+                return {
+                    url: `https://www.fa.omron.co.jp/product/item/${encodedPreprocessedModel}`,
+                    scrapingMethod: 'omron_dual_page', // Try primary URL first, fallback to closed/search if error
+                    model: model, // Pass original model for fallback URL
+                    primaryUrl: `https://www.fa.omron.co.jp/product/item/${encodedPreprocessedModel}`,
+                    fallbackUrl: `https://www.fa.omron.co.jp/product/closed/search?keyword=${encodedModel}`
+                };
+            }
 
         default:
             return null; // No direct URL strategy - use Tavily search

@@ -205,17 +205,6 @@ async function handleKeyenceScrapeRequest(req, res) {
             // Validate content
             const finalContent = validateKeyenceContent(text);
 
-            const _keyenceResult = {
-                success: true,
-                url: finalUrl,
-                originalSearch: model,
-                title: title,
-                content: finalContent,
-                contentLength: finalContent.length,
-                method: 'keyence_interactive_search',
-                timestamp: new Date().toISOString()
-            };
-
             // Close browser before callback
             await browser.close();
             browser = null;

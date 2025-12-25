@@ -65,7 +65,7 @@ function validateProxies() {
 
     if (!jpProxy || !usProxy) {
         logger.warn('⚠️  Proxy URLs not configured - IDEC and Omron scraping will fail');
-        logger.warn('   Missing:', !jpProxy ? 'JP_PROXY' : 'US_PROXY');
+        logger.warn('   Missing:', jpProxy ? 'US_PROXY' : 'JP_PROXY');
         return false;
     }
 
