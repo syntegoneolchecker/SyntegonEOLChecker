@@ -148,12 +148,13 @@ exports.handler = async (event) => {
     const filters = { source, level, search, days };
     const filteredLogs = filterLogs(allLogs, filters);
 
-    // Optimized sorting using string comparison for ISO timestamps
-    filteredLogs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    // Sort descending (newest first) for pagination
+    filteredLogs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
-    // Apply pagination
+    // Apply pagination and reverse each page slice
+    // This shows newest logs on page 1, with oldest at top and newest at bottom within each page
     const totalCount = filteredLogs.length;
-    const paginatedLogs = filteredLogs.slice(offset, offset + limit);
+    const paginatedLogs = filteredLogs.slice(offset, offset + limit).reverse();
     const hasMore = offset + limit < totalCount;
 
     const paginatedData = {
@@ -526,6 +527,14 @@ function generateHTML(paginatedData, filters) {
     </div>
   </div>
   <script>
+    // Auto-scroll to bottom on page load to show newest logs first
+    window.addEventListener('DOMContentLoaded', function() {
+      const logsContainer = document.querySelector('.logs-container');
+      if (logsContainer) {
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+      }
+    });
+
     function resetPagination(event) {
       // Reset offset to 0 when applying new filters
       const offsetInput = document.getElementById('offset-input');
