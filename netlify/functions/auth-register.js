@@ -109,7 +109,58 @@ async function sendVerificationEmail(email, verificationUrl) {
         return false;
     }
 
-    // Example: SendGrid integration
+    // Resend integration (recommended - free forever)
+    if (emailService === 'resend') {
+        try {
+            const response = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${emailApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    from: process.env.FROM_EMAIL || `noreply@${ALLOWED_EMAIL_DOMAIN}`,
+                    to: [email],
+                    subject: 'Verify your EOL Checker account',
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                            <h2 style="color: #333;">Welcome to Syntegon EOL Checker</h2>
+                            <p>Please verify your email address by clicking the button below:</p>
+                            <div style="margin: 30px 0;">
+                                <a href="${verificationUrl}"
+                                   style="background: #007bff; color: white; padding: 12px 30px;
+                                          text-decoration: none; border-radius: 4px; display: inline-block;">
+                                    Verify Email Address
+                                </a>
+                            </div>
+                            <p style="color: #666; font-size: 14px;">Or copy and paste this URL into your browser:</p>
+                            <p style="background: #f5f5f5; padding: 10px; border-radius: 4px; word-break: break-all;">
+                                ${verificationUrl}
+                            </p>
+                            <p style="color: #999; font-size: 12px; margin-top: 30px;">
+                                This link will expire in 48 hours.<br>
+                                If you didn't create this account, please ignore this email.
+                            </p>
+                        </div>
+                    `
+                })
+            });
+
+            if (response.ok) {
+                console.log(`Verification email sent successfully to ${email}`);
+                return true;
+            } else {
+                const errorData = await response.json();
+                console.error('Resend API error:', errorData);
+                return false;
+            }
+        } catch (error) {
+            console.error('Failed to send email via Resend:', error);
+            return false;
+        }
+    }
+
+    // SendGrid integration (legacy - free tier now limited to 60 days)
     if (emailService === 'sendgrid') {
         try {
             const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
@@ -143,12 +194,11 @@ async function sendVerificationEmail(email, verificationUrl) {
 
             return response.ok;
         } catch (error) {
-            console.error('Failed to send email:', error);
+            console.error('Failed to send email via SendGrid:', error);
             return false;
         }
     }
 
-    // Add other email service integrations here (AWS SES, etc.)
-
+    console.warn(`Unknown email service: ${emailService}`);
     return false;
 }
