@@ -4,10 +4,10 @@
  * This is a destructive operation and should be used with caution
  */
 
-import { getStore } from '@netlify/blobs';
+const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
 
-export const handler = async (event) => {
+exports.handler = async (event) => {
   try {
     // Only allow POST requests for safety (prevents accidental deletion via GET)
     if (event.httpMethod !== 'POST') {

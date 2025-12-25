@@ -205,7 +205,7 @@ async function handleKeyenceScrapeRequest(req, res) {
             // Validate content
             const finalContent = validateKeyenceContent(text);
 
-            const keyenceResult = {
+            const _keyenceResult = {
                 success: true,
                 url: finalUrl,
                 originalSearch: model,
