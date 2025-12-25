@@ -480,8 +480,8 @@ function generateHTML(paginatedData, filters) {
       </form>
     </div>
 
-    ${totalPages > 1 ? `
     <div class="pagination">
+      ${totalPages > 1 ? `
       <div class="pagination-info">
         Page ${currentPage} of ${totalPages}
       </div>
@@ -490,6 +490,7 @@ function generateHTML(paginatedData, filters) {
         <span class="current-page">${currentPage}</span>
         <a href="${nextLink}" ${!hasMore ? 'style="opacity: 0.5; pointer-events: none;"' : ''}>Next →</a>
       </div>
+      ` : '<div></div>'}
       <div class="page-size-select">
         <label>Show:</label>
         <select onchange="changePageSize(this.value)">
@@ -500,7 +501,6 @@ function generateHTML(paginatedData, filters) {
         </select>
       </div>
     </div>
-    ` : ''}
 
     <div class="logs-container">
       ${logs.length > 0 ? `
