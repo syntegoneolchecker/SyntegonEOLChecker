@@ -219,10 +219,11 @@ button {
     padding: 8px 16px;
     cursor: pointer;
     margin: 5px;
+    font-weight: bold;
 }
 
 button:hover {
-    background: #45a049;
+    background: #28323C;
 }
 
 button:disabled {
