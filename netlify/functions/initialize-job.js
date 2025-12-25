@@ -5,6 +5,7 @@ const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { tavily } = require('@tavily/core');
 const logger = require('./lib/logger');
+const { requireAuth } = require('./lib/auth-middleware');
 
 /**
  * Get manufacturer-specific direct URL if available

@@ -1,8 +1,9 @@
 const { getStore } = require('@netlify/blobs');
 const { parseCSV } = require('./lib/csv-parser');
 const logger = require('./lib/logger');
+const { requireAuth } = require('./lib/auth-middleware');
 
-exports.handler = async function(_event, _context) {
+const getCsvHandler = async function(_event, _context) {
     try {
         logger.info('Getting Netlify Blobs store...');
         const store = getStore({
@@ -61,3 +62,6 @@ exports.handler = async function(_event, _context) {
         };
     }
 };
+
+// Protect with authentication
+exports.handler = requireAuth(getCsvHandler);

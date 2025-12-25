@@ -1,6 +1,43 @@
 // Functions in this file are called from HTML onclick handlers in index.html
 // ESLint's no-unused-vars is disabled for this file (see eslint.config.js)
 
+// ============================================================================
+// AUTHENTICATION CHECK
+// ============================================================================
+
+// Check authentication before allowing access to the app
+(async function checkAuthentication() {
+    try {
+        const response = await fetch('/.netlify/functions/auth-check');
+        const data = await response.json();
+
+        if (!data.authenticated) {
+            // Not authenticated, redirect to login
+            window.location.href = '/auth.html';
+            return;
+        }
+
+        // Store user info for later use
+        window.currentUser = data.user;
+    } catch (error) {
+        console.error('Authentication check failed:', error);
+        // Redirect to login on error
+        window.location.href = '/auth.html';
+    }
+})();
+
+// Helper function to logout
+async function logout() {
+    try {
+        await fetch('/.netlify/functions/auth-logout', { method: 'POST' });
+        localStorage.removeItem('auth_token');
+        window.location.href = '/auth.html';
+    } catch (error) {
+        console.error('Logout failed:', error);
+        window.location.href = '/auth.html';
+    }
+}
+
 let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
 
 // Sorting state

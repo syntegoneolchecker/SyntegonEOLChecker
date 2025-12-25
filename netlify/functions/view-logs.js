@@ -8,6 +8,7 @@
 const { getStore } = require("@netlify/blobs");
 const { URLSearchParams } = require("node:url");
 const logger = require("./lib/logger");
+const { requireAuth } = require("./lib/auth-middleware");
 
 // Parameter parsing - separate concern
 const parseParams = (params) => ({
@@ -143,7 +144,7 @@ const errorResponse = (error) => {
 };
 
 // Main handler - orchestrates the workflow
-exports.handler = async (event) => {
+const viewLogsHandler = async (event) => {
     try {
         const params = event.queryStringParameters || {};
         const { date, source, level, search, days, format, offset, limit } =
@@ -185,6 +186,9 @@ exports.handler = async (event) => {
         return errorResponse(error);
     }
 };
+
+// Protect with authentication
+exports.handler = requireAuth(viewLogsHandler);
 
 function formatTimestamp(timestamp) {
     const utcDate = new Date(timestamp);
