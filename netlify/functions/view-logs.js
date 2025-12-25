@@ -15,7 +15,9 @@ const parseParams = (params) => ({
   level: params.level,
   search: params.search,
   days: Math.max(1, Number.parseInt(params.days) || 1),
-  format: params.format === 'json' ? 'json' : 'html'
+  format: params.format === 'json' ? 'json' : 'html',
+  offset: Math.max(0, Number.parseInt(params.offset) || 0),
+  limit: Math.min(1000, Math.max(1, Number.parseInt(params.limit) || 100))
 });
 
 // Date calculation - separate concern
@@ -54,24 +56,23 @@ const filterLogs = (logs, filters) => {
 
   if (search) {
     const searchLower = search.toLowerCase();
-    filtered = filtered.filter(log =>
-      JSON.stringify(log).toLowerCase().includes(searchLower)
-    );
+    filtered = filtered.filter(log => {
+      const message = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
+      const context = log.context ? JSON.stringify(log.context) : '';
+      return message.toLowerCase().includes(searchLower) ||
+             context.toLowerCase().includes(searchLower) ||
+             log.source.toLowerCase().includes(searchLower);
+    });
   }
 
   return filtered;
 };
 
-// Log fetching - separate concern
+// Log fetching - separate concern (parallelized for performance)
 const fetchLogsForDates = async (store, dates) => {
-  const allLogs = [];
-
-  for (const dateKey of dates) {
-    const dateLogs = await fetchLogsForDate(store, dateKey);
-    allLogs.push(...dateLogs);
-  }
-
-  return allLogs;
+  const logPromises = dates.map(dateKey => fetchLogsForDate(store, dateKey));
+  const logsArrays = await Promise.all(logPromises);
+  return logsArrays.flat();
 };
 
 const fetchLogsForDate = async (store, dateKey) => {
@@ -95,19 +96,23 @@ const fetchLogBlobs = async (store, blobs) => {
 };
 
 // Response formatting - separate concern
-const formatResponse = (filteredLogs, filters, format) => {
+const formatResponse = (paginatedData, filters, format) => {
   if (format === 'json') {
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        count: filteredLogs.length,
-        logs: filteredLogs
+        count: paginatedData.logs.length,
+        totalCount: paginatedData.totalCount,
+        offset: paginatedData.offset,
+        limit: paginatedData.limit,
+        hasMore: paginatedData.hasMore,
+        logs: paginatedData.logs
       }, null, 2)
     };
   }
 
-  const html = generateHTML(filteredLogs, filters);
+  const html = generateHTML(paginatedData, filters);
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'text/html' },
@@ -129,7 +134,7 @@ const errorResponse = (error) => {
 exports.handler = async (event) => {
   try {
     const params = event.queryStringParameters || {};
-    const { date, source, level, search, days, format } = parseParams(params);
+    const { date, source, level, search, days, format, offset, limit } = parseParams(params);
 
     const store = getStore({
       name: 'logs',
@@ -143,15 +148,30 @@ exports.handler = async (event) => {
     const filters = { source, level, search, days };
     const filteredLogs = filterLogs(allLogs, filters);
 
-    filteredLogs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    // Optimized sorting using string comparison for ISO timestamps
+    filteredLogs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-    return formatResponse(filteredLogs, filters, format);
+    // Apply pagination
+    const totalCount = filteredLogs.length;
+    const paginatedLogs = filteredLogs.slice(offset, offset + limit);
+    const hasMore = offset + limit < totalCount;
+
+    const paginatedData = {
+      logs: paginatedLogs,
+      totalCount,
+      offset,
+      limit,
+      hasMore
+    };
+
+    return formatResponse(paginatedData, filters, format);
   } catch (error) {
     return errorResponse(error);
   }
 };
 
-function generateHTML(logs, filters) {
+function generateHTML(paginatedData, filters) {
+  const { logs, totalCount, offset, limit, hasMore } = paginatedData;
   const levelColors = {
     DEBUG: '#6c757d',
     INFO: '#0d6efd',
@@ -200,6 +220,31 @@ function generateHTML(logs, filters) {
   if (filters.level) filterInfo.push(`Level: ${filters.level}`);
   if (filters.search) filterInfo.push(`Search: "${filters.search}"`);
   if (filters.days > 1) filterInfo.push(`Last ${filters.days} days`);
+
+  const currentPage = Math.floor(offset / limit) + 1;
+  const totalPages = Math.ceil(totalCount / limit);
+  const showingFrom = totalCount > 0 ? offset + 1 : 0;
+  const showingTo = Math.min(offset + limit, totalCount);
+
+  // Build query string helper for pagination
+  const buildQueryString = (newOffset, newLimit) => {
+    const params = new URLSearchParams();
+    if (filters.days) params.set('days', filters.days);
+    if (filters.source) params.set('source', filters.source);
+    if (filters.level) params.set('level', filters.level);
+    if (filters.search) params.set('search', filters.search);
+    if (newOffset) params.set('offset', newOffset);
+    if (newLimit !== 100) params.set('limit', newLimit);
+    return params.toString() ? '?' + params.toString() : '?';
+  };
+
+  const prevOffset = Math.max(0, offset - limit);
+  const nextOffset = offset + limit;
+  const prevLink = buildQueryString(prevOffset, limit);
+  const nextLink = buildQueryString(nextOffset, limit);
+
+  // Build export JSON link with current filters and pagination
+  const exportJsonLink = buildQueryString(offset, limit) + (buildQueryString(offset, limit).includes('?') ? '&' : '?') + 'format=json';
 
   return `
 <!DOCTYPE html>
@@ -278,6 +323,73 @@ function generateHTML(logs, filters) {
     .filter-group button:hover {
       background: #5568d3;
     }
+    .pagination {
+      background: #f8f9fa;
+      padding: 16px 24px;
+      border-bottom: 1px solid #dee2e6;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .pagination-info {
+      font-size: 14px;
+      color: #495057;
+    }
+    .pagination-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .pagination-controls button,
+    .pagination-controls a {
+      padding: 6px 12px;
+      background: #fff;
+      color: #667eea;
+      border: 1px solid #667eea;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .pagination-controls button:hover,
+    .pagination-controls a:hover {
+      background: #667eea;
+      color: white;
+    }
+    .pagination-controls button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .pagination-controls button:disabled:hover {
+      background: #fff;
+      color: #667eea;
+    }
+    .pagination-controls .current-page {
+      padding: 6px 12px;
+      background: #667eea;
+      color: white;
+      border: 1px solid #667eea;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .page-size-select {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #495057;
+    }
+    .page-size-select select {
+      padding: 6px 10px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 14px;
+    }
     .logs-container {
       overflow-x: auto;
       max-height: calc(100vh - 300px);
@@ -323,13 +435,16 @@ function generateHTML(logs, filters) {
     <div class="header">
       <h1>📊 Centralized Logs</h1>
       <div class="meta">
-        ${logs.length} log entries
+        Showing ${showingFrom}-${showingTo} of ${totalCount} log entries
+        ${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ''}
         ${filterInfo.length > 0 ? ' · Filtered: ' + filterInfo.join(', ') : ''}
       </div>
     </div>
 
     <div class="filters">
-      <form method="GET">
+      <form method="GET" onsubmit="resetPagination(event)">
+        <input type="hidden" name="offset" id="offset-input" value="${offset}">
+        <input type="hidden" name="limit" value="${limit}">
         <div class="filter-group">
           <label>Days</label>
           <input type="number" name="days" value="${filters.days || 1}" min="1" max="30">
@@ -356,13 +471,35 @@ function generateHTML(logs, filters) {
           <button type="submit">Apply Filters</button>
         </div>
         <div class="filter-group">
-          <a href="?format=json${filters.days ? '&days=' + filters.days : ''}" style="padding: 8px 16px; background: #28a745; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 600;">Export JSON</a>
+          <a href="${exportJsonLink}" style="padding: 8px 16px; background: #28a745; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 600;">Export JSON</a>
         </div>
         <div class="filter-group">
           <button type="button" onclick="clearAllLogs()" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">Clear Logs</button>
         </div>
       </form>
     </div>
+
+    ${totalPages > 1 ? `
+    <div class="pagination">
+      <div class="pagination-info">
+        Page ${currentPage} of ${totalPages}
+      </div>
+      <div class="pagination-controls">
+        <a href="${prevLink}" ${offset === 0 ? 'style="opacity: 0.5; pointer-events: none;"' : ''}>← Previous</a>
+        <span class="current-page">${currentPage}</span>
+        <a href="${nextLink}" ${!hasMore ? 'style="opacity: 0.5; pointer-events: none;"' : ''}>Next →</a>
+      </div>
+      <div class="page-size-select">
+        <label>Show:</label>
+        <select onchange="changePageSize(this.value)">
+          <option value="50" ${limit === 50 ? 'selected' : ''}>50</option>
+          <option value="100" ${limit === 100 ? 'selected' : ''}>100</option>
+          <option value="250" ${limit === 250 ? 'selected' : ''}>250</option>
+          <option value="500" ${limit === 500 ? 'selected' : ''}>500</option>
+        </select>
+      </div>
+    </div>
+    ` : ''}
 
     <div class="logs-container">
       ${logs.length > 0 ? `
@@ -389,6 +526,21 @@ function generateHTML(logs, filters) {
     </div>
   </div>
   <script>
+    function resetPagination(event) {
+      // Reset offset to 0 when applying new filters
+      const offsetInput = document.getElementById('offset-input');
+      if (offsetInput) {
+        offsetInput.value = '0';
+      }
+    }
+
+    function changePageSize(newLimit) {
+      const url = new URL(window.location);
+      url.searchParams.set('limit', newLimit);
+      url.searchParams.set('offset', '0'); // Reset to first page when changing page size
+      window.location.href = url.toString();
+    }
+
     async function clearAllLogs() {
       if (!confirm('Are you sure you want to delete ALL logs? This action cannot be undone.')) {
         return;
