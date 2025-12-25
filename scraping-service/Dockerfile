@@ -75,10 +75,12 @@ USER node
 RUN npx puppeteer browsers install chrome
 
 # Copy application files (changing these won't invalidate Chrome installation cache)
-COPY --chown=node:node index.js .
-COPY --chown=node:node routes/ ./routes/
-COPY --chown=node:node utils/ ./utils/
-COPY --chown=node:node config/ ./config/
+# Security: Files owned by root with read-execute permissions for all users
+# The node user can read and execute but cannot modify (container immutability)
+COPY --chown=root:root --chmod=755 index.js .
+COPY --chown=root:root --chmod=755 routes/ ./routes/
+COPY --chown=root:root --chmod=755 utils/ ./utils/
+COPY --chown=root:root --chmod=755 config/ ./config/
 
 # Expose port
 EXPOSE 3000
