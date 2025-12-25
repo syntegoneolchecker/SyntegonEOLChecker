@@ -1133,7 +1133,52 @@ function updateCountdownDisplay() {
 // RENDER SERVICE HEALTH CHECK
 // ============================================================================
 
-// Check Render scraping service health
+// Helper: Attempt a single health check
+async function attemptHealthCheck(renderServiceUrl, timeoutMs) {
+    const startTime = Date.now();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(`${renderServiceUrl}/health`, {
+            signal: controller.signal
+        });
+
+        clearTimeout(timeout);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+        if (response.ok) {
+            const data = await response.json();
+            return { success: true, elapsed, data };
+        } else {
+            return { success: false, error: `HTTP ${response.status}`, elapsed };
+        }
+    } catch (error) {
+        clearTimeout(timeout);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        return {
+            success: false,
+            error: error.name === 'AbortError' ? 'Timeout' : error.message,
+            elapsed
+        };
+    }
+}
+
+// Helper: Update render status UI
+function updateRenderStatus(element, elapsed, data) {
+    if (elapsed > 10) {
+        // Cold start detected (took >10s)
+        element.textContent = `Ready (cold start: ${elapsed}s)`;
+        element.classList.add('credits-medium');
+    } else {
+        // Already warm
+        element.textContent = `Ready (${elapsed}s)`;
+        element.classList.add('credits-high');
+    }
+    console.log(`Render health check: OK in ${elapsed}s`, data);
+}
+
+// Check Render scraping service health with retry logic
 async function checkRenderHealth() {
     const renderStatusElement = document.getElementById('render-status');
     const renderServiceUrl = 'https://eolscrapingservice.onrender.com';
@@ -1142,48 +1187,54 @@ async function checkRenderHealth() {
         renderStatusElement.textContent = 'Checking...';
         renderStatusElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
 
-        const startTime = Date.now();
+        const overallStartTime = Date.now();
 
-        // Call health endpoint with timeout
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout for cold start
+        // First attempt (60s timeout)
+        console.log('Render health check: Attempt 1/2...');
+        const firstAttempt = await attemptHealthCheck(renderServiceUrl, 60000);
 
-        const response = await fetch(`${renderServiceUrl}/health`, {
-            signal: controller.signal
-        });
-
-        clearTimeout(timeout);
-
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-
-        if (response.ok) {
-            const data = await response.json();
-
-            if (elapsed > 10) {
-                // Cold start detected (took >10s)
-                renderStatusElement.textContent = `Ready (cold start: ${elapsed}s)`;
-                renderStatusElement.classList.add('credits-medium');
-            } else {
-                // Already warm
-                renderStatusElement.textContent = `Ready (${elapsed}s)`;
-                renderStatusElement.classList.add('credits-high');
-            }
-
-            console.log(`Render health check: OK in ${elapsed}s`, data);
-        } else {
-            renderStatusElement.textContent = `Error (HTTP ${response.status})`;
-            renderStatusElement.classList.add('credits-low');
+        if (firstAttempt.success) {
+            // Success on first attempt
+            updateRenderStatus(renderStatusElement, firstAttempt.elapsed, firstAttempt.data);
+            return;
         }
+
+        // First attempt failed
+        console.warn(`Render health check: Attempt 1 failed after ${firstAttempt.elapsed}s (${firstAttempt.error})`);
+
+        // Show retry status
+        renderStatusElement.textContent = 'Waking service, retrying...';
+        renderStatusElement.classList.add('credits-medium');
+
+        // Wait 30 seconds for Render to finish waking
+        console.log('Render health check: Waiting 30s before retry...');
+        await new Promise(resolve => setTimeout(resolve, 30000));
+
+        // Second attempt (60s timeout)
+        console.log('Render health check: Attempt 2/2...');
+        renderStatusElement.textContent = 'Retrying...';
+        const secondAttempt = await attemptHealthCheck(renderServiceUrl, 60000);
+
+        const totalElapsed = ((Date.now() - overallStartTime) / 1000).toFixed(1);
+
+        if (secondAttempt.success) {
+            // Success on second attempt
+            console.log(`Render health check: OK after retry (total: ${totalElapsed}s)`);
+            renderStatusElement.textContent = `Ready after retry (${totalElapsed}s total)`;
+            renderStatusElement.classList.remove('credits-medium');
+            renderStatusElement.classList.add('credits-medium');
+            return;
+        }
+
+        // Both attempts failed
+        console.error(`Render health check: Failed after 2 attempts (total: ${totalElapsed}s)`);
+        renderStatusElement.textContent = `Offline after ${totalElapsed}s (${secondAttempt.error})`;
+        renderStatusElement.classList.remove('credits-medium');
+        renderStatusElement.classList.add('credits-low');
 
     } catch (error) {
-        console.error('Render health check failed:', error);
-
-        if (error.name === 'AbortError') {
-            renderStatusElement.textContent = 'Timeout (>60s), please reload the page';
-        } else {
-            renderStatusElement.textContent = `Offline (${error.message})`;
-        }
-
+        console.error('Render health check error:', error);
+        renderStatusElement.textContent = `Error: ${error.message}`;
         renderStatusElement.classList.add('credits-low');
     }
 }
