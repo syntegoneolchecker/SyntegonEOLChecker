@@ -28,44 +28,25 @@ exports.handler = async (event) => {
     // List all log blobs
     const { blobs } = await store.list({ prefix: 'logs-' });
 
-    logger.info(`Starting log clear operation: ${blobs.length} log(s) to delete`);
+    logger.info(`Clearing ${blobs.length} log blob(s)`);
 
-    // Delete all log blobs
-    let deletedCount = 0;
-    let errorCount = 0;
-    const errors = [];
+    // Delete all log blobs in parallel
+    // Use allSettled to continue even if some deletions fail
+    const results = await Promise.allSettled(
+      blobs.map(blob => store.delete(blob.key))
+    );
 
-    for (const blob of blobs) {
-      try {
-        await store.delete(blob.key);
-        deletedCount++;
-      } catch (error) {
-        errorCount++;
-        // Handle race conditions (blob already deleted)
-        if (error.statusCode === 404 || error.message?.includes('404')) {
-          logger.info(`Log ${blob.key} was already deleted`);
-          // Still count as deleted since it's gone
-          deletedCount++;
-          errorCount--;
-        } else {
-          logger.error(`Error deleting log blob ${blob.key}:`, error.message);
-          errors.push({ key: blob.key, error: error.message });
-        }
-      }
-    }
+    const deletedCount = results.filter(r => r.status === 'fulfilled').length;
 
-    logger.info(`✓ Log clear complete: deleted ${deletedCount} log(s), ${errorCount} error(s)`);
+    logger.info(`✓ Cleared ${deletedCount} of ${blobs.length} log blob(s)`);
 
-    const errorCountNumber = errorCount > 0 ? ` with ${errorCount} error(s)` : '';
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         success: true,
         deletedCount,
-        errorCount,
-        errors: errors.length > 0 ? errors : undefined,
-        message: `Successfully deleted ${deletedCount} log(s)${errorCountNumber}`
+        message: `Successfully cleared ${deletedCount} log blob(s)`
       }, null, 2)
     };
   } catch (error) {
