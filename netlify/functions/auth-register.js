@@ -104,12 +104,10 @@ async function sendVerificationEmail(email, verificationUrl) {
     const emailApiKey = process.env.EMAIL_API_KEY;
     const emailService = process.env.EMAIL_SERVICE;
 
-    // Debug logging (safe - doesn't expose the actual key)
+    // Debug logging (avoid exposing any details derived from the API key)
     console.log('Email service config check:', {
         emailService: emailService || 'NOT SET',
-        hasApiKey: !!emailApiKey,
-        apiKeyLength: emailApiKey ? emailApiKey.length : 0,
-        apiKeyPrefix: emailApiKey ? emailApiKey.substring(0, 3) : 'N/A'
+        hasApiKey: !!emailApiKey
     });
 
     if (!emailApiKey || !emailService) {
