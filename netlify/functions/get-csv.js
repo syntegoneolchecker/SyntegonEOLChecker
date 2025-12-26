@@ -1,9 +1,11 @@
 const { getStore } = require('@netlify/blobs');
 const { parseCSV } = require('./lib/csv-parser');
+const logger = require('./lib/logger');
+const { requireAuth } = require('./lib/auth-middleware');
 
-exports.handler = async function(event, context) {
+const getCsvHandler = async function(_event, _context) {
     try {
-        console.log('Getting Netlify Blobs store...');
+        logger.info('Getting Netlify Blobs store...');
         const store = getStore({
             name: 'eol-database',
             siteID: process.env.SITE_ID,
@@ -11,9 +13,9 @@ exports.handler = async function(event, context) {
         });
 
         // Try to get the CSV data from Netlify Blobs
-        console.log('Fetching database.csv from Blobs...');
+        logger.info('Fetching database.csv from Blobs...');
         const csvContent = await store.get('database.csv');
-        console.log('Blob fetch result:', csvContent ? 'Data found' : 'No data (empty store)');
+        logger.info('Blob fetch result:', csvContent ? 'Data found' : 'No data (empty store)');
 
         // If no data exists yet, return default headers (13 columns)
         if (!csvContent) {
@@ -28,7 +30,7 @@ exports.handler = async function(event, context) {
         const parseResult = parseCSV(csvContent);
 
         if (!parseResult.success) {
-            console.error('CSV parsing failed:', parseResult.error);
+            logger.error('CSV parsing failed:', parseResult.error);
             return {
                 statusCode: 500,
                 body: JSON.stringify({
@@ -40,7 +42,7 @@ exports.handler = async function(event, context) {
 
         // Log warnings if present (non-fatal errors)
         if (parseResult.error) {
-            console.warn('CSV parsing completed with warnings:', parseResult.error);
+            logger.warn('CSV parsing completed with warnings:', parseResult.error);
         }
 
         return {
@@ -51,7 +53,7 @@ exports.handler = async function(event, context) {
             })
         };
     } catch (error) {
-        console.error('Error in get-csv function:', error);
+        logger.error('Error in get-csv function:', error);
         return {
             statusCode: 500,
             body: JSON.stringify({
@@ -60,3 +62,6 @@ exports.handler = async function(event, context) {
         };
     }
 };
+
+// Protect with authentication
+exports.handler = requireAuth(getCsvHandler);

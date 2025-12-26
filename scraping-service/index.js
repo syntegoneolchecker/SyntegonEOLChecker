@@ -7,16 +7,31 @@ const {
   getMemoryUsageMB,
   getShutdownState,
   getRequestCount,
-  getMemoryHistory,
   MEMORY_LIMIT_MB,
   MEMORY_WARNING_MB,
 } = require("./utils/memory");
+
+const {
+  validateEnvironmentVariables,
+  validateAllowedOrigins
+} = require("./utils/env-validator");
 
 // Import route handlers
 const { handleScrapeRequest } = require("./routes/scrape");
 const { handleKeyenceScrapeRequest } = require("./routes/scrape-keyence");
 const { handleIdecDualScrapeRequest } = require("./routes/scrape-idec-dual");
+const { handleOmronDualScrapeRequest } = require("./routes/scrape-omron-dual");
 const { handleBatchScrapeRequest } = require("./routes/scrape-batch");
+const logger = require('./utils/logger');
+
+// Validate environment variables at startup
+try {
+  validateEnvironmentVariables();
+  validateAllowedOrigins();
+} catch (error) {
+  logger.error('Environment validation failed:', error.message);
+  process.exit(1);
+}
 
 const app = express();
 
@@ -38,7 +53,7 @@ app.use(
       // Allow requests with no origin (like mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin) === -1) {
+      if (!allowedOrigins.includes(origin)) {
         const msg =
           "The CORS policy for this site does not allow access from the specified origin.";
         return callback(new Error(msg), false);
@@ -89,10 +104,11 @@ app.use((req, res, next) => {
       "/scrape",
       "/scrape-keyence",
       "/scrape-idec-dual",
+      "/scrape-omron-dual",
       "/scrape-batch",
     ].includes(req.path)
   ) {
-    console.log(`Rejecting ${req.path} request during shutdown`);
+    logger.info(`Rejecting ${req.path} request during shutdown`);
     return res.status(503).json({
       error: "Service restarting",
       retryAfter: 30, // seconds
@@ -105,10 +121,11 @@ app.use((req, res, next) => {
 app.post("/scrape", handleScrapeRequest);
 app.post("/scrape-keyence", handleKeyenceScrapeRequest);
 app.post("/scrape-idec-dual", handleIdecDualScrapeRequest);
+app.post("/scrape-omron-dual", handleOmronDualScrapeRequest);
 app.post("/scrape-batch", handleBatchScrapeRequest);
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Scraping service running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
+  logger.info(`Scraping service running on port ${PORT}`);
+  logger.info(`Health check: http://localhost:${PORT}/health`);
 });

@@ -11,7 +11,7 @@ module.exports = [
     {
         files: ['**/*.js'],
         languageOptions: {
-            ecmaVersion: 2021,
+            ecmaVersion: 2022, // Updated to support class fields
             sourceType: 'commonjs',
             globals: {
                 // Node.js globals
@@ -41,13 +41,14 @@ module.exports = [
                 AbortController: 'readonly',
                 FileReader: 'readonly',
                 Blob: 'readonly',
+                structuredClone: 'readonly', // Modern browser API
                 // External libraries
                 XLSX: 'readonly'
             }
         },
         rules: {
             // Errors
-            'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+            'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
             'no-undef': 'error',
             'eqeqeq': ['error', 'always'],
             'no-var': 'error',
@@ -59,6 +60,34 @@ module.exports = [
 
             // Off
             'no-console': 'off'
+        }
+    },
+    // Jest test files configuration
+    {
+        files: ['**/*.test.js', '**/tests/**/*.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'commonjs',
+            globals: {
+                // Jest globals
+                describe: 'readonly',
+                test: 'readonly',
+                expect: 'readonly',
+                beforeEach: 'readonly',
+                afterEach: 'readonly',
+                beforeAll: 'readonly',
+                afterAll: 'readonly',
+                jest: 'readonly',
+                it: 'readonly'
+            }
+        }
+    },
+    // Frontend script.js - functions called from HTML onclick handlers
+    {
+        files: ['**/script.js', '**/public/script.js'],
+        rules: {
+            // Disable unused vars check for script.js - functions are called from HTML
+            'no-unused-vars': 'off'
         }
     }
 ];

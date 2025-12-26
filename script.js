@@ -1,3 +1,47 @@
+// Functions in this file are called from HTML onclick handlers in index.html
+// ESLint's no-unused-vars is disabled for this file (see eslint.config.js)
+
+// ============================================================================
+// AUTHENTICATION CHECK
+// ============================================================================
+
+// Check authentication before allowing access to the app
+(async function checkAuthentication() {
+    try {
+        const response = await fetch('/.netlify/functions/auth-check');
+        const data = await response.json();
+
+        if (!data.authenticated) {
+            // Not authenticated, redirect to login
+            window.location.href = '/auth.html';
+            return;
+        }
+
+        // Store user info for later use
+        window.currentUser = data.user;
+
+        // Authentication successful - show the page content
+        document.body.classList.remove('auth-loading');
+        document.body.classList.add('auth-verified');
+    } catch (error) {
+        console.error('Authentication check failed:', error);
+        // Redirect to login on error
+        window.location.href = '/auth.html';
+    }
+})();
+
+// Helper function to logout
+async function logout() {
+    try {
+        await fetch('/.netlify/functions/auth-logout', { method: 'POST' });
+        localStorage.removeItem('auth_token');
+        window.location.href = '/auth.html';
+    } catch (error) {
+        console.error('Logout failed:', error);
+        window.location.href = '/auth.html';
+    }
+}
+
 let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
 
 // Sorting state
@@ -32,7 +76,7 @@ async function init() {
 // UTILITY FUNCTIONS
 // ============================================================================
 
-function showStatus(message, type = 'success', permanent = true) {
+function showStatus(message, type = 'success', _permanent = true) {
     const status = document.getElementById('status');
     status.textContent = message;
     status.className = type;
@@ -140,7 +184,7 @@ async function updateButtonStates() {
 }
 
 function render() {
-    const sortableColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]; // All data columns are sortable
+    const sortableColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // All data columns are sortable
 
     const t = document.getElementById('table');
     t.innerHTML = data.map((r, i) =>
@@ -488,7 +532,8 @@ function shouldTriggerFetch(statusData, fetchTriggered) {
     return statusData.status === 'urls_ready' &&
            !fetchTriggered &&
            statusData.urls &&
-           statusData.urls.length > 0;
+           statusData.urls.length > 0 &&
+           statusData.urls[0].status === 'pending'; // Only trigger if URL is still pending
 }
 
 // Build fetch-url payload
@@ -510,22 +555,47 @@ function buildFetchPayload(jobId, firstUrl) {
     return payload;
 }
 
-// Trigger fetch-url (fire-and-forget)
+// Trigger fetch-url (fire-and-forget with retry)
 async function triggerFetchUrl(jobId, firstUrl, attempts) {
     console.log(`✓ URLs ready, triggering fetch-url (attempt ${attempts})`);
 
     const payload = buildFetchPayload(jobId, firstUrl);
+    const maxRetries = 2;
 
-    // Fire-and-forget (Render scraping takes 30-60s, we can't wait)
-    fetch('/.netlify/functions/fetch-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    }).catch(err => {
-        console.error(`Failed to trigger fetch-url: ${err.message}`);
-    });
+    // Fire-and-forget with retry logic
+    for (let retry = 0; retry <= maxRetries; retry++) {
+        try {
+            const response = await fetch('/.netlify/functions/fetch-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(120000) // 120s timeout (scraping can take time)
+            });
 
-    console.log(`✓ fetch-url triggered for ${firstUrl.url}`);
+            if (response.ok) {
+                console.log(`✓ fetch-url triggered successfully for ${firstUrl.url}`);
+                return;
+            }
+
+            console.warn(`⚠️  fetch-url returned ${response.status} (retry ${retry}/${maxRetries})`);
+
+        } catch (err) {
+            // If timeout occurred, the function is likely still running server-side
+            // Do NOT retry to avoid duplicate executions
+            if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+                console.log(`⏱️  fetch-url request timed out after 60s - function likely still running server-side, NOT retrying to avoid duplicates`);
+                return; // Exit without retrying
+            }
+
+            console.error(`Failed to trigger fetch-url (retry ${retry}/${maxRetries}): ${err.message}`);
+        }
+
+        if (retry < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * (retry + 1)));
+        }
+    }
+
+    console.error(`❌ fetch-url failed after ${maxRetries + 1} attempts for ${firstUrl.url}`);
 }
 
 // Check if all URLs are complete
@@ -543,19 +613,46 @@ function shouldTriggerAnalyze(statusData, analyzeTriggered) {
            statusData.status !== 'complete';
 }
 
-// Trigger analyze-job (fire-and-forget)
+// Trigger analyze-job (fire-and-forget with retry)
 async function triggerAnalyzeJob(jobId, attempts) {
     console.log(`✓ All URLs scraped, triggering analyze-job (attempt ${attempts})`);
 
-    fetch('/.netlify/functions/analyze-job', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId })
-    }).catch(err => {
-        console.error(`Failed to trigger analyze-job: ${err.message}`);
-    });
+    const maxRetries = 2;
 
-    console.log(`✓ analyze-job triggered`);
+    // Fire-and-forget with retry logic
+    for (let retry = 0; retry <= maxRetries; retry++) {
+        try {
+            const response = await fetch('/.netlify/functions/analyze-job', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId }),
+                signal: AbortSignal.timeout(120000) // 120s timeout (analysis can take time)
+            });
+
+            if (response.ok) {
+                console.log(`✓ analyze-job triggered successfully`);
+                return;
+            }
+
+            console.warn(`⚠️  analyze-job returned ${response.status} (retry ${retry}/${maxRetries})`);
+
+        } catch (err) {
+            // If timeout occurred, the function is likely still running server-side
+            // Do NOT retry to avoid duplicate executions
+            if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+                console.log(`⏱️  analyze-job request timed out after 60s - function likely still running server-side, NOT retrying to avoid duplicates`);
+                return; // Exit without retrying
+            }
+
+            console.error(`Failed to trigger analyze-job (retry ${retry}/${maxRetries}): ${err.message}`);
+        }
+
+        if (retry < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * (retry + 1)));
+        }
+    }
+
+    console.error(`❌ analyze-job failed after ${maxRetries + 1} attempts`);
 }
 
 // Handle daily limit error
@@ -602,42 +699,62 @@ async function pollJobStatus(jobId, manufacturer, model, checkButton) {
         attempts++;
 
         try {
-            console.log(`Polling job status (attempt ${attempts})...`);
+            console.log(`[POLL DEBUG] Polling job status (attempt ${attempts})...`);
             const statusData = await getJobStatus(jobId);
-            console.log('Job status:', statusData);
+            console.log(`[POLL DEBUG] Job status received:`, JSON.stringify({
+                status: statusData.status,
+                urlCount: statusData.urlCount,
+                completedUrls: statusData.completedUrls,
+                urlsLength: statusData.urls?.length,
+                firstUrlStatus: statusData.urls?.[0]?.status
+            }));
+
+            // Log trigger flags
+            console.log(`[POLL DEBUG] Trigger flags: fetchTriggered=${fetchTriggered}, analyzeTriggered=${analyzeTriggered}`);
 
             // Update progress display
             updateJobProgress(statusData, manufacturer, model, checkButton);
 
             // Check if job is complete
             if (statusData.status === 'complete') {
-                console.log('Job complete:', statusData);
+                console.log('[POLL DEBUG] Job complete, returning result');
                 return statusData.result;
             }
 
             // Check for errors
             if (statusData.status === 'error') {
+                console.log('[POLL DEBUG] Job error detected');
                 handleDailyLimitError(statusData);
                 throw new Error(statusData.error || 'Job failed');
             }
 
             // Trigger fetch-url if URLs are ready
-            if (shouldTriggerFetch(statusData, fetchTriggered)) {
+            const shouldFetch = shouldTriggerFetch(statusData, fetchTriggered);
+            console.log(`[POLL DEBUG] shouldTriggerFetch=${shouldFetch} (status=${statusData.status}, fetchTriggered=${fetchTriggered}, hasUrls=${statusData.urls && statusData.urls.length > 0})`);
+
+            if (shouldFetch) {
+                console.log(`[POLL DEBUG] Triggering fetch-url for URL index 0:`, statusData.urls[0].url);
                 await triggerFetchUrl(jobId, statusData.urls[0], attempts);
                 fetchTriggered = true;
+                console.log(`[POLL DEBUG] fetch-url triggered, setting fetchTriggered=true`);
             }
 
             // Trigger analyze-job if all scraping is complete
-            if (shouldTriggerAnalyze(statusData, analyzeTriggered)) {
+            const shouldAnalyze = shouldTriggerAnalyze(statusData, analyzeTriggered);
+            console.log(`[POLL DEBUG] shouldTriggerAnalyze=${shouldAnalyze} (allUrlsComplete=${areAllUrlsComplete(statusData)}, analyzeTriggered=${analyzeTriggered}, status=${statusData.status})`);
+
+            if (shouldAnalyze) {
+                console.log(`[POLL DEBUG] Triggering analyze-job`);
                 await triggerAnalyzeJob(jobId, attempts);
                 analyzeTriggered = true;
+                console.log(`[POLL DEBUG] analyze-job triggered, setting analyzeTriggered=true`);
             }
 
             // Wait before next poll
             await new Promise(resolve => setTimeout(resolve, 2000));
 
         } catch (error) {
-            console.error('Polling error:', error);
+            console.error('[POLL DEBUG] Polling error:', error);
             throw error;
         }
     }
@@ -1057,7 +1174,52 @@ function updateCountdownDisplay() {
 // RENDER SERVICE HEALTH CHECK
 // ============================================================================
 
-// Check Render scraping service health
+// Helper: Attempt a single health check
+async function attemptHealthCheck(renderServiceUrl, timeoutMs) {
+    const startTime = Date.now();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(`${renderServiceUrl}/health`, {
+            signal: controller.signal
+        });
+
+        clearTimeout(timeout);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+        if (response.ok) {
+            const data = await response.json();
+            return { success: true, elapsed, data };
+        } else {
+            return { success: false, error: `HTTP ${response.status}`, elapsed };
+        }
+    } catch (error) {
+        clearTimeout(timeout);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        return {
+            success: false,
+            error: error.name === 'AbortError' ? 'Timeout' : error.message,
+            elapsed
+        };
+    }
+}
+
+// Helper: Update render status UI
+function updateRenderStatus(element, elapsed, data) {
+    if (elapsed > 10) {
+        // Cold start detected (took >10s)
+        element.textContent = `Ready (cold start: ${elapsed}s)`;
+        element.classList.add('credits-medium');
+    } else {
+        // Already warm
+        element.textContent = `Ready (${elapsed}s)`;
+        element.classList.add('credits-high');
+    }
+    console.log(`Render health check: OK in ${elapsed}s`, data);
+}
+
+// Check Render scraping service health with retry logic
 async function checkRenderHealth() {
     const renderStatusElement = document.getElementById('render-status');
     const renderServiceUrl = 'https://eolscrapingservice.onrender.com';
@@ -1066,48 +1228,54 @@ async function checkRenderHealth() {
         renderStatusElement.textContent = 'Checking...';
         renderStatusElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
 
-        const startTime = Date.now();
+        const overallStartTime = Date.now();
 
-        // Call health endpoint with timeout
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout for cold start
+        // First attempt (60s timeout)
+        console.log('Render health check: Attempt 1/2...');
+        const firstAttempt = await attemptHealthCheck(renderServiceUrl, 60000);
 
-        const response = await fetch(`${renderServiceUrl}/health`, {
-            signal: controller.signal
-        });
-
-        clearTimeout(timeout);
-
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-
-        if (response.ok) {
-            const data = await response.json();
-
-            if (elapsed > 10) {
-                // Cold start detected (took >10s)
-                renderStatusElement.textContent = `Ready (cold start: ${elapsed}s)`;
-                renderStatusElement.classList.add('credits-medium');
-            } else {
-                // Already warm
-                renderStatusElement.textContent = `Ready (${elapsed}s)`;
-                renderStatusElement.classList.add('credits-high');
-            }
-
-            console.log(`Render health check: OK in ${elapsed}s`, data);
-        } else {
-            renderStatusElement.textContent = `Error (HTTP ${response.status})`;
-            renderStatusElement.classList.add('credits-low');
+        if (firstAttempt.success) {
+            // Success on first attempt
+            updateRenderStatus(renderStatusElement, firstAttempt.elapsed, firstAttempt.data);
+            return;
         }
+
+        // First attempt failed
+        console.warn(`Render health check: Attempt 1 failed after ${firstAttempt.elapsed}s (${firstAttempt.error})`);
+
+        // Show retry status
+        renderStatusElement.textContent = 'Waking service, retrying...';
+        renderStatusElement.classList.add('credits-medium');
+
+        // Wait 30 seconds for Render to finish waking
+        console.log('Render health check: Waiting 30s before retry...');
+        await new Promise(resolve => setTimeout(resolve, 30000));
+
+        // Second attempt (60s timeout)
+        console.log('Render health check: Attempt 2/2...');
+        renderStatusElement.textContent = 'Retrying...';
+        const secondAttempt = await attemptHealthCheck(renderServiceUrl, 60000);
+
+        const totalElapsed = ((Date.now() - overallStartTime) / 1000).toFixed(1);
+
+        if (secondAttempt.success) {
+            // Success on second attempt
+            console.log(`Render health check: OK after retry (total: ${totalElapsed}s)`);
+            renderStatusElement.textContent = `Ready after retry (${totalElapsed}s total)`;
+            renderStatusElement.classList.remove('credits-medium');
+            renderStatusElement.classList.add('credits-medium');
+            return;
+        }
+
+        // Both attempts failed
+        console.error(`Render health check: Failed after 2 attempts (total: ${totalElapsed}s)`);
+        renderStatusElement.textContent = `Offline after ${totalElapsed}s (${secondAttempt.error})`;
+        renderStatusElement.classList.remove('credits-medium');
+        renderStatusElement.classList.add('credits-low');
 
     } catch (error) {
-        console.error('Render health check failed:', error);
-
-        if (error.name === 'AbortError') {
-            renderStatusElement.textContent = 'Timeout (>60s), please reload the page';
-        } else {
-            renderStatusElement.textContent = `Offline (${error.message})`;
-        }
-
+        console.error('Render health check error:', error);
+        renderStatusElement.textContent = `Error: ${error.message}`;
         renderStatusElement.classList.add('credits-low');
     }
 }
@@ -1395,11 +1563,11 @@ async function autoDisableOnLowCredits(state) {
 }
 
 // Monitor auto-check state periodically
-let autoCheckMonitoringInterval = null;
+let _autoCheckMonitoringInterval = null;
 
 function startAutoCheckMonitoring() {
     // Check every 10 seconds
-    autoCheckMonitoringInterval = setInterval(async () => {
+    _autoCheckMonitoringInterval = setInterval(async () => {
         try {
             const response = await fetch('/.netlify/functions/get-auto-check-state');
             if (!response.ok) return;

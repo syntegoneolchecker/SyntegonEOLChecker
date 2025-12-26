@@ -13,9 +13,12 @@
 
 module.exports = {
     // === JOB MANAGEMENT ===
-    JOB_CLEANUP_DELAY_MINUTES: 5,  // Delete completed jobs after 5 minutes
+    JOB_CLEANUP_DELAY_MINUTES: 1440,  // Delete completed jobs after 24 hours (1440 minutes)
     JOB_POLL_MAX_ATTEMPTS: 60,     // Max polling attempts (60 × 2s = 2 min)
     JOB_POLL_INTERVAL_MS: 2000,    // Poll interval between status checks
+
+    // === LOG MANAGEMENT ===
+    LOG_RETENTION_DAYS: 1,         // Delete logs older than 1 day
 
     // === GROQ LLM LIMITS ===
     GROQ_MIN_TOKENS_REQUIRED: 500,      // Min tokens needed before starting analysis
@@ -83,4 +86,23 @@ module.exports = {
     HEALTH_CHECK_TIMEOUT_MS: 5000,      // Timeout for health check requests
     NETLIFY_FUNCTION_TIMEOUT_MS: 30000, // Netlify function timeout (30s)
     NETLIFY_BACKGROUND_TIMEOUT_MS: 900000, // Background function timeout (15min)
+    FIRE_AND_FORGET_TIMEOUT_MS: 10000,  // Timeout for fire-and-forget operations
+    RENDER_SERVICE_CALL_TIMEOUT_MS: 15000, // Timeout for Render service calls (should respond with 202 within seconds)
+
+    // === SERVICE URLs ===
+    // Default URLs (can be overridden by environment variables)
+    DEFAULT_SCRAPING_SERVICE_URL: 'https://eolscrapingservice.onrender.com',
+    DEFAULT_BROWSERQL_API_URL: 'https://production-sfo.browserless.io/stealth/bql',
+
+    // === FRONTEND POLLING ===
+    FRONTEND_JOB_POLL_INTERVAL_MS: 2000,      // Frontend polls job status every 2s
+    FRONTEND_AUTO_CHECK_MONITOR_MS: 10000,    // Frontend monitors auto-check every 10s
+
+    // === AUTO-CHECK BACKGROUND ===
+    AUTO_CHECK_RENDER_WAKE_MAX_MS: 120000,    // Max time to wait for Render wake (2 min)
+    AUTO_CHECK_RENDER_WAKE_INTERVAL_MS: 30000, // Check Render health every 30s during wake
+
+    // === FIRE-AND-FORGET RETRY ===
+    FIRE_AND_FORGET_MAX_RETRIES: 2,           // Max retries for fire-and-forget operations
+    FIRE_AND_FORGET_RETRY_DELAY_MS: 1000,     // Base delay for retries (1s, 2s, 3s)
 };

@@ -1,4 +1,6 @@
-exports.handler = async function(event, context) {
+const logger = require('./lib/logger');
+
+exports.handler = async function(_event, _context) {
     try {
         // Make a minimal API call to Groq just to get rate limit headers
         // Using smallest possible prompt to minimize token usage
@@ -31,7 +33,7 @@ exports.handler = async function(event, context) {
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('Groq usage check error:', errorText);
+            logger.error('Groq usage check error:', errorText);
             return {
                 statusCode: response.status,
                 body: JSON.stringify({
@@ -66,7 +68,7 @@ exports.handler = async function(event, context) {
         };
 
     } catch (error) {
-        console.error('Error in get-groq-usage function:', error);
+        logger.error('Error in get-groq-usage function:', error);
         return {
             statusCode: 500,
             body: JSON.stringify({

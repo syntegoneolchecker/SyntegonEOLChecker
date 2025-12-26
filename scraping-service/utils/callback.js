@@ -1,6 +1,7 @@
 // Callback handling utilities
 const { isValidCallbackUrl } = require('./validation');
 const { getShutdownState } = require('./memory');
+const logger = require('./logger');
 
 /**
  * Send callback unconditionally (with retry logic and response validation)
@@ -11,21 +12,21 @@ const { getShutdownState } = require('./memory');
  */
 async function sendCallback(callbackUrl, payload, maxRetries = 3) {
     if (!callbackUrl) return;
-    
+
     validateCallbackUrl(callbackUrl);
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             await attemptCallback(callbackUrl, payload, attempt, maxRetries);
             return; // Success - exit function
         } catch (error) {
             const isLastAttempt = attempt === maxRetries;
-            
+
             if (isLastAttempt) {
-                console.error(`❌ All ${maxRetries} callback attempts failed - callback lost`);
+                logger.error(`❌ All ${maxRetries} callback attempts failed - callback lost`);
                 throw error; // Propagate error so scraping endpoint can handle it
             }
-            
+
             await handleRetry(error, attempt);
         }
     }
@@ -39,7 +40,7 @@ async function sendCallback(callbackUrl, payload, maxRetries = 3) {
 function validateCallbackUrl(callbackUrl) {
     const callbackValidation = isValidCallbackUrl(callbackUrl);
     if (!callbackValidation.valid) {
-        console.error(`SSRF protection: Blocked unsafe callback URL in sendCallback: ${callbackUrl} - ${callbackValidation.reason}`);
+        logger.error(`SSRF protection: Blocked unsafe callback URL in sendCallback: ${callbackUrl} - ${callbackValidation.reason}`);
         throw new Error(`Invalid callback URL: ${callbackValidation.reason}`);
     }
 }
@@ -53,7 +54,7 @@ function validateCallbackUrl(callbackUrl) {
  * @returns {Promise<void>}
  */
 async function attemptCallback(callbackUrl, payload, attempt, maxRetries) {
-    console.log(`Sending callback (attempt ${attempt}/${maxRetries}): ${callbackUrl}`);
+    logger.info(`Sending callback (attempt ${attempt}/${maxRetries}): ${callbackUrl}`);
 
     // codeql[js/request-forgery] SSRF Justification: Callback URLs use strict whitelist validation via ALLOWED_ORIGINS.
     // Only trusted backend domains (configured in environment) are permitted for callbacks.
@@ -68,9 +69,9 @@ async function attemptCallback(callbackUrl, payload, attempt, maxRetries) {
     if (!response.ok) {
         await handleFailedResponse(response, attempt, maxRetries);
     }
-    
+
     // Success!
-    console.log(`✓ Callback successful (HTTP ${response.status})`);
+    logger.info(`✓ Callback successful (HTTP ${response.status})`);
 }
 
 /**
@@ -82,11 +83,11 @@ async function attemptCallback(callbackUrl, payload, attempt, maxRetries) {
  */
 async function handleFailedResponse(response, attempt, maxRetries) {
     const errorText = await response.text().catch(() => 'Could not read response body');
-    console.error(`Callback returned HTTP ${response.status} on attempt ${attempt}/${maxRetries}:`, errorText);
+    logger.error(`Callback returned HTTP ${response.status} on attempt ${attempt}/${maxRetries}:`, errorText);
 
     if (attempt < maxRetries) {
         const backoffMs = calculateBackoff(attempt);
-        console.log(`Retrying callback in ${backoffMs}ms${getShutdownState() ? ' (restart pending)' : ''}...`);
+        logger.info(`Retrying callback in ${backoffMs}ms${getShutdownState() ? ' (restart pending)' : ''}...`);
         await delay(backoffMs);
         throw new Error(`Retry after HTTP ${response.status}`); // Trigger retry loop
     } else {
@@ -101,10 +102,10 @@ async function handleFailedResponse(response, attempt, maxRetries) {
  * @returns {Promise<void>}
  */
 async function handleRetry(error, attempt) {
-    console.error(`Callback attempt ${attempt} failed:`, error.message);
-    
+    logger.error(`Callback attempt ${attempt} failed:`, error.message);
+
     const backoffMs = calculateBackoff(attempt);
-    console.log(`Retrying callback in ${backoffMs}ms${getShutdownState() ? ' (restart pending)' : ''}...`);
+    logger.info(`Retrying callback in ${backoffMs}ms${getShutdownState() ? ' (restart pending)' : ''}...`);
     await delay(backoffMs);
 }
 

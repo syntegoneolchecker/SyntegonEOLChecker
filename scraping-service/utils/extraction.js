@@ -3,6 +3,7 @@ const RE2 = require('re2');
 const pdfParse = require('pdf-parse');
 const { decodeWithProperEncoding } = require('./encoding');
 const { isSafePublicUrl } = require('./validation');
+const logger = require('./logger');
 
 /**
  * Check if URL is a PDF
@@ -139,17 +140,17 @@ function isErrorPage(text) {
  */
 async function extractPDFText(pdfBuffer, url) {
     try {
-        console.log(`Parsing PDF from ${url} (${pdfBuffer.length} bytes)`);
+        logger.info(`Parsing PDF from ${url} (${pdfBuffer.length} bytes)`);
 
         if (pdfBuffer.length === 0) {
-            console.error(`PDF buffer is empty for ${url}`);
+            logger.error(`PDF buffer is empty for ${url}`);
             return `[PDF is empty or could not be downloaded]`;
         }
 
         // Check PDF magic number
         const pdfHeader = pdfBuffer.slice(0, 5).toString('utf-8');
         if (!pdfHeader.startsWith('%PDF')) {
-            console.error(`Invalid PDF header for ${url}: ${pdfHeader}`);
+            logger.error(`Invalid PDF header for ${url}: ${pdfHeader}`);
             return `[File is not a valid PDF - may be HTML or error page]`;
         }
 
@@ -163,16 +164,16 @@ async function extractPDFText(pdfBuffer, url) {
             .trim();
 
         if (fullText.length === 0) {
-            console.warn(`PDF parsed but extracted 0 characters from ${url}`);
+            logger.warn(`PDF parsed but extracted 0 characters from ${url}`);
             return `[PDF contains no extractable text - may be encrypted, password-protected, or image-based. Please review this product manually.]`;
         }
 
-        console.log(`✓ Successfully extracted ${fullText.length} chars from PDF (${Math.min(5, data.numpages)} pages)`);
+        logger.info(`✓ Successfully extracted ${fullText.length} chars from PDF (${Math.min(5, data.numpages)} pages)`);
 
         return fullText;
 
     } catch (error) {
-        console.error(`PDF extraction error from ${url}:`, error.message);
+        logger.error(`PDF extraction error from ${url}:`, error.message);
 
         // Check if error is related to encryption
         if (error.message.includes('Crypt') || error.message.includes('encrypt') || error.message.includes('password')) {
@@ -195,7 +196,7 @@ async function tryFastFetch(url, timeout = 5000) {
     // SSRF Protection: Validate URL before making HTTP request
     const urlValidation = isSafePublicUrl(url);
     if (!urlValidation.valid) {
-        console.error(`SSRF protection: Blocked unsafe URL in tryFastFetch: ${url} - ${urlValidation.reason}`);
+        logger.error(`SSRF protection: Blocked unsafe URL in tryFastFetch: ${url} - ${urlValidation.reason}`);
         return null;
     }
 
@@ -208,9 +209,9 @@ async function tryFastFetch(url, timeout = 5000) {
 
 async function fetchAndProcessUrl(url, timeout) {
     const { isPDF, isTextFile, fetchTimeout } = determineFileTypeAndTimeout(url, timeout);
-    
+
     const response = await fetchWithTimeout(url, fetchTimeout);
-    
+
     if (!response.ok) {
         return handleFailedResponse(response, url, isPDF);
     }
@@ -224,7 +225,7 @@ function determineFileTypeAndTimeout(url, timeout) {
     const fetchTimeout = isPDF ? 20000 : timeout;
 
     if (isPDF) {
-        console.log(`Detected PDF URL, using ${fetchTimeout}ms timeout: ${url}`);
+        logger.info(`Detected PDF URL, using ${fetchTimeout}ms timeout: ${url}`);
     }
 
     return { isPDF, isTextFile, fetchTimeout };
@@ -250,12 +251,12 @@ async function fetchWithTimeout(url, timeout) {
 }
 
 function handleFailedResponse(response, url, isPDF) {
-    console.log(`Fast fetch failed: HTTP ${response.status} for ${url}`);
-    
+    logger.info(`Fast fetch failed: HTTP ${response.status} for ${url}`);
+
     if (isPDF) {
         return `[Could not fetch PDF: HTTP ${response.status}]`;
     }
-    
+
     return null;
 }
 
@@ -274,7 +275,7 @@ async function processResponse(response, url, isPDF, isTextFile) {
 }
 
 async function processPDF(response, url, contentType) {
-    console.log(`Detected PDF (Content-Type: ${contentType}), extracting text: ${url}`);
+    logger.info(`Detected PDF (Content-Type: ${contentType}), extracting text: ${url}`);
 
     const sizeValidation = validatePDFSize(response);
     if (sizeValidation.error) {
@@ -290,7 +291,7 @@ function validatePDFSize(response) {
     const MAX_PDF_SIZE = 20 * 1024 * 1024; // 20 MB
 
     if (!contentLength) {
-        console.warn(`⚠️  No Content-Length header for PDF, proceeding with caution`);
+        logger.warn(`⚠️  No Content-Length header for PDF, proceeding with caution`);
         return { error: false };
     }
 
@@ -298,32 +299,32 @@ function validatePDFSize(response) {
     const sizeMB = (sizeBytes / 1024 / 1024).toFixed(2);
 
     if (sizeBytes > MAX_PDF_SIZE) {
-        console.warn(`⚠️  PDF too large (${sizeMB} MB > 20 MB), skipping`);
+        logger.warn(`⚠️  PDF too large (${sizeMB} MB > 20 MB), skipping`);
         return {
             error: true,
             message: `[PDF file is too large (${sizeMB} MB). Files over 20 MB cannot be processed due to memory constraints. Please review this product manually.]`
         };
     }
 
-    console.log(`PDF size: ${sizeMB} MB (within 20 MB limit)`);
+    logger.info(`PDF size: ${sizeMB} MB (within 20 MB limit)`);
     return { error: false };
 }
 
 async function processTextFile(response, url, contentType) {
-    console.log(`Detected text file (Content-Type: ${contentType}): ${url}`);
+    logger.info(`Detected text file (Content-Type: ${contentType}): ${url}`);
     const buffer = Buffer.from(await response.arrayBuffer());
     const text = decodeWithProperEncoding(buffer, contentType);
     return text; // No truncation - let website handle it
 }
 
 async function processHTML(response, url, contentType) {
-    console.log(`Fetching HTML content from: ${url}`);
+    logger.info(`Fetching HTML content from: ${url}`);
     const buffer = Buffer.from(await response.arrayBuffer());
     const html = decodeWithProperEncoding(buffer, contentType);
     const text = extractHTMLText(html);
 
     if (isErrorPage(text)) {
-        console.log(`Detected error page for ${url}`);
+        logger.info(`Detected error page for ${url}`);
         return null;
     }
 
@@ -331,7 +332,7 @@ async function processHTML(response, url, contentType) {
 }
 
 function handleFetchError(error, url) {
-    console.error(`Fast fetch error for ${url}:`, error.message);
+    logger.error(`Fast fetch error for ${url}:`, error.message);
 
     if (isPDFUrl(url)) {
         return `[PDF fetch failed: ${error.message}]`;

@@ -3,7 +3,7 @@
 }
 
 body {
-    font-family: Arial, sans-serif;
+    font-family: Helvetica, Arial, sans-serif;
     margin: 0;
     padding: 0;
     background: #f5f5f5;
@@ -30,6 +30,8 @@ body {
 
 .header h2 {
     margin: 0;
+    font-size: xx-large;
+    color: #00be82;
 }
 
 .credits-container {
@@ -217,10 +219,11 @@ button {
     padding: 8px 16px;
     cursor: pointer;
     margin: 5px;
+    font-weight: bold;
 }
 
 button:hover {
-    background: #45a049;
+    background: #019966;
 }
 
 button:disabled {
@@ -230,12 +233,12 @@ button:disabled {
 }
 
 .check-eol {
-    background: #2196F3;
+    background: #01be83;
     min-width: 100px;
 }
 
 .check-eol:hover:not(:disabled) {
-    background: #0b7dda;
+    background: #019966;
 }
 
 .delete {

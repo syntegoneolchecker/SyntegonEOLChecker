@@ -1,6 +1,7 @@
 // Puppeteer configuration and common browser setup
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const logger = require('./../utils/logger');
 
 // Use stealth plugin to bypass bot detection (Cloudflare, etc.)
 puppeteer.use(StealthPlugin());
@@ -98,7 +99,7 @@ async function configureStandardPage(page, options = {}) {
             username: proxyUsername,
             password: proxyPassword
         });
-        console.log('Proxy authentication configured');
+        logger.info('Proxy authentication configured');
     }
 }
 
@@ -170,7 +171,7 @@ async function setupResourceBlocking(page, options = {}) {
     if (blockMedia) blockingDesc.push('media');
     if (blockTracking) blockingDesc.push('tracking');
 
-    console.log(`Resource blocking enabled: ${blockingDesc.join(', ')}`);
+    logger.info(`Resource blocking enabled: ${blockingDesc.join(', ')}`);
 }
 
 /**

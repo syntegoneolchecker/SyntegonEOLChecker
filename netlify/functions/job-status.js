@@ -2,8 +2,11 @@
 // Used by frontend for polling manual EOL check progress
 // (Auto-checks poll Blobs directly in auto-eol-check-background)
 const { getJob } = require('./lib/job-storage');
+const { _successResponse, notFoundResponse, errorResponse } = require('./lib/response-builder');
+const logger = require('./lib/logger');
+const { requireAuth } = require('./lib/auth-middleware');
 
-exports.handler = async function(event, context) {
+const jobStatusHandler = async function(event, context) {
     // Extract jobId from path
     const pathParts = event.path.split('/');
     const jobId = pathParts[pathParts.length - 1];
@@ -22,15 +25,15 @@ exports.handler = async function(event, context) {
     }
 
     try {
+        logger.debug(`[STATUS DEBUG] Fetching status for job: ${jobId}`);
         const job = await getJob(jobId, context);
 
         if (!job) {
-            return {
-                statusCode: 404,
-                headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ error: 'Job not found' })
-            };
+            logger.warn(`[STATUS DEBUG] Job not found: ${jobId}`);
+            return notFoundResponse('Job');
         }
+
+        logger.debug(`[STATUS DEBUG] Job retrieved: status=${job.status}, urls=${job.urls?.length}, completed=${job.urls?.filter(u => u.status === 'complete').length}`);
 
         // Return current job status (read-only)
         const response = {
@@ -53,18 +56,25 @@ exports.handler = async function(event, context) {
             response.result = job.finalResult;
         }
 
+        const formatUrlStatus = (u) => `${u.index}:${u.status}`;
+        logger.debug(`[STATUS DEBUG] Returning status for job ${jobId}: ${job.status}, URLs: [${job.urls?.map(formatUrlStatus).join(', ')}]`);
+
+        // NOTE: Frontend expects job data directly in response body, not wrapped in { success, data }
+        // so we return manually instead of using successResponse()
         return {
             statusCode: 200,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify(response)
         };
 
     } catch (error) {
-        console.error('Job status error:', error);
-        return {
-            statusCode: 500,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'Internal server error', details: error.message })
-        };
+        logger.error('Job status error:', error);
+        return errorResponse('Internal server error', { details: error.message });
     }
 };
+
+// Protect with authentication
+exports.handler = requireAuth(jobStatusHandler);

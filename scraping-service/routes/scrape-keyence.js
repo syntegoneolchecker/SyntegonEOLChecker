@@ -16,6 +16,7 @@ const {
 const { isValidCallbackUrl } = require('../utils/validation');
 const { sendCallback } = require('../utils/callback');
 const { enqueuePuppeteerTask } = require('./scrape');
+const logger = require('./../utils/logger');
 
 /**
  * Perform KEYENCE search and extract content
@@ -24,14 +25,14 @@ const { enqueuePuppeteerTask } = require('./scrape');
  * @returns {Promise<String>} Search result
  */
 async function performKeyenceSearch(page, model) {
-    console.log('Navigating to KEYENCE homepage...');
+    logger.info('Navigating to KEYENCE homepage...');
     // codeql[js/request-forgery] SSRF Justification: Hardcoded URL to KEYENCE official website (trusted source).
     await page.goto('https://www.keyence.co.jp/', {
         waitUntil: 'domcontentloaded',
         timeout: 30000
     });
 
-    console.log('KEYENCE homepage loaded, waiting for search elements to render...');
+    logger.info('KEYENCE homepage loaded, waiting for search elements to render...');
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Verify search elements exist
@@ -47,7 +48,7 @@ async function performKeyenceSearch(page, model) {
 
     // Enter search query
     const inputSelector = '.m-form-search__input';
-    console.log(`Setting search input value to "${model}" and pressing Enter...`);
+    logger.info(`Setting search input value to "${model}" and pressing Enter...`);
 
     await page.evaluate((selector, value) => {
         const input = document.querySelector(selector);
@@ -66,9 +67,9 @@ async function performKeyenceSearch(page, model) {
             page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }),
             page.keyboard.press('Enter')
         ]);
-        console.log('Navigation completed successfully');
+        logger.info('Navigation completed successfully');
     } catch (navError) {
-        console.log(`Navigation timeout (${navError.message}), checking if page loaded...`);
+        logger.info(`Navigation timeout (${navError.message}), checking if page loaded...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
@@ -81,7 +82,7 @@ async function performKeyenceSearch(page, model) {
  * @returns {Promise<Object>} Extracted text and title
  */
 async function extractKeyenceContent(page) {
-    console.log('Extracting text content (in-browser method)...');
+    logger.info('Extracting text content (in-browser method)...');
 
     const extractionPromise = page.evaluate(() => {
         try {
@@ -106,10 +107,10 @@ async function extractKeyenceContent(page) {
     const result = await Promise.race([extractionPromise, timeoutPromise]);
 
     if (result.error) {
-        console.error(`Browser evaluation error: ${result.error}`);
+        logger.error(`Browser evaluation error: ${result.error}`);
     }
 
-    console.log(`✓ Extracted ${result.text.length} characters from KEYENCE page (memory-efficient method)`);
+    logger.info(`✓ Extracted ${result.text.length} characters from KEYENCE page (memory-efficient method)`);
 
     return { text: result.text || '', title: result.title || '' };
 }
@@ -121,7 +122,7 @@ async function extractKeyenceContent(page) {
  */
 function validateKeyenceContent(text) {
     if (!text || text.length < 50) {
-        console.warn(`⚠️  Empty or invalid KEYENCE content (${text ? text.length : 0} chars), adding explanation`);
+        logger.warn(`⚠️  Empty or invalid KEYENCE content (${text ? text.length : 0} chars), adding explanation`);
         return `[KEYENCE search extracted only ${text ? text.length : 0} characters. The search may have returned no results, the page may be unavailable, or the site may be blocking automated access.]`;
     }
     return text;
@@ -135,7 +136,7 @@ async function handleKeyenceScrapeRequest(req, res) {
 
     // Check shutdown state
     if (getShutdownState()) {
-        console.log(`Rejecting /scrape-keyence request during shutdown (current memory: ${getMemoryUsageMB().rss}MB)`);
+        logger.info(`Rejecting /scrape-keyence request during shutdown (current memory: ${getMemoryUsageMB().rss}MB)`);
         return res.status(503).json({
             error: 'Service restarting due to memory limit',
             retryAfter: 30
@@ -145,7 +146,7 @@ async function handleKeyenceScrapeRequest(req, res) {
     // Track memory
     const requestCount = incrementRequestCount();
     const memBefore = trackMemoryUsage(`keyence_start_${requestCount}`);
-    console.log(`[${new Date().toISOString()}] KEYENCE Search Request #${requestCount} - Memory: ${memBefore.rss}MB RSS`);
+    logger.info(`[${new Date().toISOString()}] KEYENCE Search Request #${requestCount} - Memory: ${memBefore.rss}MB RSS`);
 
     // Validate required fields
     if (!model) {
@@ -155,22 +156,29 @@ async function handleKeyenceScrapeRequest(req, res) {
     // SSRF Protection: Validate callback URL
     const callbackValidation = isValidCallbackUrl(callbackUrl);
     if (!callbackValidation.valid) {
-        console.warn(`SSRF protection blocked callback URL: ${callbackUrl} - Reason: ${callbackValidation.reason}`);
+        logger.warn(`SSRF protection blocked callback URL: ${callbackUrl} - Reason: ${callbackValidation.reason}`);
         return res.status(400).json({
             error: 'Invalid or unsafe callback URL',
             reason: callbackValidation.reason
         });
     }
 
-    console.log(`[${new Date().toISOString()}] KEYENCE: Searching for model: ${model}`);
+    logger.info(`[${new Date().toISOString()}] KEYENCE: Searching for model: ${model}`);
     if (callbackUrl) {
-        console.log(`Callback URL provided: ${callbackUrl}`);
+        logger.info(`Callback URL provided: ${callbackUrl}`);
     }
 
-    // Enqueue task
-    return enqueuePuppeteerTask(async () => {
+    // Respond immediately with 202 Accepted (fire-and-forget)
+    res.status(202).json({
+        success: true,
+        status: 'processing',
+        message: 'KEYENCE search started, results will be sent via callback'
+    });
+
+    // Enqueue task in background (don't await - true fire-and-forget)
+    enqueuePuppeteerTask(async () => {
         let browser = null;
-        let callbackSent = false;
+        const callbackSent = false;
 
         try {
             browser = await launchBrowser();
@@ -189,7 +197,7 @@ async function handleKeyenceScrapeRequest(req, res) {
 
             // Perform search
             const finalUrl = await performKeyenceSearch(page, model);
-            console.log(`Final page URL: ${String(finalUrl)}`);
+            logger.info(`Final page URL: ${String(finalUrl)}`);
 
             // Extract content
             const { text, title } = await extractKeyenceContent(page);
@@ -197,21 +205,10 @@ async function handleKeyenceScrapeRequest(req, res) {
             // Validate content
             const finalContent = validateKeyenceContent(text);
 
-            const keyenceResult = {
-                success: true,
-                url: finalUrl,
-                originalSearch: model,
-                title: title,
-                content: finalContent,
-                contentLength: finalContent.length,
-                method: 'keyence_interactive_search',
-                timestamp: new Date().toISOString()
-            };
-
             // Close browser before callback
             await browser.close();
             browser = null;
-            console.log('Browser closed, memory freed');
+            logger.info('Browser closed, memory freed');
 
             // Send callback
             if (callbackUrl) {
@@ -230,18 +227,18 @@ async function handleKeyenceScrapeRequest(req, res) {
             trackMemoryUsage(`keyence_complete_${requestCount}`);
             scheduleRestartIfNeeded();
 
-            return res.json(keyenceResult);
+            // Response already sent (202), no need to return result
 
         } catch (error) {
-            console.error(`KEYENCE scraping error:`, error);
+            logger.error(`KEYENCE scraping error:`, error);
 
             // Close browser
             if (browser) {
                 try {
                     await browser.close();
-                    console.log('Browser closed after error, memory freed');
+                    logger.info('Browser closed after error, memory freed');
                 } catch (closeError) {
-                    console.error('Error closing browser after KEYENCE scraping error:', closeError);
+                    logger.error('Error closing browser after KEYENCE scraping error:', closeError);
                 }
             }
 
@@ -258,26 +255,27 @@ async function handleKeyenceScrapeRequest(req, res) {
             }
 
             // Force restart after KEYENCE check
-            console.log('KEYENCE check failed - forcing restart to free memory');
+            logger.info('KEYENCE check failed - forcing restart to free memory');
             setShutdownState(true);
             scheduleRestartIfNeeded();
 
-            return res.status(500).json({
-                success: false,
-                error: error.message,
-                model: model
-            });
+            // Response already sent (202), error callback already sent
         } finally {
             // Ensure browser is always closed
             if (browser) {
                 try {
                     await browser.close();
                 } catch (error_) {
-                    console.error('Failed to close browser in finally block:', error_.message);
+                    logger.error('Failed to close browser in finally block:', error_.message);
                 }
             }
         }
+    }).catch(error => {
+        // Error already logged and callback already sent
+        logger.error('Background KEYENCE scraping failed:', error.message);
     });
+
+    // Response already sent above (202 Accepted)
 }
 
 module.exports = {

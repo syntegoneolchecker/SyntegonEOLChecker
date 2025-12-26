@@ -1,8 +1,11 @@
 // Initialize EOL check job - Search with Tavily and save URLs
 const { createJob, saveJobUrls, saveFinalResult, saveUrlResult } = require('./lib/job-storage');
+const { cleanupOldLogs } = require('./lib/log-storage');
 const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { tavily } = require('@tavily/core');
+const logger = require('./lib/logger');
+const { requireAuth } = require('./lib/auth-middleware');
 
 /**
  * Get manufacturer-specific direct URL if available
@@ -85,6 +88,20 @@ function getManufacturerUrl(maker, model) {
                 model: model // Pass model for preprocessing (remove 'x' and '-')
             };
 
+        case 'オムロン':
+            {
+                // Preprocess model: replace spaces and / with _
+                const preprocessedModel = model.trim().replaceAll(' ', '_').replaceAll('/', '_');
+                const encodedPreprocessedModel = encodeURIComponent(preprocessedModel);
+                return {
+                    url: `https://www.fa.omron.co.jp/product/item/${encodedPreprocessedModel}`,
+                    scrapingMethod: 'omron_dual_page', // Try primary URL first, fallback to closed/search if error
+                    model: model, // Pass original model for fallback URL
+                    primaryUrl: `https://www.fa.omron.co.jp/product/item/${encodedPreprocessedModel}`,
+                    fallbackUrl: `https://www.fa.omron.co.jp/product/closed/search?keyword=${encodedModel}`
+                };
+            }
+
         default:
             return null; // No direct URL strategy - use Tavily search
     }
@@ -94,7 +111,7 @@ function getManufacturerUrl(maker, model) {
  * Fetch HTML directly via HTTP (for simple pages that don't need JavaScript rendering)
  */
 async function fetchHtml(url) {
-    console.log(`Fetching HTML via HTTP: ${url}`);
+    logger.info(`Fetching HTML via HTTP: ${url}`);
 
     const response = await fetch(url, {
         headers: {
@@ -107,7 +124,7 @@ async function fetchHtml(url) {
     }
 
     const html = await response.text();
-    console.log(`Fetched HTML successfully: ${html.length} characters`);
+    logger.info(`Fetched HTML successfully: ${html.length} characters`);
 
     return html;
 }
@@ -128,7 +145,7 @@ function hasNoSearchResults(content) {
 
     for (const pattern of noResultsPatterns) {
         if (lowerContent.includes(pattern)) {
-            console.log(`Detected "no results" pattern: "${pattern}"`);
+            logger.info(`Detected "no results" pattern: "${pattern}"`);
             return true;
         }
     }
@@ -155,7 +172,7 @@ function is404Page(content) {
 
     for (const pattern of notFoundPatterns) {
         if (lowerContent.includes(pattern)) {
-            console.log(`Detected 404 pattern: "${pattern}"`);
+            logger.info(`Detected 404 pattern: "${pattern}"`);
             return true;
         }
     }
@@ -177,7 +194,7 @@ function extractTakigenProductUrl(html) {
         const divMatch = html.match(divPattern);
 
         if (!divMatch) {
-            console.log('Takigen search results div not found in HTML');
+            logger.info('Takigen search results div not found in HTML');
             return null;
         }
 
@@ -188,22 +205,22 @@ function extractTakigenProductUrl(html) {
         const hrefMatch = divContent.match(hrefPattern);
 
         if (!hrefMatch) {
-            console.log('No product href found in Takigen search results div');
+            logger.info('No product href found in Takigen search results div');
             return null;
         }
 
         const productPath = hrefMatch[1];
-        console.log(`Extracted Takigen product path: ${productPath}`);
+        logger.info(`Extracted Takigen product path: ${productPath}`);
         return productPath;
 
     } catch (error) {
-        console.error(`Error extracting Takigen product URL: ${error.message}`);
+        logger.error(`Error extracting Takigen product URL: ${error.message}`);
         return null;
     }
 }
 
 exports.handler = async function(event, context) {
-    console.log('Initialize job request');
+    logger.info('Initialize job request');
 
     // Handle preflight and method validation first
     const preflightResponse = handlePreflightAndMethodValidation(event);
@@ -221,9 +238,12 @@ exports.handler = async function(event, context) {
         // Sanitize inputs
         const maker = sanitizeString(requestBody.maker, 200);
         const model = sanitizeString(requestBody.model, 200);
-        console.log('Creating job for:', { maker, model });
+        logger.info('Creating job for:', { maker, model });
 
-        // Create job
+        // Clean up old logs (runs before creating job, similar to job cleanup)
+        await cleanupOldLogs();
+
+        // Create job (this also triggers job cleanup internally)
         const jobId = await createJob(maker, model, context);
 
         // Process manufacturer strategy or fall back to search
@@ -236,7 +256,7 @@ exports.handler = async function(event, context) {
         return await performTavilySearch(maker, model, jobId, context);
 
     } catch (error) {
-        console.error('Initialize job error:', error);
+        logger.error('Initialize job error:', error);
         return createErrorResponse(500, 'Internal server error', error.message);
     }
 };
@@ -250,7 +270,7 @@ function handlePreflightAndMethodValidation(event) {
     if (event.httpMethod !== 'POST') {
         return createErrorResponse(405, 'Method Not Allowed');
     }
-    
+
     return null;
 }
 
@@ -261,7 +281,7 @@ function createCorsResponse(statusCode, body, additionalHeaders = {}) {
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         ...additionalHeaders
     };
-    
+
     return {
         statusCode,
         headers,
@@ -272,28 +292,28 @@ function createCorsResponse(statusCode, body, additionalHeaders = {}) {
 function createErrorResponse(statusCode, error, details = null) {
     const response = {
         statusCode,
-        headers: { 
-            'Access-Control-Allow-Origin': '*', 
-            'Content-Type': 'application/json' 
+        headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify({ error })
     };
-    
+
     if (details) {
         response.body = JSON.stringify({ error, details });
     }
-    
+
     return response;
 }
 
 function createValidationErrorResponse(errors) {
-    console.error('Validation failed:', errors);
+    logger.error('Validation failed:', errors);
     return createErrorResponse(400, 'Validation failed', errors);
 }
 
 async function processManufacturerStrategy(maker, model, jobId, context) {
     const manufacturerStrategy = getManufacturerUrl(maker, model);
-    
+
     if (!manufacturerStrategy) {
         return null;
     }
@@ -306,7 +326,7 @@ async function processManufacturerStrategy(maker, model, jobId, context) {
 }
 
 async function handleValidationRequiredStrategy(maker, model, jobId, strategy, context) {
-    console.log(`URL requires validation for ${maker}: ${strategy.url}`);
+    logger.info(`URL requires validation for ${maker}: ${strategy.url}`);
 
     try {
         if (strategy.requiresExtraction) {
@@ -317,53 +337,53 @@ async function handleValidationRequiredStrategy(maker, model, jobId, strategy, c
             return await handleStandardValidationStrategy(maker, model, jobId, strategy, context);
         }
     } catch (error) {
-        console.error(`Validation scraping failed for ${maker}: ${error.message}, falling back to Tavily search`);
+        logger.error(`Validation scraping failed for ${maker}: ${error.message}, falling back to Tavily search`);
         return null; // Fall through to Tavily search
     }
 }
 
 async function handleExtractionStrategy(maker, model, jobId, strategy, context) {
-    console.log(`Extracting product URL from ${maker} search results`);
+    logger.info(`Extracting product URL from ${maker} search results`);
 
     const searchHtml = await fetchHtml(strategy.url);
     const productPath = extractTakigenProductUrl(searchHtml);
 
     if (!productPath) {
-        console.log(`No product found in ${maker} search results, falling back to Tavily search`);
+        logger.info(`No product found in ${maker} search results, falling back to Tavily search`);
         return null;
     }
 
     const productUrl = `https://www.takigen.co.jp${productPath}`;
-    console.log(`Extracted ${maker} product URL: ${productUrl}`);
+    logger.info(`Extracted ${maker} product URL: ${productUrl}`);
 
-    const urls = [createUrlEntry(0, productUrl, `${maker} ${model} Product Page`, 
+    const urls = [createUrlEntry(0, productUrl, `${maker} ${model} Product Page`,
         `Direct product page for ${maker} ${model}`, strategy.scrapingMethod)];
 
     await saveJobUrls(jobId, urls, context);
 
-    console.log(`Job ${jobId} initialized with extracted ${maker} product URL`);
+    logger.info(`Job ${jobId} initialized with extracted ${maker} product URL`);
 
     return createSuccessResponse(jobId, 'urls_ready', 1, 'takigen_extracted_url', { extractedUrl: productUrl });
 }
 
 async function handle404CheckStrategy(maker, model, jobId, strategy, context) {
-    console.log(`Checking for 404 page for ${maker}`);
+    logger.info(`Checking for 404 page for ${maker}`);
 
     const html = await fetchHtml(strategy.url);
 
     if (is404Page(html)) {
-        console.log(`404 page detected for ${strategy.url}, falling back to Tavily search`);
+        logger.info(`404 page detected for ${strategy.url}, falling back to Tavily search`);
         return null;
     }
 
-    console.log(`Valid product page found for ${maker} ${model}`);
+    logger.info(`Valid product page found for ${maker} ${model}`);
 
     const urls = [createUrlEntry(0, strategy.url, `${maker} ${model} Product Page`,
         `Direct product page for ${maker} ${model}`, strategy.scrapingMethod)];
 
     await saveJobUrls(jobId, urls, context);
 
-    console.log(`Job ${jobId} initialized with validated ${maker} product URL`);
+    logger.info(`Job ${jobId} initialized with validated ${maker} product URL`);
 
     return createSuccessResponse(jobId, 'urls_ready', 1, 'nissin_validated_url');
 }
@@ -372,11 +392,11 @@ async function handleStandardValidationStrategy(maker, model, jobId, strategy, c
     const scrapeResult = await scrapeWithBrowserQL(strategy.url);
 
     if (hasNoSearchResults(scrapeResult.content)) {
-        console.log(`No search results found on ${strategy.url}, falling back to Tavily search`);
+        logger.info(`No search results found on ${strategy.url}, falling back to Tavily search`);
         return null;
     }
 
-    console.log(`Search results found on motion.com, using this content for analysis`);
+    logger.info(`Search results found on motion.com, using this content for analysis`);
 
     const urls = [createUrlEntry(0, strategy.url, `${maker} ${model} Search Results`,
         `Search results from motion.com for ${maker} ${model}`, strategy.scrapingMethod)];
@@ -390,14 +410,14 @@ async function handleStandardValidationStrategy(maker, model, jobId, strategy, c
         fullContent: scrapeResult.content
     }, context);
 
-    console.log(`Job ${jobId} initialized with validated direct URL (content already scraped)`);
+    logger.info(`Job ${jobId} initialized with validated direct URL (content already scraped)`);
 
-    return createSuccessResponse(jobId, 'ready_for_analysis', 1, 'validated_direct_url', 
+    return createSuccessResponse(jobId, 'ready_for_analysis', 1, 'validated_direct_url',
         { contentLength: scrapeResult.content.length });
 }
 
 async function handleDirectUrlStrategy(maker, model, jobId, strategy, context) {
-    console.log(`Using direct URL strategy for ${maker}: ${strategy.url} (scraping: ${strategy.scrapingMethod})`);
+    logger.info(`Using direct URL strategy for ${maker}: ${strategy.url} (scraping: ${strategy.scrapingMethod})`);
 
     const urlEntry = createUrlEntry(0, strategy.url, `${maker} ${model} Product Page`,
         `Direct product page for ${maker} ${model}`, strategy.scrapingMethod);
@@ -406,13 +426,14 @@ async function handleDirectUrlStrategy(maker, model, jobId, strategy, context) {
     if (strategy.model) urlEntry.model = strategy.model;
     if (strategy.jpUrl) urlEntry.jpUrl = strategy.jpUrl;
     if (strategy.usUrl) urlEntry.usUrl = strategy.usUrl;
+    if (strategy.fallbackUrl) urlEntry.fallbackUrl = strategy.fallbackUrl;
 
     const urls = [urlEntry];
     await saveJobUrls(jobId, urls, context);
 
-    console.log(`Job ${jobId} initialized with direct URL strategy (1 URL, method: ${strategy.scrapingMethod})`);
+    logger.info(`Job ${jobId} initialized with direct URL strategy (1 URL, method: ${strategy.scrapingMethod})`);
 
-    return createSuccessResponse(jobId, 'urls_ready', urls.length, 'direct_url', 
+    return createSuccessResponse(jobId, 'urls_ready', urls.length, 'direct_url',
         { scrapingMethod: strategy.scrapingMethod });
 }
 
@@ -423,20 +444,20 @@ function createUrlEntry(index, url, title, snippet, scrapingMethod = null) {
         title,
         snippet
     };
-    
+
     if (scrapingMethod) {
         entry.scrapingMethod = scrapingMethod;
     }
-    
+
     return entry;
 }
 
 function createSuccessResponse(jobId, status, urlCount, strategy, additionalData = {}) {
     const response = {
         statusCode: 200,
-        headers: { 
-            'Access-Control-Allow-Origin': '*', 
-            'Content-Type': 'application/json' 
+        headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify({
             jobId,
@@ -446,13 +467,13 @@ function createSuccessResponse(jobId, status, urlCount, strategy, additionalData
             ...additionalData
         })
     };
-    
+
     return response;
 }
 
 async function performTavilySearch(maker, model, jobId, context) {
     const searchQuery = `${maker} ${model}`;
-    
+
     // Initialize Tavily client
     const tavilyClient = tavily({ apiKey: process.env.TAVILY_API_KEY });
 
@@ -460,22 +481,22 @@ async function performTavilySearch(maker, model, jobId, context) {
     try {
         tavilyData = await tavilyClient.search(searchQuery, getTavilySearchOptions());
     } catch (error) {
-        console.error('Tavily API error:', error);
+        logger.error('Tavily API error:', error);
         return createErrorResponse(500, 'Tavily API failed', error.message);
     }
 
-    console.log(`Tavily returned ${tavilyData.results?.length || 0} results`);
+    logger.info(`Tavily returned ${tavilyData.results?.length || 0} results`);
 
     if (!tavilyData.results || tavilyData.results.length === 0) {
         return await handleNoSearchResults(maker, model, jobId, context);
     }
 
-    const urls = tavilyData.results.map((result, index) => 
+    const urls = tavilyData.results.map((result, index) =>
         createUrlEntry(index, result.url, result.title, result.content || '')
     );
 
     await saveJobUrls(jobId, urls, context);
-    console.log(`Job ${jobId} initialized with ${urls.length} URLs`);
+    logger.info(`Job ${jobId} initialized with ${urls.length} URLs`);
 
     return createSuccessResponse(jobId, 'urls_ready', urls.length);
 }
@@ -552,8 +573,8 @@ function getTavilySearchOptions() {
 }
 
 async function handleNoSearchResults(maker, model, jobId, context) {
-    console.log(`No search results found for ${maker} ${model}`);
-    
+    logger.info(`No search results found for ${maker} ${model}`);
+
     const result = {
         status: 'UNKNOWN',
         explanation: 'No search results found',
@@ -563,9 +584,9 @@ async function handleNoSearchResults(maker, model, jobId, context) {
             explanation: ''
         }
     };
-    
+
     await saveFinalResult(jobId, result, context);
-    
-    return createSuccessResponse(jobId, 'complete', 0, 'no_results', 
+
+    return createSuccessResponse(jobId, 'complete', 0, 'no_results',
         { message: 'No search results found' });
 }

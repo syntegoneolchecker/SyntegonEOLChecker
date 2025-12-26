@@ -1,3 +1,5 @@
+const logger = require('./logger');
+
 // URL validation and SSRF protection utilities
 
 /**
@@ -177,7 +179,7 @@ function parseProxyUrl(proxyUrl) {
             password: url.password || null
         };
     } catch (error) {
-        console.error(`Failed to parse proxy URL: ${error.message}`);
+        logger.error(`Failed to parse proxy URL: ${error.message}`);
         return null;
     }
 }

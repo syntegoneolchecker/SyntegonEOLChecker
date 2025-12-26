@@ -5,6 +5,7 @@ const {
     setupResourceBlocking,
 } = require("../config/puppeteer");
 const { isSafePublicUrl } = require("../utils/validation");
+const logger = require('./../utils/logger');
 const {
     tryFastFetch,
     isPDFUrl,
@@ -26,7 +27,7 @@ async function scrapeSingleUrl(browser, url) {
         // Conditionally enable resource blocking
         const isCloudflareProtected = url.includes("orientalmotor.co.jp");
         if (isCloudflareProtected) {
-            console.log(
+            logger.info(
                 "Resource blocking DISABLED for Cloudflare-protected site (Oriental Motor)"
             );
         } else {
@@ -42,7 +43,7 @@ async function scrapeSingleUrl(browser, url) {
         // SSRF Protection: Validate URL before navigation
         const urlValidation = isSafePublicUrl(url);
         if (!urlValidation.valid) {
-            console.error(
+            logger.error(
                 `SSRF protection: Blocked unsafe URL in batch scraping: ${url} - ${urlValidation.reason}`
             );
             throw new Error(
@@ -61,7 +62,7 @@ async function scrapeSingleUrl(browser, url) {
         await new Promise((resolve) => setTimeout(resolve, postLoadWait));
 
         if (isCloudflareProtected) {
-            console.log(
+            logger.info(
                 "Extended 20-second wait for Cloudflare challenge completion"
             );
         }
@@ -104,13 +105,13 @@ async function handleBatchScrapeRequest(req, res) {
         return res.status(400).json(validationError);
     }
 
-    console.log(`[${new Date().toISOString()}] Batch scraping ${urls.length} URLs`);
+    logger.info(`[${new Date().toISOString()}] Batch scraping ${urls.length} URLs`);
 
     try {
         const results = await processUrls(urls);
         sendSuccessResponse(res, results);
     } catch (error) {
-        console.error(`[${new Date().toISOString()}] Batch scraping error:`, error.message);
+        logger.error(`[${new Date().toISOString()}] Batch scraping error:`, error.message);
         sendErrorResponse(res, error);
     }
 }
@@ -126,7 +127,7 @@ function validateUrls(urls) {
     for (let i = 0; i < urls.length; i++) {
         const urlValidation = isSafePublicUrl(urls[i]);
         if (!urlValidation.valid) {
-            console.warn(
+            logger.warn(
                 `SSRF protection blocked URL at index ${i}: ${urls[i]} - Reason: ${urlValidation.reason}`
             );
             return {
@@ -151,7 +152,7 @@ async function processUrls(urls) {
         for (const url of urls) {
             const result = await processSingleUrl(url, browser);
             results.push(result);
-            
+
             // Update browser reference if it was created
             if (result.browserCreated && !browser) {
                 browser = result.browser;
@@ -183,7 +184,7 @@ async function processSingleUrl(url, browser) {
 
         return await processWithPuppeteer(url, browser);
     } catch (error) {
-        console.error(`Error scraping ${url}:`, error.message);
+        logger.error(`Error scraping ${url}:`, error.message);
         return createFailureResult(url, error.message);
     }
 }
@@ -192,11 +193,11 @@ async function processSingleUrl(url, browser) {
  * Try fast fetch and handle result
  */
 async function tryFastFetchWithFallback(url) {
-    console.log(`Attempting fast fetch for ${url}...`);
+    logger.info(`Attempting fast fetch for ${url}...`);
     const fastResult = await tryFastFetch(url);
 
     if (fastResult) {
-        console.log(`Fast fetch successful for ${url} (${fastResult.length} chars)`);
+        logger.info(`Fast fetch successful for ${url} (${fastResult.length} chars)`);
         return createFastFetchSuccessResult(url, fastResult);
     }
 
@@ -214,13 +215,13 @@ function shouldSkipPuppeteer(url) {
  * Process URL using Puppeteer
  */
 async function processWithPuppeteer(url, existingBrowser) {
-    console.log(`Using Puppeteer for ${url}...`);
-    
+    logger.info(`Using Puppeteer for ${url}...`);
+
     const browser = existingBrowser || await launchBrowser();
     const content = await scrapeSingleUrl(browser, url);
-    
-    console.log(`Scraped ${url} with Puppeteer (${content.length} chars)`);
-    
+
+    logger.info(`Scraped ${url} with Puppeteer (${content.length} chars)`);
+
     return {
         success: true,
         url,
@@ -256,11 +257,11 @@ function createFailureResult(url, error, method = null) {
         url,
         error
     };
-    
+
     if (method) {
         result.method = method;
     }
-    
+
     return result;
 }
 

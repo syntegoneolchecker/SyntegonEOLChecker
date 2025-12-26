@@ -1,3 +1,5 @@
+const logger = require('./logger');
+
 /**
  * BrowserQL Scraper - Shared utility for Cloudflare-protected sites
  *
@@ -25,7 +27,7 @@ async function scrapeWithBrowserQL(url) {
         throw new Error('BROWSERQL_API_KEY environment variable not set');
     }
 
-    console.log(`Scraping with BrowserQL: ${url}`);
+    logger.info(`Scraping with BrowserQL: ${url}`);
 
     // BrowserQL GraphQL mutation using evaluate() to match Render's extraction
     // This uses the exact same JavaScript code as the Render scraping service
@@ -95,7 +97,7 @@ async function scrapeWithBrowserQL(url) {
         throw new Error('BrowserQL returned empty content');
     }
 
-    console.log(`BrowserQL scraped successfully: ${content.length} characters`);
+    logger.info(`BrowserQL scraped successfully: ${content.length} characters`);
 
     return {
         content,
