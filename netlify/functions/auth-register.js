@@ -228,6 +228,7 @@ async function sendVerificationEmail(email, verificationUrl) {
                 host: 'smtp.gmail.com',
                 port: 587,
                 secure: false, // Use STARTTLS
+                requireTLS: true, // Enforce TLS upgrade - reject if TLS fails
                 auth: {
                     user: user,
                     pass: pass
