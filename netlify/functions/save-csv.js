@@ -3,8 +3,9 @@ const { toCSV } = require('./lib/csv-parser');
 const { validateCsvData } = require('./lib/validators');
 const config = require('./lib/config');
 const logger = require('./lib/logger');
+const { requireAuth } = require('./lib/auth-middleware');
 
-exports.handler = async function(event, _context) {
+const saveCsvHandler = async function(event, _context) {
     // Only allow POST requests
     if (event.httpMethod !== 'POST') {
         return {
@@ -80,3 +81,6 @@ exports.handler = async function(event, _context) {
         };
     }
 };
+
+// Protect with authentication
+exports.handler = requireAuth(saveCsvHandler);

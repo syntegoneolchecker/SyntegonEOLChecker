@@ -4,8 +4,9 @@
 const { getJob } = require('./lib/job-storage');
 const { _successResponse, notFoundResponse, errorResponse } = require('./lib/response-builder');
 const logger = require('./lib/logger');
+const { requireAuth } = require('./lib/auth-middleware');
 
-exports.handler = async function(event, context) {
+const jobStatusHandler = async function(event, context) {
     // Extract jobId from path
     const pathParts = event.path.split('/');
     const jobId = pathParts[pathParts.length - 1];
@@ -74,3 +75,6 @@ exports.handler = async function(event, context) {
         return errorResponse('Internal server error', { details: error.message });
     }
 };
+
+// Protect with authentication
+exports.handler = requireAuth(jobStatusHandler);
