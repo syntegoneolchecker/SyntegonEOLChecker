@@ -10,7 +10,7 @@ const {
     deleteVerificationToken,
     recordFailedLogin,
     clearFailedLogins,
-    getFailedLoginCount
+    _getFailedLoginCount
 } = require('./user-storage');
 
 /**
