@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const {
     findUserByEmail,
     createUser,
@@ -43,7 +43,8 @@ function isValidEmailDomain(email) {
  * @returns {boolean} True if email format is valid
  */
 function isValidEmailFormat(email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const RE2 = require('re2');
+    const emailRegex = new RE2(String.raw`^[^\s@]+@[^\s@]+\.[^\s@]+$`);
     return emailRegex.test(email);
 }
 
@@ -62,7 +63,7 @@ function validatePassword(password) {
     if (!/[a-z]/.test(password)) {
         return { valid: false, message: 'Password must contain at least one lowercase letter' };
     }
-    if (!/[0-9]/.test(password)) {
+    if (!/\d/.test(password)) {
         return { valid: false, message: 'Password must contain at least one number' };
     }
     return { valid: true, message: 'Password is valid' };
@@ -104,7 +105,7 @@ function generateJWT(payload) {
 function verifyJWT(token) {
     try {
         return jwt.verify(token, JWT_SECRET);
-    } catch (error) {
+    } catch {
         return null;
     }
 }
@@ -241,7 +242,7 @@ async function loginUser(email, password) {
     // Check if account is locked
     if (isAccountLocked(user)) {
         const lockExpiry = new Date(user.lockedUntil);
-        const minutesRemaining = Math.ceil((lockExpiry - new Date()) / 60000);
+        const minutesRemaining = Math.ceil((lockExpiry - Date.now()) / 60000);
         return {
             success: false,
             message: `Account is temporarily locked. Please try again in ${minutesRemaining} minute(s).`

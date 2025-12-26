@@ -129,8 +129,8 @@ async function sendVerificationEmail(email, verificationUrl) {
 
     if (!user || !pass) {
         console.error('Gmail credentials not configured:', {
-            EMAIL_USER: !user ? 'MISSING' : 'set',
-            EMAIL_PASSWORD: !pass ? 'MISSING' : 'set'
+            EMAIL_USER: user ? 'set' : 'MISSING',
+            EMAIL_PASSWORD: pass ? 'set' : 'MISSING'
         });
         console.log('Verification URL:', verificationUrl);
         return false;
