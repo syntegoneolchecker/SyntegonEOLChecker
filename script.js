@@ -6,39 +6,37 @@
 // ============================================================================
 
 // Check authentication before allowing access to the app
-(async function checkAuthentication() {
-    try {
-        const response = await fetch('/.netlify/functions/auth-check');
-        const data = await response.json();
 
-        if (!data.authenticated) {
-            // Not authenticated, redirect to login
-            window.location.href = '/auth.html';
-            return;
-        }
+try {
+    const response = await fetch('/.netlify/functions/auth-check');
+    const data = await response.json();
 
-        // Store user info for later use
-        window.currentUser = data.user;
+if (data.authenticated) {
+    // Store user info for later use
+    globalThis.currentUser = data.user;
 
-        // Authentication successful - show the page content
-        document.body.classList.remove('auth-loading');
-        document.body.classList.add('auth-verified');
-    } catch (error) {
-        console.error('Authentication check failed:', error);
-        // Redirect to login on error
-        window.location.href = '/auth.html';
-    }
-})();
+    // Authentication successful - show the page content
+    document.body.classList.remove('auth-loading');
+    document.body.classList.add('auth-verified');
+} else {
+    // Not authenticated, redirect to login
+    globalThis.location.href = '/auth.html';
+}
+} catch (error) {
+    console.error('Authentication check failed:', error);
+    // Redirect to login on error
+    globalThis.location.href = '/auth.html';
+}
 
 // Helper function to logout
 async function logout() {
     try {
         await fetch('/.netlify/functions/auth-logout', { method: 'POST' });
         localStorage.removeItem('auth_token');
-        window.location.href = '/auth.html';
+        globalThis.location.href = '/auth.html';
     } catch (error) {
         console.error('Logout failed:', error);
-        window.location.href = '/auth.html';
+        globalThis.location.href = '/auth.html';
     }
 }
 
@@ -699,9 +697,9 @@ async function pollJobStatus(jobId, manufacturer, model, checkButton) {
         attempts++;
 
         try {
-            console.log(`[POLL DEBUG] Polling job status (attempt ${attempts})...`);
+            console.log(`Polling job status (attempt ${attempts})...`);
             const statusData = await getJobStatus(jobId);
-            console.log(`[POLL DEBUG] Job status received:`, JSON.stringify({
+            console.log(`Job status received:`, JSON.stringify({
                 status: statusData.status,
                 urlCount: statusData.urlCount,
                 completedUrls: statusData.completedUrls,
@@ -710,51 +708,51 @@ async function pollJobStatus(jobId, manufacturer, model, checkButton) {
             }));
 
             // Log trigger flags
-            console.log(`[POLL DEBUG] Trigger flags: fetchTriggered=${fetchTriggered}, analyzeTriggered=${analyzeTriggered}`);
+            console.log(`Trigger flags: fetchTriggered=${fetchTriggered}, analyzeTriggered=${analyzeTriggered}`);
 
             // Update progress display
             updateJobProgress(statusData, manufacturer, model, checkButton);
 
             // Check if job is complete
             if (statusData.status === 'complete') {
-                console.log('[POLL DEBUG] Job complete, returning result');
+                console.log('Job complete, returning result');
                 return statusData.result;
             }
 
             // Check for errors
             if (statusData.status === 'error') {
-                console.log('[POLL DEBUG] Job error detected');
+                console.log('Job error detected');
                 handleDailyLimitError(statusData);
                 throw new Error(statusData.error || 'Job failed');
             }
 
             // Trigger fetch-url if URLs are ready
             const shouldFetch = shouldTriggerFetch(statusData, fetchTriggered);
-            console.log(`[POLL DEBUG] shouldTriggerFetch=${shouldFetch} (status=${statusData.status}, fetchTriggered=${fetchTriggered}, hasUrls=${statusData.urls && statusData.urls.length > 0})`);
+            console.log(`shouldTriggerFetch=${shouldFetch} (status=${statusData.status}, fetchTriggered=${fetchTriggered}, hasUrls=${statusData.urls && statusData.urls.length > 0})`);
 
             if (shouldFetch) {
-                console.log(`[POLL DEBUG] Triggering fetch-url for URL index 0:`, statusData.urls[0].url);
+                console.log(`Triggering fetch-url for URL index 0:`, statusData.urls[0].url);
                 await triggerFetchUrl(jobId, statusData.urls[0], attempts);
                 fetchTriggered = true;
-                console.log(`[POLL DEBUG] fetch-url triggered, setting fetchTriggered=true`);
+                console.log(`fetch-url triggered, setting fetchTriggered=true`);
             }
 
             // Trigger analyze-job if all scraping is complete
             const shouldAnalyze = shouldTriggerAnalyze(statusData, analyzeTriggered);
-            console.log(`[POLL DEBUG] shouldTriggerAnalyze=${shouldAnalyze} (allUrlsComplete=${areAllUrlsComplete(statusData)}, analyzeTriggered=${analyzeTriggered}, status=${statusData.status})`);
+            console.log(`shouldTriggerAnalyze=${shouldAnalyze} (allUrlsComplete=${areAllUrlsComplete(statusData)}, analyzeTriggered=${analyzeTriggered}, status=${statusData.status})`);
 
             if (shouldAnalyze) {
-                console.log(`[POLL DEBUG] Triggering analyze-job`);
+                console.log(`Triggering analyze-job`);
                 await triggerAnalyzeJob(jobId, attempts);
                 analyzeTriggered = true;
-                console.log(`[POLL DEBUG] analyze-job triggered, setting analyzeTriggered=true`);
+                console.log(`analyze-job triggered, setting analyzeTriggered=true`);
             }
 
             // Wait before next poll
             await new Promise(resolve => setTimeout(resolve, 2000));
 
         } catch (error) {
-            console.error('[POLL DEBUG] Polling error:', error);
+            console.error('Polling error:', error);
             throw error;
         }
     }

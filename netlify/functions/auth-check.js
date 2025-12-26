@@ -1,4 +1,5 @@
 const { getAuthenticatedUser } = require('./lib/auth-middleware');
+const logger = require('./lib/logger');
 
 /**
  * Authentication Check Endpoint
@@ -18,11 +19,27 @@ const { getAuthenticatedUser } = require('./lib/auth-middleware');
  */
 
 exports.handler = async (event) => {
+    // Handle CORS preflight
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 204,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS'
+            },
+            body: ''
+        };
+    }
+
     // Only allow GET requests
     if (event.httpMethod !== 'GET') {
         return {
             statusCode: 405,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             body: JSON.stringify({ error: 'Method not allowed' })
         };
     }
@@ -33,7 +50,10 @@ exports.handler = async (event) => {
         if (!user) {
             return {
                 statusCode: 200,
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
                 body: JSON.stringify({
                     authenticated: false
                 })
@@ -42,7 +62,10 @@ exports.handler = async (event) => {
 
         return {
             statusCode: 200,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             body: JSON.stringify({
                 authenticated: true,
                 user
@@ -50,10 +73,13 @@ exports.handler = async (event) => {
         };
 
     } catch (error) {
-        console.error('Auth check error:', error);
+        logger.error('Auth check error:', error);
         return {
             statusCode: 500,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             body: JSON.stringify({
                 authenticated: false,
                 error: 'Internal server error'

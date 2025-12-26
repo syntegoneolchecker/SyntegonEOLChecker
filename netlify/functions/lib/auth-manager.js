@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const {
     findUserByEmail,
     createUser,
@@ -9,8 +9,7 @@ const {
     getVerificationToken,
     deleteVerificationToken,
     recordFailedLogin,
-    clearFailedLogins,
-    getFailedLoginCount
+    clearFailedLogins
 } = require('./user-storage');
 
 /**
@@ -19,7 +18,10 @@ const {
  */
 
 // Configuration from environment variables
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-change-in-production';
+if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is required but not set');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = '7d'; // 7 days
 const BCRYPT_ROUNDS = 12; // Cost factor for bcrypt
 const VERIFICATION_TOKEN_EXPIRY = 48 * 60 * 60 * 1000; // 48 hours in ms
@@ -43,7 +45,8 @@ function isValidEmailDomain(email) {
  * @returns {boolean} True if email format is valid
  */
 function isValidEmailFormat(email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const RE2 = require('re2');
+    const emailRegex = new RE2(String.raw`^[^\s@]+@[^\s@]+\.[^\s@]+$`);
     return emailRegex.test(email);
 }
 
@@ -62,7 +65,7 @@ function validatePassword(password) {
     if (!/[a-z]/.test(password)) {
         return { valid: false, message: 'Password must contain at least one lowercase letter' };
     }
-    if (!/[0-9]/.test(password)) {
+    if (!/\d/.test(password)) {
         return { valid: false, message: 'Password must contain at least one number' };
     }
     return { valid: true, message: 'Password is valid' };
@@ -104,7 +107,7 @@ function generateJWT(payload) {
 function verifyJWT(token) {
     try {
         return jwt.verify(token, JWT_SECRET);
-    } catch (error) {
+    } catch {
         return null;
     }
 }
@@ -241,7 +244,7 @@ async function loginUser(email, password) {
     // Check if account is locked
     if (isAccountLocked(user)) {
         const lockExpiry = new Date(user.lockedUntil);
-        const minutesRemaining = Math.ceil((lockExpiry - new Date()) / 60000);
+        const minutesRemaining = Math.ceil((lockExpiry - Date.now()) / 60000);
         return {
             success: false,
             message: `Account is temporarily locked. Please try again in ${minutesRemaining} minute(s).`
