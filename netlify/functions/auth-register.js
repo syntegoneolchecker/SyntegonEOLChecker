@@ -213,3 +213,51 @@ async function sendVerificationEmail(email, verificationUrl) {
     console.warn(`Unknown email service: ${emailService}`);
     return false;
 }
+
+/**
+ * Send email via Gmail SMTP
+ * Uses Gmail's SMTP server with app password
+ * @param {string} to - Recipient email
+ * @param {string} subject - Email subject
+ * @param {string} html - HTML content
+ * @returns {Promise<boolean>} True if email was sent
+ */
+async function sendViaGmailSMTP(to, subject, html) {
+    const user = process.env.EMAIL_USER;
+    const pass = process.env.EMAIL_PASSWORD;
+
+    if (!user || !pass) {
+        console.error('Gmail credentials not configured');
+        return false;
+    }
+
+    // Gmail SMTP settings
+    const smtpHost = 'smtp.gmail.com';
+    const smtpPort = 587;
+
+    // Create RFC 5322 compliant email
+    const from = process.env.FROM_EMAIL || user;
+    const boundary = `----=_Part_${Date.now()}_${Math.random().toString(36)}`;
+
+    const emailContent = [
+        `From: ${from}`,
+        `To: ${to}`,
+        `Subject: ${subject}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: multipart/alternative; boundary="${boundary}"`,
+        ``,
+        `--${boundary}`,
+        `Content-Type: text/html; charset=UTF-8`,
+        ``,
+        html,
+        `--${boundary}--`
+    ].join('\r\n');
+
+    // Note: Netlify Functions don't support SMTP connections directly
+    // We need to use an HTTP API wrapper or install nodemailer
+    // For now, log and return false - user needs to use API-based service
+    console.error('Gmail SMTP requires nodemailer package. Please use Resend or another API-based service.');
+    console.log('Email content prepared but not sent:', { to, subject });
+
+    return false;
+}
