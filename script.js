@@ -13,12 +13,12 @@
 
         if (!data.authenticated) {
             // Not authenticated, redirect to login
-            window.location.href = '/auth.html';
+            globalThis.location.href = '/auth.html';
             return;
         }
 
         // Store user info for later use
-        window.currentUser = data.user;
+        globalThis.currentUser = data.user;
 
         // Authentication successful - show the page content
         document.body.classList.remove('auth-loading');
@@ -26,7 +26,7 @@
     } catch (error) {
         console.error('Authentication check failed:', error);
         // Redirect to login on error
-        window.location.href = '/auth.html';
+        globalThis.location.href = '/auth.html';
     }
 })();
 
@@ -35,10 +35,10 @@ async function logout() {
     try {
         await fetch('/.netlify/functions/auth-logout', { method: 'POST' });
         localStorage.removeItem('auth_token');
-        window.location.href = '/auth.html';
+        globalThis.location.href = '/auth.html';
     } catch (error) {
         console.error('Logout failed:', error);
-        window.location.href = '/auth.html';
+        globalThis.location.href = '/auth.html';
     }
 }
 

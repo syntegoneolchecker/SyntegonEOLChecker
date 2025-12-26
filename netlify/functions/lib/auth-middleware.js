@@ -14,7 +14,7 @@ const { validateAuthToken } = require('./auth-manager');
 function extractToken(event) {
     // Check Authorization header (Bearer token)
     const authHeader = event.headers.authorization || event.headers.Authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
+    if (authHeader?.startsWith('Bearer ')) {
         return authHeader.substring(7);
     }
 

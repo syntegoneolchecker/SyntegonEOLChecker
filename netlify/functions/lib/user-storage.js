@@ -1,5 +1,5 @@
 const { getStore } = require('@netlify/blobs');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 
 /**
  * User Storage Manager for Authentication
@@ -79,7 +79,7 @@ async function createUser(userData) {
     const normalizedEmail = normalizeEmail(userData.email);
 
     // Check if user already exists
-    if (users.find(u => u.email === normalizedEmail)) {
+    if (users.some(u => u.email === normalizedEmail)) {
         throw new Error('User already exists');
     }
 
