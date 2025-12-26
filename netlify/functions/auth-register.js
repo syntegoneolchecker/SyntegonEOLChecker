@@ -1,4 +1,5 @@
 const { registerUser, ALLOWED_EMAIL_DOMAIN } = require('./lib/auth-manager');
+const nodemailer = require('nodemailer');
 
 /**
  * User Registration Endpoint
@@ -210,54 +211,70 @@ async function sendVerificationEmail(email, verificationUrl) {
         }
     }
 
-    console.warn(`Unknown email service: ${emailService}`);
-    return false;
-}
+    // Gmail SMTP integration (free forever, 500 emails/day)
+    if (emailService === 'gmail') {
+        try {
+            const user = process.env.EMAIL_USER;
+            const pass = process.env.EMAIL_PASSWORD;
 
-/**
- * Send email via Gmail SMTP
- * Uses Gmail's SMTP server with app password
- * @param {string} to - Recipient email
- * @param {string} subject - Email subject
- * @param {string} html - HTML content
- * @returns {Promise<boolean>} True if email was sent
- */
-async function sendViaGmailSMTP(to, subject, html) {
-    const user = process.env.EMAIL_USER;
-    const pass = process.env.EMAIL_PASSWORD;
+            if (!user || !pass) {
+                console.error('Gmail credentials not configured:', {
+                    EMAIL_USER: !user ? 'MISSING' : 'set',
+                    EMAIL_PASSWORD: !pass ? 'MISSING' : 'set'
+                });
+                return false;
+            }
 
-    if (!user || !pass) {
-        console.error('Gmail credentials not configured');
-        return false;
+            // Create transporter
+            const transporter = nodemailer.createTransport({
+                host: 'smtp.gmail.com',
+                port: 587,
+                secure: false, // Use STARTTLS
+                auth: {
+                    user: user,
+                    pass: pass
+                }
+            });
+
+            // Email content
+            const mailOptions = {
+                from: process.env.FROM_EMAIL || user,
+                to: email,
+                subject: 'Verify your EOL Checker account',
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: #333;">Welcome to Syntegon EOL Checker</h2>
+                        <p>Please verify your email address by clicking the button below:</p>
+                        <div style="margin: 30px 0;">
+                            <a href="${verificationUrl}"
+                               style="background: #007bff; color: white; padding: 12px 30px;
+                                      text-decoration: none; border-radius: 4px; display: inline-block;">
+                                Verify Email Address
+                            </a>
+                        </div>
+                        <p style="color: #666; font-size: 14px;">Or copy and paste this URL into your browser:</p>
+                        <p style="background: #f5f5f5; padding: 10px; border-radius: 4px; word-break: break-all;">
+                            ${verificationUrl}
+                        </p>
+                        <p style="color: #999; font-size: 12px; margin-top: 30px;">
+                            This link will expire in 48 hours.<br>
+                            If you didn't create this account, please ignore this email.
+                        </p>
+                    </div>
+                `
+            };
+
+            // Send email
+            await transporter.sendMail(mailOptions);
+            console.log(`Verification email sent successfully to ${email} via Gmail SMTP`);
+            return true;
+
+        } catch (error) {
+            console.error('Failed to send email via Gmail SMTP:', error);
+            return false;
+        }
     }
 
-    // Gmail SMTP settings
-    const smtpHost = 'smtp.gmail.com';
-    const smtpPort = 587;
-
-    // Create RFC 5322 compliant email
-    const from = process.env.FROM_EMAIL || user;
-    const boundary = `----=_Part_${Date.now()}_${Math.random().toString(36)}`;
-
-    const emailContent = [
-        `From: ${from}`,
-        `To: ${to}`,
-        `Subject: ${subject}`,
-        `MIME-Version: 1.0`,
-        `Content-Type: multipart/alternative; boundary="${boundary}"`,
-        ``,
-        `--${boundary}`,
-        `Content-Type: text/html; charset=UTF-8`,
-        ``,
-        html,
-        `--${boundary}--`
-    ].join('\r\n');
-
-    // Note: Netlify Functions don't support SMTP connections directly
-    // We need to use an HTTP API wrapper or install nodemailer
-    // For now, log and return false - user needs to use API-based service
-    console.error('Gmail SMTP requires nodemailer package. Please use Resend or another API-based service.');
-    console.log('Email content prepared but not sent:', { to, subject });
-
+    console.warn(`Unknown email service: ${emailService}`);
     return false;
 }
