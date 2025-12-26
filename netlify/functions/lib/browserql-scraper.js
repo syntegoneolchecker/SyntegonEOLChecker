@@ -29,13 +29,16 @@ async function scrapeWithBrowserQL(url) {
 
     logger.info(`Scraping with BrowserQL: ${url}`);
 
+    // Escape URL for GraphQL to prevent injection
+    const escapedUrl = url.replace(/"/g, '\\"');
+
     // BrowserQL GraphQL mutation using evaluate() to match Render's extraction
     // This uses the exact same JavaScript code as the Render scraping service
     // Note: waitUntil is an enum (not quoted), url is a string (quoted)
     const query = `
         mutation ScrapeUrl {
             goto(
-                url: "${url}"
+                url: "${escapedUrl}"
                 waitUntil: networkIdle
             ) {
                 status
