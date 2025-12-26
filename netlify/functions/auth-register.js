@@ -1,6 +1,7 @@
 const { registerUser } = require('./lib/auth-manager');
 const nodemailer = require('nodemailer');
 const logger = require('./lib/logger');
+const { checkRateLimit, recordAttempt, getClientIP } = require('./lib/rate-limiter');
 
 /**
  * User Registration Endpoint
@@ -53,10 +54,34 @@ exports.handler = async (event) => {
         if (!email || !password) {
             return {
                 statusCode: 400,
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
                 body: JSON.stringify({
                     success: false,
                     message: 'Email and password are required'
+                })
+            };
+        }
+
+        // Check rate limit
+        const clientIP = getClientIP(event);
+        const rateLimit = await checkRateLimit('register', clientIP);
+
+        if (!rateLimit.allowed) {
+            logger.warn(`Rate limit exceeded for registration from IP: ${clientIP}`);
+            return {
+                statusCode: 429,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Retry-After': rateLimit.retryAfter.toString()
+                },
+                body: JSON.stringify({
+                    success: false,
+                    message: rateLimit.message,
+                    retryAfter: rateLimit.retryAfter
                 })
             };
         }
@@ -65,9 +90,15 @@ exports.handler = async (event) => {
         const result = await registerUser(email, password);
 
         if (!result.success) {
+            // Record failed attempt for rate limiting
+            await recordAttempt('register', clientIP);
+
             return {
                 statusCode: 400,
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
                 body: JSON.stringify(result)
             };
         }
@@ -86,7 +117,10 @@ exports.handler = async (event) => {
 
         return {
             statusCode: 201,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             body: JSON.stringify({
                 success: true,
                 message,
@@ -100,7 +134,10 @@ exports.handler = async (event) => {
         logger.error('Registration error:', error);
         return {
             statusCode: 500,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             body: JSON.stringify({
                 success: false,
                 message: 'Internal server error during registration'
