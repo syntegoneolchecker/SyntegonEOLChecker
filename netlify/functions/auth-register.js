@@ -1,5 +1,6 @@
-const { registerUser, _ALLOWED_EMAIL_DOMAIN } = require('./lib/auth-manager');
+const { registerUser } = require('./lib/auth-manager');
 const nodemailer = require('nodemailer');
+const logger = require('./lib/logger');
 
 /**
  * User Registration Endpoint
@@ -60,15 +61,19 @@ exports.handler = async (event) => {
         const verificationUrl = `${siteUrl}/verify.html?token=${result.verificationToken}`;
 
         // Send verification email via Gmail SMTP
-        console.log(`Verification URL for ${email}: ${verificationUrl}`);
         const emailSent = await sendVerificationEmail(email, verificationUrl);
+
+        // Inform user about email delivery status
+        const message = emailSent
+            ? result.message
+            : 'Account created, but verification email could not be sent. Please contact administrator.';
 
         return {
             statusCode: 201,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 success: true,
-                message: result.message,
+                message,
                 emailSent,
                 // SECURITY: Never expose verification URL in response
                 // User must receive it via email only
@@ -76,7 +81,7 @@ exports.handler = async (event) => {
         };
 
     } catch (error) {
-        console.error('Registration error:', error);
+        logger.error('Registration error:', error);
         return {
             statusCode: 500,
             headers: { 'Content-Type': 'application/json' },
@@ -128,11 +133,10 @@ async function sendVerificationEmail(email, verificationUrl) {
     const pass = process.env.EMAIL_PASSWORD;
 
     if (!user || !pass) {
-        console.error('Gmail credentials not configured:', {
+        logger.error('Gmail credentials not configured:', {
             EMAIL_USER: user ? 'set' : 'MISSING',
             EMAIL_PASSWORD: pass ? 'set' : 'MISSING'
         });
-        console.log('Verification URL:', verificationUrl);
         return false;
     }
 
@@ -153,10 +157,10 @@ async function sendVerificationEmail(email, verificationUrl) {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log(`Verification email sent successfully to ${email} via Gmail SMTP`);
+        logger.info(`Verification email sent successfully to ${email} via Gmail SMTP`);
         return true;
     } catch (error) {
-        console.error('Failed to send email via Gmail SMTP:', error);
+        logger.error('Failed to send email via Gmail SMTP:', error);
         return false;
     }
 }

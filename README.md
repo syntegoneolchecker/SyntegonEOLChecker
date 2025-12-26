@@ -23,7 +23,7 @@ If you're forking this project, make sure to set up your own environment variabl
   - Tavily (web search)
   - Groq (LLM analysis)
   - BrowserQL/Browserless (Cloudflare bypass)
-- **Proxies**: Provided by Webshare
+- **Proxies**: Optional proxies for manufacturer-specific requests
 
 ## Key Features
 
@@ -46,20 +46,27 @@ Set these in your Netlify dashboard under Site Settings > Environment Variables:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
+| `ALLOWED_EMAIL_DOMAIN` | Allowed email domain for registration | `syntegon.com` |
 | `BROWSERQL_API_KEY` | Browserless.io API key (for Cloudflare bypass) | `abc123...` |
+| `EMAIL_API_KEY` | Email service API key (if using external service) | `key_abc123...` |
+| `EMAIL_PASSWORD` | Gmail app password for SMTP | `xxxx xxxx xxxx xxxx` |
+| `EMAIL_SERVICE` | Email service provider (legacy, optional) | `gmail` |
+| `EMAIL_USER` | Gmail account for sending emails | `your-account@gmail.com` |
+| `FROM_EMAIL` | From address for verification emails | `noreply@syntegon.com` |
 | `GROQ_API_KEY` | Groq LLM API key | `gsk_abc123...` |
-| `IDEC_JP_PROXY` | JP Proxy URL | `http://username:password@123.456.78.910:1234` |
-| `IDEC_US_PROXY` | US Proxy URL | `http://username:password@123.456.78.910:1234` |
-| `NETLIFY_TOKEN` | Token for Netlify Blobs acess | Provided on Netlify |
+| `JP_PROXY` | Japan proxy URL (manufacturer-specific) | `http://user:pass@ip:port` |
+| `JWT_SECRET` | Secret key for JWT tokens (REQUIRED) | `your-random-64-char-hex` |
+| `LOG_LEVEL` | Logging level | `info` |
+| `NETLIFY_TOKEN` | Token for Netlify Blobs access | Provided by Netlify |
 | `SCRAPING_SERVICE_URL` | URL of Render scraping service | `https://eolscrapingservice.onrender.com` |
 | `TAVILY_API_KEY` | Tavily AI web search API key | `tvly-abc123...` |
+| `US_PROXY` | US proxy URL (manufacturer-specific) | `http://user:pass@ip:port` |
 
 ## API Rate Limits
 
 - **Tavily**: 1000 tokens/month -> 500 searches (free tier)
 - **Groq**: 8000 tokens/minute, 200000 tokens/day (rolling window)
 - **BrowserQL**: 1000 credits/month (1 credit = 30 seconds)
-(- **Webshare**: 1GB bandwith limit for proxies)
 
 ## Setup Instructions
 

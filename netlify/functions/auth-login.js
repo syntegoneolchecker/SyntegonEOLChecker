@@ -1,5 +1,6 @@
 const { loginUser } = require('./lib/auth-manager');
 const { generateAuthCookie } = require('./lib/auth-middleware');
+const logger = require('./lib/logger');
 
 /**
  * User Login Endpoint
@@ -82,7 +83,7 @@ exports.handler = async (event) => {
         };
 
     } catch (error) {
-        console.error('Login error:', error);
+        logger.error('Login error:', error);
         return {
             statusCode: 500,
             headers: { 'Content-Type': 'application/json' },
