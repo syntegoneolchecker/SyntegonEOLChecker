@@ -1,5 +1,7 @@
-const { registerUser, _ALLOWED_EMAIL_DOMAIN } = require('./lib/auth-manager');
+const { registerUser } = require('./lib/auth-manager');
 const nodemailer = require('nodemailer');
+const logger = require('./lib/logger');
+const { checkRateLimit, recordAttempt, getClientIP } = require('./lib/rate-limiter');
 
 /**
  * User Registration Endpoint
@@ -20,11 +22,27 @@ const nodemailer = require('nodemailer');
  */
 
 exports.handler = async (event) => {
+    // Handle CORS preflight
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 204,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS'
+            },
+            body: ''
+        };
+    }
+
     // Only allow POST requests
     if (event.httpMethod !== 'POST') {
         return {
             statusCode: 405,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             body: JSON.stringify({ error: 'Method not allowed' })
         };
     }
@@ -36,10 +54,34 @@ exports.handler = async (event) => {
         if (!email || !password) {
             return {
                 statusCode: 400,
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
                 body: JSON.stringify({
                     success: false,
                     message: 'Email and password are required'
+                })
+            };
+        }
+
+        // Check rate limit
+        const clientIP = getClientIP(event);
+        const rateLimit = await checkRateLimit('register', clientIP);
+
+        if (!rateLimit.allowed) {
+            logger.warn(`Rate limit exceeded for registration from IP: ${clientIP}`);
+            return {
+                statusCode: 429,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Retry-After': rateLimit.retryAfter.toString()
+                },
+                body: JSON.stringify({
+                    success: false,
+                    message: rateLimit.message,
+                    retryAfter: rateLimit.retryAfter
                 })
             };
         }
@@ -48,9 +90,15 @@ exports.handler = async (event) => {
         const result = await registerUser(email, password);
 
         if (!result.success) {
+            // Record failed attempt for rate limiting
+            await recordAttempt('register', clientIP);
+
             return {
                 statusCode: 400,
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
                 body: JSON.stringify(result)
             };
         }
@@ -60,15 +108,22 @@ exports.handler = async (event) => {
         const verificationUrl = `${siteUrl}/verify.html?token=${result.verificationToken}`;
 
         // Send verification email via Gmail SMTP
-        console.log(`Verification URL for ${email}: ${verificationUrl}`);
         const emailSent = await sendVerificationEmail(email, verificationUrl);
+
+        // Inform user about email delivery status
+        const message = emailSent
+            ? result.message
+            : 'Account created, but verification email could not be sent. Please contact administrator.';
 
         return {
             statusCode: 201,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             body: JSON.stringify({
                 success: true,
-                message: result.message,
+                message,
                 emailSent,
                 // SECURITY: Never expose verification URL in response
                 // User must receive it via email only
@@ -76,10 +131,13 @@ exports.handler = async (event) => {
         };
 
     } catch (error) {
-        console.error('Registration error:', error);
+        logger.error('Registration error:', error);
         return {
             statusCode: 500,
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             body: JSON.stringify({
                 success: false,
                 message: 'Internal server error during registration'
@@ -128,11 +186,10 @@ async function sendVerificationEmail(email, verificationUrl) {
     const pass = process.env.EMAIL_PASSWORD;
 
     if (!user || !pass) {
-        console.error('Gmail credentials not configured:', {
+        logger.error('Gmail credentials not configured:', {
             EMAIL_USER: user ? 'set' : 'MISSING',
             EMAIL_PASSWORD: pass ? 'set' : 'MISSING'
         });
-        console.log('Verification URL:', verificationUrl);
         return false;
     }
 
@@ -153,10 +210,10 @@ async function sendVerificationEmail(email, verificationUrl) {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log(`Verification email sent successfully to ${email} via Gmail SMTP`);
+        logger.info(`Verification email sent successfully to ${email} via Gmail SMTP`);
         return true;
     } catch (error) {
-        console.error('Failed to send email via Gmail SMTP:', error);
+        logger.error('Failed to send email via Gmail SMTP:', error);
         return false;
     }
 }

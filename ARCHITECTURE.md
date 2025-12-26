@@ -122,7 +122,7 @@ case 'SMC':
 **Problem**: Netlify Blobs has limited storage
 
 **Solution**:
-- Jobs deleted 5 minutes after completion
+- Jobs deleted 24 hours (1440 minutes) after completion
 - Cleanup runs on every new job creation (opportunistic)
 - Logs are separate (not affected by cleanup)
 

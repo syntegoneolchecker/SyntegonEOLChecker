@@ -51,10 +51,10 @@ Add these to your Netlify site configuration:
 JWT_SECRET=your-random-secret-key-min-32-characters
 ALLOWED_EMAIL_DOMAIN=syntegon.com
 
-# OPTIONAL - Email Verification
-EMAIL_SERVICE=resend  # or 'sendgrid' (legacy)
-EMAIL_API_KEY=re_xxxxxxxxxxxxx
-FROM_EMAIL=noreply@syntegon.com
+# OPTIONAL - Email Verification (Gmail SMTP)
+EMAIL_USER=your-gmail-account@gmail.com
+EMAIL_PASSWORD=your-app-specific-password
+FROM_EMAIL=your-gmail-account@gmail.com  # Optional, defaults to EMAIL_USER
 ```
 
 ### Generating JWT_SECRET
@@ -66,53 +66,45 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 
 ## Email Verification Setup
 
-### Option 1: Resend (Recommended - Free Forever)
+### Gmail SMTP (Current Implementation)
 
-**Why Resend?**
-- ✅ 100 emails/day FREE forever (way more than you need)
-- ✅ Modern, developer-friendly API
-- ✅ Beautiful email templates
+**Why Gmail SMTP?**
+- ✅ FREE indefinitely (no time limits)
 - ✅ No credit card required
-- ✅ Simple setup
+- ✅ No personal domain required
+- ✅ Reliable and simple
+- ✅ 500 emails/day (more than enough)
 
 **Setup (5 minutes):**
 
-1. Sign up at [Resend](https://resend.com/)
-2. Create an API key:
-   - Go to API Keys
-   - Click "Create API Key"
-   - Name: "EOL Checker Auth"
-   - Copy the key (starts with `re_`)
-3. Set environment variables in Netlify:
-   ```
-   EMAIL_SERVICE=resend
-   EMAIL_API_KEY=re_xxxxxxxxxxxxx  # ⚠️ Mark as SECRET
-   FROM_EMAIL=noreply@syntegon.com
-   ```
-4. (Optional) Verify your domain for production use
+1. **Enable 2-Step Verification** on your Gmail account:
+   - Go to [Google Account Security](https://myaccount.google.com/security)
+   - Enable "2-Step Verification"
 
-That's it! Resend is now configured.
+2. **Create App Password**:
+   - Go to [App Passwords](https://myaccount.google.com/apppasswords)
+   - Select app: "Mail"
+   - Select device: "Other (Custom name)" → Enter "EOL Checker"
+   - Click "Generate"
+   - Copy the 16-character password (format: `xxxx xxxx xxxx xxxx`)
+
+3. **Set environment variables in Netlify**:
+   ```bash
+   EMAIL_USER=your-gmail-account@gmail.com  # ⚠️ Mark as SECRET
+   EMAIL_PASSWORD=xxxx xxxx xxxx xxxx       # ⚠️ Mark as SECRET (app password)
+   FROM_EMAIL=your-gmail-account@gmail.com  # Optional
+   ```
+
+**Important Notes:**
+- Never use your regular Gmail password - only use App Passwords
+- App Passwords can be revoked anytime from Google Account settings
+- Gmail SMTP uses TLS encryption (port 587)
 
 **Free Tier Limits:**
-- 100 emails/day (3,000/month) - More than enough for <10 users
-- 1 domain - Perfect
-- 1-day data retention - Not a problem (we don't need long-term logs)
+- 500 emails/day - Perfect for small teams
+- No time limit - Free forever
 
-### Option 2: SendGrid (Legacy - NOT Recommended)
-
-⚠️ **Note:** SendGrid's free tier is now limited to 60 days only.
-
-If you still want to use SendGrid:
-1. Sign up at [SendGrid](https://sendgrid.com/)
-2. Create an API key
-3. Set environment variables:
-   ```
-   EMAIL_SERVICE=sendgrid
-   EMAIL_API_KEY=SG.xxxxxxxxxxxxx
-   FROM_EMAIL=noreply@syntegon.com
-   ```
-
-### Option 3: Manual (Development Only)
+### Manual Mode (Development Only)
 
 If no email service is configured:
 - Registration returns verification URL in response (dev mode only)

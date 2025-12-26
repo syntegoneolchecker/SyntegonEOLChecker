@@ -5,7 +5,7 @@ const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { tavily } = require('@tavily/core');
 const logger = require('./lib/logger');
-const { _requireAuth } = require('./lib/auth-middleware');
+const { errorResponse, validationErrorResponse } = require('./lib/response-builder');
 
 /**
  * Get manufacturer-specific direct URL if available
@@ -232,7 +232,8 @@ exports.handler = async function(event, context) {
         // Validate input
         const validation = validateInitializeJob(requestBody);
         if (!validation.valid) {
-            return createValidationErrorResponse(validation.errors);
+            logger.error('Validation failed:', validation.errors);
+            return validationErrorResponse(validation.errors);
         }
 
         // Sanitize inputs
@@ -257,58 +258,29 @@ exports.handler = async function(event, context) {
 
     } catch (error) {
         logger.error('Initialize job error:', error);
-        return createErrorResponse(500, 'Internal server error', error.message);
+        return errorResponse('Internal server error', error.message, 500);
     }
 };
 
 // Helper functions
 function handlePreflightAndMethodValidation(event) {
     if (event.httpMethod === 'OPTIONS') {
-        return createCorsResponse(200, '');
+        return {
+            statusCode: 204,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS'
+            },
+            body: ''
+        };
     }
 
     if (event.httpMethod !== 'POST') {
-        return createErrorResponse(405, 'Method Not Allowed');
+        return errorResponse('Method not allowed', null, 405);
     }
 
     return null;
-}
-
-function createCorsResponse(statusCode, body, additionalHeaders = {}) {
-    const headers = {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        ...additionalHeaders
-    };
-
-    return {
-        statusCode,
-        headers,
-        body
-    };
-}
-
-function createErrorResponse(statusCode, error, details = null) {
-    const response = {
-        statusCode,
-        headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ error })
-    };
-
-    if (details) {
-        response.body = JSON.stringify({ error, details });
-    }
-
-    return response;
-}
-
-function createValidationErrorResponse(errors) {
-    logger.error('Validation failed:', errors);
-    return createErrorResponse(400, 'Validation failed', errors);
 }
 
 async function processManufacturerStrategy(maker, model, jobId, context) {
@@ -482,7 +454,7 @@ async function performTavilySearch(maker, model, jobId, context) {
         tavilyData = await tavilyClient.search(searchQuery, getTavilySearchOptions());
     } catch (error) {
         logger.error('Tavily API error:', error);
-        return createErrorResponse(500, 'Tavily API failed', error.message);
+        return errorResponse('Tavily API failed', error.message, 500);
     }
 
     logger.info(`Tavily returned ${tavilyData.results?.length || 0} results`);

@@ -42,12 +42,15 @@ async function scrapeNBKSearchWithBrowserQL(model) {
 
     logger.info(`NBK BrowserQL: Searching at ${searchUrl}`);
 
+    // Escape URL for GraphQL by using JSON string literal encoding
+    const escapedSearchUrlLiteral = JSON.stringify(searchUrl);
+
     // BrowserQL GraphQL query with NBK-specific DOM extraction
     // Uses the same pattern as shared scraper (evaluate with JSON stringify)
     const query = `
         mutation ScrapeNBKSearch {
             goto(
-                url: "${searchUrl}"
+                url: ${escapedSearchUrlLiteral}
                 waitUntil: networkIdle
             ) {
                 status

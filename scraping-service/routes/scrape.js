@@ -423,6 +423,15 @@ async function handleScrapeRequest(req, res) {
   if (!url) {
     return res.status(400).json({ error: "URL is required" });
   }
+  if (!callbackUrl) {
+    return res.status(400).json({ error: "callbackUrl is required" });
+  }
+  if (!jobId) {
+    return res.status(400).json({ error: "jobId is required" });
+  }
+  if (urlIndex === undefined || urlIndex === null) {
+    return res.status(400).json({ error: "urlIndex is required" });
+  }
 
   // SSRF Protection: Validate URLs
   const urlValidation = isSafePublicUrl(url);

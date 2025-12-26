@@ -9,8 +9,7 @@ const {
     getVerificationToken,
     deleteVerificationToken,
     recordFailedLogin,
-    clearFailedLogins,
-    _getFailedLoginCount
+    clearFailedLogins
 } = require('./user-storage');
 
 /**
@@ -19,7 +18,10 @@ const {
  */
 
 // Configuration from environment variables
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-change-in-production';
+if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is required but not set');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = '7d'; // 7 days
 const BCRYPT_ROUNDS = 12; // Cost factor for bcrypt
 const VERIFICATION_TOKEN_EXPIRY = 48 * 60 * 60 * 1000; // 48 hours in ms
