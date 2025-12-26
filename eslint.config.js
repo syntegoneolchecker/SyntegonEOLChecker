@@ -85,6 +85,27 @@ module.exports = [
     // Frontend script.js - functions called from HTML onclick handlers
     {
         files: ['**/script.js', '**/public/script.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module', // Enable ES modules to support top-level await
+            globals: {
+                // Browser globals
+                window: 'readonly',
+                document: 'readonly',
+                fetch: 'readonly',
+                alert: 'readonly',
+                confirm: 'readonly',
+                AbortSignal: 'readonly',
+                AbortController: 'readonly',
+                FileReader: 'readonly',
+                Blob: 'readonly',
+                structuredClone: 'readonly',
+                globalThis: 'readonly',
+                localStorage: 'readonly',
+                // External libraries
+                XLSX: 'readonly'
+            }
+        },
         rules: {
             // Disable unused vars check for script.js - functions are called from HTML
             'no-unused-vars': 'off'

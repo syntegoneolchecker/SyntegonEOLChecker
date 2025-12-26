@@ -1,4 +1,4 @@
-const { registerUser, ALLOWED_EMAIL_DOMAIN } = require('./lib/auth-manager');
+const { registerUser, _ALLOWED_EMAIL_DOMAIN } = require('./lib/auth-manager');
 const nodemailer = require('nodemailer');
 
 /**
