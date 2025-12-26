@@ -312,22 +312,23 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showMessage(
-                        'Account created! Please check your email to verify your account. ' +
-                        (data.verificationUrl ? `Verification link: ${data.verificationUrl}` : ''),
-                        'success'
-                    );
-                    // Clear form
+                    // Clear form immediately
                     document.getElementById('register-form').reset();
-                    // Show info about email
-                    setTimeout(() => {
+
+                    // Show appropriate message based on whether email was sent
+                    if (data.emailSent) {
                         showMessage(
-                            data.emailSent
-                                ? 'Verification email sent. Please check your inbox.'
-                                : 'Please contact your administrator for the verification link.',
-                            'info'
+                            'Account created! A verification email has been sent to your email address. ' +
+                            'Please check your inbox and click the verification link to activate your account.',
+                            'success'
                         );
-                    }, 5000);
+                    } else {
+                        showMessage(
+                            'Account created! However, the verification email could not be sent. ' +
+                            'Please contact your administrator to complete the verification process.',
+                            'error'
+                        );
+                    }
                 } else {
                     showMessage(data.message || 'Registration failed. Please try again.', 'error');
                 }

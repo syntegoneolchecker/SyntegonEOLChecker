@@ -72,10 +72,9 @@ exports.handler = async (event) => {
             body: JSON.stringify({
                 success: true,
                 message: result.message,
-                // In production, don't include verificationUrl in response
-                // Only include it here for development/testing
-                ...(process.env.CONTEXT !== 'production' && { verificationUrl }),
-                emailSent
+                emailSent,
+                // SECURITY: Never expose verification URL in response
+                // User must receive it via email only
             })
         };
 
@@ -102,10 +101,22 @@ exports.handler = async (event) => {
 async function sendVerificationEmail(email, verificationUrl) {
     // Check if email service is configured
     const emailApiKey = process.env.EMAIL_API_KEY;
-    const emailService = process.env.EMAIL_SERVICE; // 'sendgrid', 'ses', etc.
+    const emailService = process.env.EMAIL_SERVICE;
+
+    // Debug logging (safe - doesn't expose the actual key)
+    console.log('Email service config check:', {
+        emailService: emailService || 'NOT SET',
+        hasApiKey: !!emailApiKey,
+        apiKeyLength: emailApiKey ? emailApiKey.length : 0,
+        apiKeyPrefix: emailApiKey ? emailApiKey.substring(0, 3) : 'N/A'
+    });
 
     if (!emailApiKey || !emailService) {
-        console.log('Email service not configured. Verification URL:', verificationUrl);
+        console.error('Email service not configured. Missing:', {
+            EMAIL_SERVICE: !emailService ? 'MISSING' : 'set',
+            EMAIL_API_KEY: !emailApiKey ? 'MISSING' : 'set'
+        });
+        console.log('Verification URL:', verificationUrl);
         return false;
     }
 
