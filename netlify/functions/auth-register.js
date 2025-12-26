@@ -59,7 +59,7 @@ exports.handler = async (event) => {
         const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'http://localhost:8888';
         const verificationUrl = `${siteUrl}/verify.html?token=${result.verificationToken}`;
 
-        // Send verification email (supports Resend, SendGrid, Gmail SMTP)
+        // Send verification email via Gmail SMTP
         console.log(`Verification URL for ${email}: ${verificationUrl}`);
         const emailSent = await sendVerificationEmail(email, verificationUrl);
 
@@ -118,75 +118,12 @@ function getVerificationEmailHtml(verificationUrl) {
 }
 
 /**
- * Send email via Resend API
+ * Send verification email via Gmail SMTP
+ * @param {string} email - Recipient email
+ * @param {string} verificationUrl - Verification URL
+ * @returns {Promise<boolean>} True if email was sent
  */
-async function sendViaResend(email, verificationUrl, apiKey) {
-    try {
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                from: process.env.FROM_EMAIL || `noreply@${ALLOWED_EMAIL_DOMAIN}`,
-                to: [email],
-                subject: 'Verify your EOL Checker account',
-                html: getVerificationEmailHtml(verificationUrl)
-            })
-        });
-
-        if (response.ok) {
-            console.log(`Verification email sent successfully to ${email}`);
-            return true;
-        }
-
-        const errorData = await response.json();
-        console.error('Resend API error:', errorData);
-        return false;
-    } catch (error) {
-        console.error('Failed to send email via Resend:', error);
-        return false;
-    }
-}
-
-/**
- * Send email via SendGrid API
- */
-async function sendViaSendGrid(email, verificationUrl, apiKey) {
-    try {
-        const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                personalizations: [{
-                    to: [{ email }]
-                }],
-                from: {
-                    email: process.env.FROM_EMAIL || `noreply@${ALLOWED_EMAIL_DOMAIN}`
-                },
-                subject: 'Verify your EOL Checker account',
-                content: [{
-                    type: 'text/html',
-                    value: getVerificationEmailHtml(verificationUrl)
-                }]
-            })
-        });
-
-        return response.ok;
-    } catch (error) {
-        console.error('Failed to send email via SendGrid:', error);
-        return false;
-    }
-}
-
-/**
- * Send email via Gmail SMTP
- */
-async function sendViaGmail(email, verificationUrl) {
+async function sendVerificationEmail(email, verificationUrl) {
     const user = process.env.EMAIL_USER;
     const pass = process.env.EMAIL_PASSWORD;
 
@@ -195,6 +132,7 @@ async function sendViaGmail(email, verificationUrl) {
             EMAIL_USER: !user ? 'MISSING' : 'set',
             EMAIL_PASSWORD: !pass ? 'MISSING' : 'set'
         });
+        console.log('Verification URL:', verificationUrl);
         return false;
     }
 
@@ -221,44 +159,4 @@ async function sendViaGmail(email, verificationUrl) {
         console.error('Failed to send email via Gmail SMTP:', error);
         return false;
     }
-}
-
-/**
- * Send verification email using configured email service
- * @param {string} email - Recipient email
- * @param {string} verificationUrl - Verification URL
- * @returns {Promise<boolean>} True if email was sent
- */
-async function sendVerificationEmail(email, verificationUrl) {
-    const emailApiKey = process.env.EMAIL_API_KEY;
-    const emailService = process.env.EMAIL_SERVICE;
-
-    console.log('Email service config check:', {
-        emailService: emailService || 'NOT SET',
-        hasApiKey: !!emailApiKey
-    });
-
-    if (!emailApiKey || !emailService) {
-        console.error('Email service not configured. Missing:', {
-            EMAIL_SERVICE: !emailService ? 'MISSING' : 'set',
-            EMAIL_API_KEY: !emailApiKey ? 'MISSING' : 'set'
-        });
-        console.log('Verification URL:', verificationUrl);
-        return false;
-    }
-
-    // Route to appropriate email service handler
-    const handlers = {
-        'resend': () => sendViaResend(email, verificationUrl, emailApiKey),
-        'sendgrid': () => sendViaSendGrid(email, verificationUrl, emailApiKey),
-        'gmail': () => sendViaGmail(email, verificationUrl)
-    };
-
-    const handler = handlers[emailService];
-    if (!handler) {
-        console.warn(`Unknown email service: ${emailService}`);
-        return false;
-    }
-
-    return await handler();
 }
