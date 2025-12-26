@@ -11,18 +11,17 @@ try {
     const response = await fetch('/.netlify/functions/auth-check');
     const data = await response.json();
 
-    if (!data.authenticated) {
-        // Not authenticated, redirect to login
-        globalThis.location.href = '/auth.html';
-        return;
-    }
-
+if (data.authenticated) {
     // Store user info for later use
     globalThis.currentUser = data.user;
 
     // Authentication successful - show the page content
     document.body.classList.remove('auth-loading');
     document.body.classList.add('auth-verified');
+} else {
+    // Not authenticated, redirect to login
+    globalThis.location.href = '/auth.html';
+}
 } catch (error) {
     console.error('Authentication check failed:', error);
     // Redirect to login on error
