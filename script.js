@@ -6,29 +6,28 @@
 // ============================================================================
 
 // Check authentication before allowing access to the app
-(async function checkAuthentication() {
-    try {
-        const response = await fetch('/.netlify/functions/auth-check');
-        const data = await response.json();
 
-        if (!data.authenticated) {
-            // Not authenticated, redirect to login
-            globalThis.location.href = '/auth.html';
-            return;
-        }
+try {
+    const response = await fetch('/.netlify/functions/auth-check');
+    const data = await response.json();
 
-        // Store user info for later use
-        globalThis.currentUser = data.user;
-
-        // Authentication successful - show the page content
-        document.body.classList.remove('auth-loading');
-        document.body.classList.add('auth-verified');
-    } catch (error) {
-        console.error('Authentication check failed:', error);
-        // Redirect to login on error
+    if (!data.authenticated) {
+        // Not authenticated, redirect to login
         globalThis.location.href = '/auth.html';
+        return;
     }
-})();
+
+    // Store user info for later use
+    globalThis.currentUser = data.user;
+
+    // Authentication successful - show the page content
+    document.body.classList.remove('auth-loading');
+    document.body.classList.add('auth-verified');
+} catch (error) {
+    console.error('Authentication check failed:', error);
+    // Redirect to login on error
+    globalThis.location.href = '/auth.html';
+}
 
 // Helper function to logout
 async function logout() {
