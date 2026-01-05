@@ -22,6 +22,10 @@ const getCsvHandler = async function(_event, _context) {
             const defaultData = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
             return {
                 statusCode: 200,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
                 body: JSON.stringify({ data: defaultData })
             };
         }
@@ -33,6 +37,10 @@ const getCsvHandler = async function(_event, _context) {
             logger.error('CSV parsing failed:', parseResult.error);
             return {
                 statusCode: 500,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
                 body: JSON.stringify({
                     error: 'CSV parsing failed',
                     details: parseResult.error
@@ -47,6 +55,10 @@ const getCsvHandler = async function(_event, _context) {
 
         return {
             statusCode: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             body: JSON.stringify({
                 data: parseResult.data,
                 warnings: parseResult.error || null
@@ -56,6 +68,10 @@ const getCsvHandler = async function(_event, _context) {
         logger.error('Error in get-csv function:', error);
         return {
             statusCode: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             body: JSON.stringify({
                 error: 'Failed to read CSV data: ' + error.message
             })

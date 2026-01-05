@@ -20,7 +20,14 @@ if (data.authenticated) {
     document.body.classList.add('auth-verified');
 
     // Initialize the app - load data, credits, etc.
-    await init();
+    // Don't let init errors trigger auth redirect
+    try {
+        await init();
+    } catch (initError) {
+        console.error('Initialization error:', initError);
+        // Show error but don't redirect - user is authenticated
+        showStatus('⚠️ Error loading data. Please refresh the page.', 'error', true);
+    }
 } else {
     // Not authenticated, redirect to login
     globalThis.location.href = '/auth.html';
