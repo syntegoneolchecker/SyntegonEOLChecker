@@ -18,6 +18,9 @@ if (data.authenticated) {
     // Authentication successful - show the page content
     document.body.classList.remove('auth-loading');
     document.body.classList.add('auth-verified');
+
+    // Initialize the app - load data, credits, etc.
+    await init();
 } else {
     // Not authenticated, redirect to login
     globalThis.location.href = '/auth.html';
