@@ -72,35 +72,12 @@ function getManufacturerUrl(maker, model) {
                 scrapingMethod: 'render'
             };
 
-        case 'IDEC':
-            return {
-                url: `https://jp.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`,
-                scrapingMethod: 'idec_dual_site', // JP site first, US site fallback
-                model: model,
-                jpUrl: `https://jp.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`,
-                usUrl: `https://us.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`
-            };
-
         case 'NBK':
             return {
                 url: `https://www.nbk1560.com/search/?q=${encodedModel}&SelectedLanguage=ja-JP&page=1&imgsize=1&doctype=all&sort=0&pagemax=10&htmlLang=ja`,
                 scrapingMethod: 'nbk_interactive', // Interactive search with product name preprocessing
                 model: model // Pass model for preprocessing (remove 'x' and '-')
             };
-
-        case 'オムロン':
-            {
-                // Preprocess model: replace spaces and / with _
-                const preprocessedModel = model.trim().replaceAll(' ', '_').replaceAll('/', '_');
-                const encodedPreprocessedModel = encodeURIComponent(preprocessedModel);
-                return {
-                    url: `https://www.fa.omron.co.jp/product/item/${encodedPreprocessedModel}`,
-                    scrapingMethod: 'omron_dual_page', // Try primary URL first, fallback to closed/search if error
-                    model: model, // Pass original model for fallback URL
-                    primaryUrl: `https://www.fa.omron.co.jp/product/item/${encodedPreprocessedModel}`,
-                    fallbackUrl: `https://www.fa.omron.co.jp/product/closed/search?keyword=${encodedModel}`
-                };
-            }
 
         default:
             return null; // No direct URL strategy - use Tavily search
@@ -486,7 +463,6 @@ function getTavilySearchOptions() {
             'tamron.com',
             'search.sugatsune.co.jp',
             'sanwa.co.jp',
-            'jp.idec.com',
             'jp.misumi-ec.com',
             'mitsubishielectric.com',
             'kvm-switches-online.com',
@@ -529,7 +505,6 @@ function getTavilySearchOptions() {
             'apiste.co.jp',
             'tdklamda.com',
             'phoenixcontact.com',
-            'idec.com',
             'patlite.co.jp',
             'smcworld.com',
             'sanyodenki.co.jp',
@@ -537,7 +512,6 @@ function getTavilySearchOptions() {
             'sony.co.jp',
             'orientalmotor.co.jp',
             'keyence.co.jp',
-            'fa.omron.co.jp',
             'tme.com/jp',
             'ntn.co.jp'
         ]

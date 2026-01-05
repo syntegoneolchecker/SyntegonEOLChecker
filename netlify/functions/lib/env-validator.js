@@ -56,23 +56,6 @@ function validateScrapingServiceUrl() {
 }
 
 /**
- * Validate proxy URLs (required for IDEC and Omron scraping)
- * @returns {boolean} True if both proxies are configured
- */
-function validateProxies() {
-    const jpProxy = process.env.JP_PROXY;
-    const usProxy = process.env.US_PROXY;
-
-    if (!jpProxy || !usProxy) {
-        logger.warn('⚠️  Proxy URLs not configured - IDEC and Omron scraping will fail');
-        logger.warn('   Missing:', jpProxy ? 'US_PROXY' : 'JP_PROXY');
-        return false;
-    }
-
-    return true;
-}
-
-/**
  * Validate Netlify Blobs token
  * @throws {Error} If token is missing
  */
@@ -116,10 +99,6 @@ function validateAllEnvVars() {
         warnings.push('BrowserQL not configured - some manufacturers may fail');
     }
 
-    if (!validateProxies()) {
-        warnings.push('Proxies not configured - IDEC and Omron manufacturers will fail');
-    }
-
     if (warnings.length > 0) {
         logger.warn('⚠️  Environment warnings:');
         warnings.forEach(w => logger.warn(`   ${w}`));
@@ -138,7 +117,6 @@ module.exports = {
     validateCommonEnvVars,
     validateBrowserQLKey,
     validateScrapingServiceUrl,
-    validateProxies,
     validateBlobsToken,
     validateAllEnvVars
 };
