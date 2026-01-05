@@ -1615,18 +1615,18 @@ function startAutoCheckMonitoring() {
 // to the module by default. We need to explicitly attach functions that are called
 // from HTML onclick/onchange handlers to the global window object.
 
-window.logout = logout;
-window.addRow = addRow;
-window.delRow = delRow;
-window.checkEOL = checkEOL;
-window.downloadExcel = downloadExcel;
-window.loadExcel = loadExcel;
-window.manualSaveDatabase = manualSaveDatabase;
-window.toggleDeleteButtons = toggleDeleteButtons;
-window.clearDatabase = clearDatabase;
-window.toggleAutoCheck = toggleAutoCheck;
-window.manualTriggerAutoCheck = manualTriggerAutoCheck;
-window.sortTable = sortTable;
+globalThis.logout = logout;
+globalThis.addRow = addRow;
+globalThis.delRow = delRow;
+globalThis.checkEOL = checkEOL;
+globalThis.downloadExcel = downloadExcel;
+globalThis.loadExcel = loadExcel;
+globalThis.manualSaveDatabase = manualSaveDatabase;
+globalThis.toggleDeleteButtons = toggleDeleteButtons;
+globalThis.clearDatabase = clearDatabase;
+globalThis.toggleAutoCheck = toggleAutoCheck;
+globalThis.manualTriggerAutoCheck = manualTriggerAutoCheck;
+globalThis.sortTable = sortTable;
 
 // ============================================================================
 // INITIALIZE APP
