@@ -201,9 +201,7 @@ exports.handler = async function(event, context) {
         // Use strategy pattern based on scraping method
         const methodHandlers = {
             'keyence_interactive': handleKeyenceInteractive,
-            'idec_dual_site': handleIdecDualSite,
             'nbk_interactive': handleNbkInteractive,
-            'omron_dual_page': handleOmronDualPage,
             'browserql': handleBrowserQL,
             'default': handleRenderDefault
         };
@@ -350,68 +348,6 @@ async function handleKeyenceInteractive(params) {
     return handleRenderServiceResult(keyenceResult, 'keyence');
 }
 
-async function handleIdecDualSite(params) {
-    const { jobId, urlIndex, model, jpUrl, usUrl, baseUrl, title, snippet, context } = params;
-    logger.info(`Using IDEC dual-site search for model: ${model}`);
-
-    const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
-    const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
-
-    const jpProxyUrl = process.env.JP_PROXY;
-    const usProxyUrl = process.env.US_PROXY;
-
-    if (!jpProxyUrl || !usProxyUrl) {
-        logger.error('IDEC proxy environment variables not set');
-
-        const allDone = await saveUrlResult(jobId, urlIndex, {
-            url: params.url,
-            title: null,
-            snippet,
-            fullContent: '[IDEC proxy configuration error - environment variables not set]'
-        }, context);
-
-        if (allDone) {
-            await triggerAnalysis(jobId, baseUrl);
-        }
-
-        return {
-            statusCode: 500,
-            body: JSON.stringify({
-                success: false,
-                error: 'IDEC proxy environment variables not set',
-                method: 'idec_config_error'
-            })
-        };
-    }
-
-    const idecPayload = {
-        callbackUrl,
-        jobId,
-        urlIndex,
-        title,
-        snippet,
-        extractionMode: 'idec_dual_site',
-        model: model,
-        jpProxyUrl: jpProxyUrl,
-        usProxyUrl: usProxyUrl,
-        jpUrl: jpUrl,
-        usUrl: usUrl
-    };
-
-    logger.info(`IDEC payload: model=${model}, jpUrl=${jpUrl}, usUrl=${usUrl}`);
-
-    const idecResult = await handleRenderServiceCall({
-        payload: idecPayload,
-        serviceUrl: scrapingServiceUrl,
-        endpoint: 'scrape-idec-dual',
-        jobId,
-        urlIndex,
-        methodName: 'IDEC dual-site'
-    });
-
-    return handleRenderServiceResult(idecResult, 'idec_dual_site');
-}
-
 async function handleNbkInteractive(params) {
     const { jobId, urlIndex, model, url, snippet, baseUrl, context } = params;
     logger.info(`Using NBK full BrowserQL scraping for model: ${model}`);
@@ -520,92 +456,6 @@ async function handleNbkSuccess(params) {
         statusCode: 200,
         body: JSON.stringify({ success: true, method: 'nbk_browserql_complete' })
     };
-}
-
-/**
- * Handle Omron dual-page scraping via Render service with Japanese proxy
- *
- * Omron website requires proxy access due to regional restrictions (403 errors without proxy).
- * The Render service must implement 'scrape-omron-dual' endpoint with the following logic:
- *
- * 1. Scrape primaryUrl through jpProxyUrl
- * 2. Check if page contains: '大変申し訳ございませんお探しのページが見つかりませんでした'
- * 3. If error message found, scrape fallbackUrl through jpProxyUrl
- * 4. Return successful page content via callback
- *
- * @param {Object} params - Handler parameters including jobId, urlIndex, url, etc.
- */
-async function handleOmronDualPage(params) {
-    const { jobId, urlIndex, url, title, snippet, baseUrl, context } = params;
-    logger.info(`Using Omron dual-page strategy for job ${jobId}, URL ${urlIndex}`);
-
-    const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
-    const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
-
-    const jpProxyUrl = process.env.JP_PROXY;
-
-    if (!jpProxyUrl) {
-        logger.error('JP_PROXY environment variable not set');
-
-        const allDone = await saveUrlResult(jobId, urlIndex, {
-            url: url,
-            title: null,
-            snippet,
-            fullContent: '[Omron proxy configuration error - JP_PROXY environment variable not set]'
-        }, context);
-
-        if (allDone) {
-            await triggerAnalysis(jobId, baseUrl);
-        }
-
-        return {
-            statusCode: 500,
-            body: JSON.stringify({
-                success: false,
-                error: 'JP_PROXY environment variable not set',
-                method: 'omron_config_error'
-            })
-        };
-    }
-
-    // Get fallback URL from job data
-    const job = await getJob(jobId, context);
-    const urlData = job.urls.find(u => u.index === urlIndex);
-    const fallbackUrl = urlData?.fallbackUrl;
-
-    if (!fallbackUrl) {
-        logger.error('Omron fallback URL not found in job data');
-        return await handleCommonError({
-            ...params,
-            error: new Error('Fallback URL not found in job data'),
-            method: 'omron_missing_fallback'
-        });
-    }
-
-    const omronPayload = {
-        callbackUrl,
-        jobId,
-        urlIndex,
-        title,
-        snippet,
-        extractionMode: 'omron_dual_page',
-        jpProxyUrl: jpProxyUrl,
-        primaryUrl: url,
-        fallbackUrl: fallbackUrl
-    };
-
-    logger.info(`Omron payload: primaryUrl=${url}, fallbackUrl=${fallbackUrl}`);
-
-    const omronResult = await handleRenderServiceCall({
-        payload: omronPayload,
-        serviceUrl: scrapingServiceUrl,
-        endpoint: 'scrape-omron-dual',
-        jobId,
-        urlIndex,
-        methodName: 'Omron dual-page'
-    });
-
-    return handleRenderServiceResult(omronResult, 'omron_dual_page');
 }
 
 async function handleBrowserQL(params) {

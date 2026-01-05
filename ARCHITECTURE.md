@@ -17,7 +17,6 @@ All architectural decisions are driven by these **hard limits**:
 | **Tavily Search** | 1,000 tokens/month | - 2 Tokens per search, only 2 search results used due to LLM Token constraints<br/>- Manufacturer-specific direct URLs to skip search<br/>- 20 product limit on daily auto-checks |
 | **BrowserQL** | 1,000 tokens/month<br/>(1 token = 30 seconds) | - Use ONLY for Cloudflare-protected sites<br/>- Puppeteer (free) for everything else |
 | **Render (Scraping Service)** | 512MB RAM<br/>750 hours/month | - Aggressive memory management<br/>- Self-restart when approaching limit<br/>- Sequential scraping (no concurrency) |
-| **Webshare Proxies** | 1GB bandwidth/month | - Use proxies ONLY when needed (IDEC geo-restriction) |
 | **Netlify Blobs** | Limited storage | - Job cleanup after 5 minutes<br/>- No historical data retention |
 
 ### Key Architectural Decisions
@@ -145,24 +144,6 @@ async function createJob(maker, model, context) {
 - Max 60 attempts (2 minutes)
 - Good enough for ~10-20 checks/day volume
 
-#### 7. **IDEC Dual-Site with Proxies** (`scraping-service/index.js:1316-1714`)
-
-**Problem**: IDEC automatically redirects based on IP location. Japanese site has different data than US site.
-
-**Solution**:
-- Use 2 Webshare proxies (Japan + USA IPs)
-- Try JP site first, fall back to US site
-- Only use proxies for this specific manufacturer
-
-```javascript
-// Step 1: Try JP proxy
-const jpResult = await scrapeIdecSite(jpUrl, jpProxyUrl, 'JP');
-if (jpResult.success) return jpResult;
-
-// Step 2: Fall back to US proxy
-const usResult = await scrapeIdecSite(usUrl, usProxyUrl, 'US');
-```
-
 ## Data Flow
 
 ### Manual EOL Check
@@ -225,7 +206,6 @@ Add a manufacturer to `initialize-job.js:12-90` if:
 2. **Determine Scraping Method**:
    - Try Puppeteer first (free)
    - If Cloudflare-protected → BrowserQL (limited tokens)
-   - If geo-restricted → Add proxy configuration
 
 3. **Add to Switch Statement**:
    ```javascript

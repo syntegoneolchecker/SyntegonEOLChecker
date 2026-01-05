@@ -18,8 +18,6 @@ describe('Environment Validator', () => {
         delete process.env.NETLIFY_TOKEN;
         delete process.env.BROWSERQL_API_KEY;
         delete process.env.SCRAPING_SERVICE_URL;
-        delete process.env.JP_PROXY;
-        delete process.env.US_PROXY;
 
         // Reset modules to get fresh imports
         jest.resetModules();
@@ -132,43 +130,6 @@ describe('Environment Validator', () => {
             process.env.BROWSERQL_API_KEY = 'test-browserql-key';
 
             const result = envValidator.validateBrowserQLKey();
-
-            expect(result).toBe(true);
-        });
-    });
-
-    describe('validateProxies', () => {
-        test('should return false if both proxies are missing', () => {
-            const result = envValidator.validateProxies();
-
-            expect(result).toBe(false);
-            expect(console.warn).toHaveBeenCalledWith(
-                '[WARN]',
-                expect.stringContaining('Proxy URLs not configured')
-            );
-        });
-
-        test('should return false if only JP proxy is present', () => {
-            process.env.JP_PROXY = 'http://jp-proxy.com';
-
-            const result = envValidator.validateProxies();
-
-            expect(result).toBe(false);
-        });
-
-        test('should return false if only US proxy is present', () => {
-            process.env.US_PROXY = 'http://us-proxy.com';
-
-            const result = envValidator.validateProxies();
-
-            expect(result).toBe(false);
-        });
-
-        test('should return true if both proxies are present', () => {
-            process.env.JP_PROXY = 'http://jp-proxy.com';
-            process.env.US_PROXY = 'http://us-proxy.com';
-
-            const result = envValidator.validateProxies();
 
             expect(result).toBe(true);
         });

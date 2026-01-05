@@ -47,14 +47,14 @@ describe('Job Storage', () => {
         });
 
         test('should create job with all required fields', async () => {
-            const jobId = await jobStorage.createJob('IDEC', 'LF1B-NB3');
+            const jobId = await jobStorage.createJob('SMC', 'KQ2H06-01AS');
 
             expect(mockStore.setJSON).toHaveBeenCalledWith(
                 jobId,
                 expect.objectContaining({
                     jobId: expect.any(String),
-                    maker: 'IDEC',
-                    model: 'LF1B-NB3',
+                    maker: 'SMC',
+                    model: 'KQ2H06-01AS',
                     status: 'created',
                     urls: [],
                     urlResults: {},
