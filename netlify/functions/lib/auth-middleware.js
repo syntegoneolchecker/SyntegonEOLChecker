@@ -44,7 +44,8 @@ function requireAuth(handler) {
             return {
                 statusCode: 401,
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
                 },
                 body: JSON.stringify({
                     error: 'Authentication required',
@@ -59,7 +60,8 @@ function requireAuth(handler) {
             return {
                 statusCode: 401,
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
                 },
                 body: JSON.stringify({
                     error: 'Invalid authentication',
