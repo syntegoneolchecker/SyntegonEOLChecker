@@ -21,6 +21,9 @@ let isManualCheckRunning = false; // Track if manual Check EOL is in progress
 let groqCountdownInterval = null;
 let groqResetTimestamp = null;
 
+// Auto-check monitoring interval
+let _autoCheckMonitoringInterval = null;
+
 // ============================================================================
 // AUTHENTICATION CHECK
 // ============================================================================
@@ -1575,8 +1578,6 @@ async function autoDisableOnLowCredits(state) {
 }
 
 // Monitor auto-check state periodically
-let _autoCheckMonitoringInterval = null;
-
 function startAutoCheckMonitoring() {
     // Check every 10 seconds
     _autoCheckMonitoringInterval = setInterval(async () => {
