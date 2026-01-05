@@ -1608,8 +1608,29 @@ function startAutoCheckMonitoring() {
 }
 
 // ============================================================================
+// EXPOSE FUNCTIONS TO GLOBAL SCOPE FOR HTML ONCLICK HANDLERS
+// ============================================================================
+
+// Since script.js is loaded as a module (type="module"), all functions are scoped
+// to the module by default. We need to explicitly attach functions that are called
+// from HTML onclick/onchange handlers to the global window object.
+
+window.logout = logout;
+window.addRow = addRow;
+window.delRow = delRow;
+window.checkEOL = checkEOL;
+window.downloadExcel = downloadExcel;
+window.loadExcel = loadExcel;
+window.manualSaveDatabase = manualSaveDatabase;
+window.toggleDeleteButtons = toggleDeleteButtons;
+window.clearDatabase = clearDatabase;
+window.toggleAutoCheck = toggleAutoCheck;
+window.manualTriggerAutoCheck = manualTriggerAutoCheck;
+window.sortTable = sortTable;
+
+// ============================================================================
 // INITIALIZE APP
 // ============================================================================
 
-// Initialize when page loads
-document.addEventListener('DOMContentLoaded', init);
+// Note: init() is called from the authentication check at the top of this file
+// (after successful authentication), so no additional initialization is needed here.
