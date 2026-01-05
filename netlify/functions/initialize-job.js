@@ -455,6 +455,9 @@ function getTavilySearchOptions() {
         searchDepth: 'advanced',
         maxResults: 2,
         includeDomains: [
+            'fa.omron.co.jp',
+            'jp.idec.com',
+            'us.idec.com',
             'ccs-grp.com',
             'automationdirect.com',
             'takigen.co.jp',
@@ -478,7 +481,7 @@ function getTavilySearchOptions() {
             'habasit.com',
             'nagoya.sc',
             'amazon.co.jp',
-            'tps.co.jp/eol/',
+            'tps.co.jp/eol',
             'ccs-inc.co.jp',
             'shinkoh-faulhaber.jp',
             'anelva.canon',
