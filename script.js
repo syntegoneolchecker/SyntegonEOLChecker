@@ -2,6 +2,26 @@
 // ESLint's no-unused-vars is disabled for this file (see eslint.config.js)
 
 // ============================================================================
+// GLOBAL VARIABLES
+// ============================================================================
+
+let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
+
+// Sorting state
+let originalData = null; // Stores the original order for reset
+const currentSort = {
+    column: null, // Column index being sorted (0-5 for sortable columns)
+    direction: null // 'asc', 'desc', or null
+};
+
+// Manual Check EOL state
+let isManualCheckRunning = false; // Track if manual Check EOL is in progress
+
+// Countdown interval for Groq rate limit reset
+let groqCountdownInterval = null;
+let groqResetTimestamp = null;
+
+// ============================================================================
 // AUTHENTICATION CHECK
 // ============================================================================
 
@@ -9,11 +29,11 @@
 
 try {
     const response = await fetch('/.netlify/functions/auth-check');
-    const data = await response.json();
+    const authData = await response.json();
 
-if (data.authenticated) {
+if (authData.authenticated) {
     // Store user info for later use
-    globalThis.currentUser = data.user;
+    globalThis.currentUser = authData.user;
 
     // Authentication successful - show the page content
     document.body.classList.remove('auth-loading');
@@ -49,22 +69,6 @@ async function logout() {
         globalThis.location.href = '/auth.html';
     }
 }
-
-let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
-
-// Sorting state
-let originalData = null; // Stores the original order for reset
-const currentSort = {
-    column: null, // Column index being sorted (0-5 for sortable columns)
-    direction: null // 'asc', 'desc', or null
-};
-
-// Manual Check EOL state
-let isManualCheckRunning = false; // Track if manual Check EOL is in progress
-
-// Countdown interval for Groq rate limit reset
-let groqCountdownInterval = null;
-let groqResetTimestamp = null;
 
 // ============================================================================
 // INITIALIZATION
