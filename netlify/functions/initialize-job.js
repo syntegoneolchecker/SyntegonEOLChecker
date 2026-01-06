@@ -5,6 +5,7 @@ const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { tavily } = require('@tavily/core');
 const logger = require('./lib/logger');
+const config = require('./lib/config');
 const { errorResponse, validationErrorResponse } = require('./lib/response-builder');
 
 /**
@@ -440,9 +441,12 @@ async function performTavilySearch(maker, model, jobId, context) {
         return await handleNoSearchResults(maker, model, jobId, context);
     }
 
-    const urls = tavilyData.results.map((result, index) =>
-        createUrlEntry(index, result.url, result.title, result.content || '')
-    );
+    // Only use top 2 results for scraping (even though we fetch 10 for better relevance sorting)
+    const urls = tavilyData.results
+        .slice(0, 2)
+        .map((result, index) =>
+            createUrlEntry(index, result.url, result.title, result.content || '')
+        );
 
     await saveJobUrls(jobId, urls, context);
     logger.info(`Job ${jobId} initialized with ${urls.length} URLs`);
@@ -452,8 +456,8 @@ async function performTavilySearch(maker, model, jobId, context) {
 
 function getTavilySearchOptions() {
     return {
-        searchDepth: 'advanced',
-        maxResults: 2,
+        searchDepth: config.TAVILY_SEARCH_DEPTH,
+        maxResults: config.TAVILY_MAX_RESULTS,
         includeDomains: [
             'fa.omron.co.jp',
             'jp.idec.com',
