@@ -396,19 +396,19 @@ async function handleDirectUrlStrategy(maker, model, jobId, strategy, context) {
 function urlEndsWithModel(url, normalizedModel) {
     try {
         const urlObj = new URL(url);
-        const pathSegments = urlObj.pathname.split('/').filter(s => s);
+        const pathSegments = urlObj.pathname.split('/').filter(Boolean);
 
         if (pathSegments.length === 0) return false;
 
-        const lastSegment = pathSegments[pathSegments.length - 1];
+        const lastSegment = pathSegments.at(-1);
 
         // Decode URL encoding and normalize
         const decodedSegment = decodeURIComponent(lastSegment).toUpperCase();
 
         // Check exact match or common variations
         return decodedSegment === normalizedModel ||
-               decodedSegment === normalizedModel.replace(/-/g, '') ||
-               decodedSegment === normalizedModel.replace(/-/g, '_');
+               decodedSegment === normalizedModel.replaceAll('-', '') ||
+               decodedSegment === normalizedModel.replaceAll('-', '_');
     } catch (e) {
         logger.warn(`Failed to parse URL for model matching: ${url}`, e.message);
         return false;
