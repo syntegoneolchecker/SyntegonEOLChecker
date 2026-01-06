@@ -437,6 +437,11 @@ function selectBestUrls(tavilyResults, model) {
         }
     }
 
+        // Log selected URLs for debugging
+    tavilyResults.forEach((result, index) => {
+        logger.info(`Found URL Number ${index + 1}: ${result.url}`);
+    });
+
     logger.info(`Smart URL selection: ${exactMatchUrls.length} exact matches, ${regularUrls.length} regular URLs from ${tavilyResults.length} total`);
 
     // Select best 2 URLs based on priority
