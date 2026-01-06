@@ -34,7 +34,7 @@ module.exports = {
     TABLE_CONTEXT_ROWS_AFTER: 3,        // Rows to keep after product mention in tables
 
     // === TAVILY SEARCH ===
-    TAVILY_MAX_RESULTS: 10,             // Search results to fetch (we only scrape top 2 to stay within groq token limits)
+    TAVILY_MAX_RESULTS: 20,             // Search results to fetch (we only scrape top 2 to stay within groq token limits)
     TAVILY_SEARCH_DEPTH: 'advanced',    // Search depth level (this is why token cost is 2 per search)
 
     // === BROWSERQL / SCRAPING ===
