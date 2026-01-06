@@ -539,6 +539,7 @@ function getTavilySearchOptions() {
     return {
         searchDepth: config.TAVILY_SEARCH_DEPTH,
         maxResults: config.TAVILY_MAX_RESULTS,
+        auto_parameters: false,
         includeDomains: [
             'fa.omron.co.jp',
             'jp.idec.com',
