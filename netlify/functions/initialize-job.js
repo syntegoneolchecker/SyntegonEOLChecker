@@ -387,6 +387,83 @@ async function handleDirectUrlStrategy(maker, model, jobId, strategy, context) {
         { scrapingMethod: strategy.scrapingMethod });
 }
 
+/**
+ * Check if a URL path ends with the product model name
+ * @param {string} url - URL to check
+ * @param {string} normalizedModel - Normalized (uppercase) product model
+ * @returns {boolean} True if URL ends with model name
+ */
+function urlEndsWithModel(url, normalizedModel) {
+    try {
+        const urlObj = new URL(url);
+        const pathSegments = urlObj.pathname.split('/').filter(s => s);
+
+        if (pathSegments.length === 0) return false;
+
+        const lastSegment = pathSegments[pathSegments.length - 1];
+
+        // Decode URL encoding and normalize
+        const decodedSegment = decodeURIComponent(lastSegment).toUpperCase();
+
+        // Check exact match or common variations
+        return decodedSegment === normalizedModel ||
+               decodedSegment === normalizedModel.replace(/-/g, '') ||
+               decodedSegment === normalizedModel.replace(/-/g, '_');
+    } catch (e) {
+        logger.warn(`Failed to parse URL for model matching: ${url}`, e.message);
+        return false;
+    }
+}
+
+/**
+ * Select best 2 URLs from Tavily results using smart prioritization
+ * Prioritizes URLs ending with exact product model name
+ * @param {Array} tavilyResults - Array of Tavily search results
+ * @param {string} model - Product model to match
+ * @returns {Array} Best 2 URLs selected
+ */
+function selectBestUrls(tavilyResults, model) {
+    const normalizedModel = model.trim().toUpperCase();
+
+    // Categorize URLs
+    const exactMatchUrls = [];
+    const regularUrls = [];
+
+    for (const result of tavilyResults) {
+        if (urlEndsWithModel(result.url, normalizedModel)) {
+            exactMatchUrls.push(result);
+        } else {
+            regularUrls.push(result);
+        }
+    }
+
+    logger.info(`Smart URL selection: ${exactMatchUrls.length} exact matches, ${regularUrls.length} regular URLs from ${tavilyResults.length} total`);
+
+    // Select best 2 URLs based on priority
+    let selectedResults = [];
+
+    if (exactMatchUrls.length >= 2) {
+        // Use first 2 exact matches
+        selectedResults = exactMatchUrls.slice(0, 2);
+        logger.info(`Selected 2 URLs with exact model match in path`);
+    } else if (exactMatchUrls.length === 1) {
+        // Use 1 exact match + top 1 from regular
+        selectedResults = [exactMatchUrls[0], regularUrls[0]].filter(Boolean);
+        logger.info(`Selected 1 exact match + 1 top regular URL`);
+    } else {
+        // Use top 2 from regular (current behavior)
+        selectedResults = regularUrls.slice(0, 2);
+        logger.info(`No exact matches found, using top 2 regular URLs`);
+    }
+
+    // Log selected URLs for debugging
+    selectedResults.forEach((result, index) => {
+        logger.info(`Selected URL ${index + 1}: ${result.url}`);
+    });
+
+    return selectedResults;
+}
+
 function createUrlEntry(index, url, title, snippet, scrapingMethod = null) {
     const entry = {
         index,
@@ -441,12 +518,11 @@ async function performTavilySearch(maker, model, jobId, context) {
         return await handleNoSearchResults(maker, model, jobId, context);
     }
 
-    // Only use top 2 results for scraping (even though we fetch 10 for better relevance sorting)
-    const urls = tavilyData.results
-        .slice(0, 2)
-        .map((result, index) =>
-            createUrlEntry(index, result.url, result.title, result.content || '')
-        );
+    // Smart URL selection: prioritize URLs ending with exact product model
+    const selectedResults = selectBestUrls(tavilyData.results, model);
+    const urls = selectedResults.map((result, index) =>
+        createUrlEntry(index, result.url, result.title, result.content || '')
+    );
 
     await saveJobUrls(jobId, urls, context);
     logger.info(`Job ${jobId} initialized with ${urls.length} URLs`);
