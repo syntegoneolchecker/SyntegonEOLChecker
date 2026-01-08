@@ -85,6 +85,11 @@ async function init() {
     await checkRenderHealth();
     await loadAutoCheckState();
     startAutoCheckMonitoring(); // Start periodic monitoring
+
+    // Ensure delete toggle is unchecked on load
+    const deleteToggle = document.getElementById('delete-toggle');
+    deleteToggle.checked = false;
+    toggleDeleteButtons(); // Apply the state
 }
 
 // ============================================================================
