@@ -16,7 +16,8 @@ function validateEnvironmentVariables() {
 
     const optionalVars = [
         'ALLOWED_ORIGINS', // Defaults to localhost if not set
-        'NODE_ENV' // Development vs production
+        'NODE_ENV', // Development vs production
+        'NETLIFY_SITE_URL' // Required for centralized logging to Netlify
     ];
 
     const errors = [];
