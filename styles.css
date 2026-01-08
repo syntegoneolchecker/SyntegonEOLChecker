@@ -250,7 +250,7 @@ button:disabled {
     font-size: 14px;
     font-weight: 500;
     letter-spacing: 0;
-    line-height: 1.5;
+    line-height: 1;
     margin-right: var(--grid-gutter);
     padding: 8px 6px;
     text-align: center;
