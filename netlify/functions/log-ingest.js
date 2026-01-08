@@ -1,11 +1,30 @@
 /**
  * Central log ingestion endpoint
  * Receives logs from all services and stores them in Netlify Blobs
- * Logs are stored in daily files, one JSON line per log entry
+ * Each log is stored as an individual blob with unique key for thread-safety
+ * Format: logs-YYYY-MM-DD-timestamp-randomId.json
  */
 
 const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
+
+/**
+ * Generate a random string for unique log IDs
+ */
+function generateRandomId(length = 8) {
+  try {
+    return Array.from(crypto.getRandomValues(new Uint8Array(length)))
+      .map(b => b.toString(36))
+      .join('')
+      .replaceAll('.', '')
+      .substring(0, length);
+  } catch {
+    // Fallback to Math.random() if crypto fails
+    return Array.from({ length }, () =>
+      Math.floor(Math.random() * 36).toString(36)
+    ).join('');
+  }
+}
 
 exports.handler = async (event) => {
   // Only accept POST requests
@@ -34,33 +53,23 @@ exports.handler = async (event) => {
       token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
     });
 
-    // Create a key based on the date (YYYY-MM-DD format)
+    // Create a unique key for this log entry to prevent race conditions
+    // Format: logs-YYYY-MM-DD-timestamp-randomId.json
     const date = new Date(logEntry.timestamp);
     const dateKey = date.toISOString().split('T')[0];
-    const logKey = `logs-${dateKey}.jsonl`;
+    const timestampMs = date.getTime();
+    const randomId = generateRandomId(8);
+    const logKey = `logs-${dateKey}-${timestampMs}-${randomId}.json`;
 
-    // Get existing logs for today (if any)
-    let existingLogs = '';
-    try {
-      existingLogs = await store.get(logKey, { type: 'text' }) || '';
-    } catch {
-      // File doesn't exist yet, that's OK
-      existingLogs = '';
-    }
-
-    // Append the new log entry as a JSON line
-    const logLine = JSON.stringify(logEntry) + '\n';
-    const updatedLogs = existingLogs + logLine;
-
-    // Store back to blob
-    await store.set(logKey, updatedLogs);
+    // Store as individual blob (thread-safe, no race conditions)
+    await store.setJSON(logKey, logEntry);
 
     return {
       statusCode: 200,
       body: JSON.stringify({ success: true, stored: logKey })
     };
   } catch (error) {
-    logger.error('Error ingesting log:', error);
+    console.error('[ERROR] Error ingesting log:', error);
     return {
       statusCode: 500,
       body: JSON.stringify({ error: 'Failed to ingest log', message: error.message })

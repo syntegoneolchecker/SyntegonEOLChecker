@@ -10,8 +10,11 @@ const { URLSearchParams } = require("node:url");
 const logger = require("./lib/logger");
 const { requireAuth } = require("./lib/auth-middleware");
 
-// Maximum number of logs to keep (configurable via environment variable)
-const MAX_LOGS = Number.parseInt(process.env.MAX_LOGS) || 300;
+/**
+ * Note: Log cleanup is handled by scheduled-log-cleanup.js (runs every 6 hours)
+ * This function focuses on fast log retrieval and display only
+ * MAX_LOGS limit is enforced by the scheduled cleanup function
+ */
 
 // Parameter parsing - separate concern
 const parseParams = (params) => ({
@@ -99,7 +102,6 @@ const fetchLogsForDate = async (store, dateKey) => {
 const fetchLogBlobs = async (store, blobs) => {
     const logPromises = blobs.map((blob) =>
         store.get(blob.key, { type: "json" })
-            .then(logData => ({ ...logData, _blobKey: blob.key }))
             .catch(() => null)
     );
 
@@ -109,40 +111,6 @@ const fetchLogBlobs = async (store, blobs) => {
         .map((result) => result.value);
 };
 
-// Log cleanup - keeps only the most recent MAX_LOGS entries
-const cleanupOldLogs = async (store, logs) => {
-    // Only run cleanup if we exceed the limit
-    if (logs.length <= MAX_LOGS) {
-        return logs;
-    }
-
-    // Sort by timestamp descending (newest first)
-    const sortedLogs = [...logs].sort((a, b) =>
-        b.timestamp.localeCompare(a.timestamp)
-    );
-
-    // Split into logs to keep and logs to delete
-    const logsToKeep = sortedLogs.slice(0, MAX_LOGS);
-    const logsToDelete = sortedLogs.slice(MAX_LOGS);
-
-    // Delete old logs from blob storage (fire and forget for performance)
-    if (logsToDelete.length > 0) {
-        // Don't await this - let it run in the background
-        Promise.allSettled(
-            logsToDelete.map(log =>
-                log._blobKey ? store.delete(log._blobKey) : Promise.resolve()
-            )
-        ).catch(() => {
-            // Silently ignore deletion errors
-        });
-    }
-
-    // Remove the _blobKey property from logs before returning
-    return logsToKeep.map(log => {
-        const { _blobKey, ...cleanLog } = log;
-        return cleanLog;
-    });
-};
 
 // Response formatting - separate concern
 const formatResponse = (paginatedData, filters, format) => {
@@ -199,11 +167,8 @@ const viewLogsHandler = async (event) => {
         const datesToFetch = getDatesToFetch(date, days);
         const allLogs = await fetchLogsForDates(store, datesToFetch);
 
-        // Cleanup old logs if we exceed the maximum limit
-        const cleanedLogs = await cleanupOldLogs(store, allLogs);
-
         const filters = { source, level, search, days };
-        const filteredLogs = filterLogs(cleanedLogs, filters);
+        const filteredLogs = filterLogs(allLogs, filters);
 
         // Sort descending (newest first) for pagination
         filteredLogs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));

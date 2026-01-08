@@ -1,6 +1,5 @@
 // Initialize EOL check job - Search with Tavily and save URLs
 const { createJob, saveJobUrls, saveFinalResult, saveUrlResult } = require('./lib/job-storage');
-const { cleanupOldLogs } = require('./lib/log-storage');
 const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { tavily } = require('@tavily/core');
@@ -219,10 +218,8 @@ exports.handler = async function(event, context) {
         const model = sanitizeString(requestBody.model, 200);
         logger.info('Creating job for:', { maker, model });
 
-        // Clean up old logs (runs before creating job, similar to job cleanup)
-        await cleanupOldLogs();
-
         // Create job (this also triggers job cleanup internally)
+        // Note: Log cleanup is now handled by scheduled-log-cleanup.js
         const jobId = await createJob(maker, model, context);
 
         // Process manufacturer strategy or fall back to search
