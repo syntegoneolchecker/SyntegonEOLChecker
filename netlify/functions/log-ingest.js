@@ -6,7 +6,6 @@
  */
 
 const { getStore } = require('@netlify/blobs');
-const logger = require('./lib/logger');
 
 /**
  * Generate a random string for unique log IDs
