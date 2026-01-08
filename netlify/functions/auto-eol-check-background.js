@@ -620,6 +620,8 @@ async function updateProduct(sapNumber, result) {
 // Helper: Disable Auto Check for product with missing manufacturer/model
 async function disableAutoCheckForMissingData(sapNumber, missingField) {
     try {
+        logger.info(`Disabling Auto Check for ${sapNumber} (missing ${missingField})`);
+
         const csvStore = getStore({
             name: 'eol-database',
             siteID: process.env.SITE_ID,
@@ -632,6 +634,8 @@ async function disableAutoCheckForMissingData(sapNumber, missingField) {
             return;
         }
 
+        logger.info('Database retrieved, parsing CSV...');
+
         // Parse CSV using shared utility
         const parseResult = parseCSV(csvContent);
 
@@ -641,6 +645,7 @@ async function disableAutoCheckForMissingData(sapNumber, missingField) {
         }
 
         const data = parseResult.data;
+        logger.info(`CSV parsed, total rows: ${data.length}`);
 
         // Find product by SAP number
         const rowIndex = data.findIndex((row, i) => i > 0 && row[0] === sapNumber);
@@ -650,23 +655,31 @@ async function disableAutoCheckForMissingData(sapNumber, missingField) {
             return;
         }
 
+        logger.info(`Found product at row index ${rowIndex}`);
         const row = data[rowIndex];
+
+        logger.info(`Before update - Auto Check (col 12): "${row[12]}", Status Comment (col 6): "${row[6]}"`);
 
         // Update columns
         row[6] = `Auto Check disabled: Missing ${missingField} information`; // Status Comment
         row[11] = getGMT9DateTime(); // Information Date (GMT+9)
         row[12] = 'NO'; // Auto Check disabled
 
+        logger.info(`After update - Auto Check (col 12): "${row[12]}", Status Comment (col 6): "${row[6]}"`);
+
         // Convert back to CSV using shared utility
         const updatedCsv = toCSV(data);
+        logger.info(`CSV converted, length: ${updatedCsv.length} bytes`);
 
         // Save updated database
         await csvStore.set('database.csv', updatedCsv);
+        logger.info('Database saved to Blobs storage');
 
-        logger.info(`Auto Check disabled for ${sapNumber} (missing ${missingField})`);
+        logger.info(`✓ Auto Check disabled for ${sapNumber} (missing ${missingField})`);
 
     } catch (error) {
         logger.error('Error disabling Auto Check:', error);
+        throw error; // Re-throw to ensure error is visible
     }
 }
 
