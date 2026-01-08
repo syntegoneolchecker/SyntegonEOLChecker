@@ -25,13 +25,13 @@ function getManufacturerUrl(maker, model) {
                 scrapingMethod: 'render'
             };
 
-        case 'オリエンタルモーター':
+        case 'ORIENTAL MOTOR':
             return {
                 url: `https://www.orientalmotor.co.jp/ja/products/products-search/replacement?hinmei=${encodedModel}`,
                 scrapingMethod: 'browserql' // Use BrowserQL for Cloudflare-protected site
             };
 
-        case 'ミスミ':
+        case 'MISUMI':
             return {
                 url: `https://jp.misumi-ec.com/vona2/result/?Keyword=${encodedModel}`,
                 scrapingMethod: 'render'
@@ -44,14 +44,14 @@ function getManufacturerUrl(maker, model) {
                 requiresValidation: true // Need to check if search returns results
             };
 
-        case 'キーエンス':
+        case 'KEYENCE':
             return {
                 url: 'https://www.keyence.co.jp/', // Base URL (actual search is interactive)
                 scrapingMethod: 'keyence_interactive', // Special method for interactive search
                 model: model // Pass model for interactive search
             };
 
-        case 'タキゲン':
+        case 'TAKIGEN':
             return {
                 url: `https://www.takigen.co.jp/search?k=${encodedModel}&d=0`,
                 scrapingMethod: 'render',
@@ -59,7 +59,7 @@ function getManufacturerUrl(maker, model) {
                 requiresExtraction: true // Extract product URL from search results
             };
 
-        case '日進電子':
+        case 'NISSIN ELECTRONIC':
             return {
                 url: `https://nissin-ele.co.jp/product/${encodedModel}`,
                 scrapingMethod: 'render',
