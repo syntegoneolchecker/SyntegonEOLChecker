@@ -2,6 +2,29 @@
 // ESLint's no-unused-vars is disabled for this file (see eslint.config.js)
 
 // ============================================================================
+// GLOBAL VARIABLES
+// ============================================================================
+
+let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
+
+// Sorting state
+let originalData = null; // Stores the original order for reset
+const currentSort = {
+    column: null, // Column index being sorted (0-5 for sortable columns)
+    direction: null // 'asc', 'desc', or null
+};
+
+// Manual Check EOL state
+let isManualCheckRunning = false; // Track if manual Check EOL is in progress
+
+// Countdown interval for Groq rate limit reset
+let groqCountdownInterval = null;
+let groqResetTimestamp = null;
+
+// Auto-check monitoring interval
+let _autoCheckMonitoringInterval = null;
+
+// ============================================================================
 // AUTHENTICATION CHECK
 // ============================================================================
 
@@ -9,15 +32,25 @@
 
 try {
     const response = await fetch('/.netlify/functions/auth-check');
-    const data = await response.json();
+    const authData = await response.json();
 
-if (data.authenticated) {
+if (authData.authenticated) {
     // Store user info for later use
-    globalThis.currentUser = data.user;
+    globalThis.currentUser = authData.user;
 
     // Authentication successful - show the page content
     document.body.classList.remove('auth-loading');
     document.body.classList.add('auth-verified');
+
+    // Initialize the app - load data, credits, etc.
+    // Don't let init errors trigger auth redirect
+    try {
+        await init();
+    } catch (initError) {
+        console.error('Initialization error:', initError);
+        // Show error but don't redirect - user is authenticated
+        showStatus('⚠️ Error loading data. Please refresh the page.', 'error', true);
+    }
 } else {
     // Not authenticated, redirect to login
     globalThis.location.href = '/auth.html';
@@ -40,22 +73,6 @@ async function logout() {
     }
 }
 
-let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
-
-// Sorting state
-let originalData = null; // Stores the original order for reset
-const currentSort = {
-    column: null, // Column index being sorted (0-5 for sortable columns)
-    direction: null // 'asc', 'desc', or null
-};
-
-// Manual Check EOL state
-let isManualCheckRunning = false; // Track if manual Check EOL is in progress
-
-// Countdown interval for Groq rate limit reset
-let groqCountdownInterval = null;
-let groqResetTimestamp = null;
-
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -68,6 +85,11 @@ async function init() {
     await checkRenderHealth();
     await loadAutoCheckState();
     startAutoCheckMonitoring(); // Start periodic monitoring
+
+    // Ensure delete toggle is unchecked on load
+    const deleteToggle = document.getElementById('delete-toggle');
+    deleteToggle.checked = false;
+    toggleDeleteButtons(); // Apply the state
 }
 
 // ============================================================================
@@ -995,30 +1017,56 @@ async function manualSaveDatabase() {
 }
 
 async function loadFromServer() {
-    try {
-        const response = await fetch('/.netlify/functions/get-csv');
+    const maxRetries = 3;
 
-        if (!response.ok) {
-            throw new Error(`Server returned ${response.status}`);
+    for (let retry = 0; retry <= maxRetries; retry++) {
+        try {
+            // Show retry status to user (except on first attempt)
+            if (retry > 0) {
+                showStatus(`Retrying... (attempt ${retry + 1} of ${maxRetries + 1})`, 'info');
+                console.log(`Database load retry ${retry}/${maxRetries}`);
+            }
+
+            const response = await fetch('/.netlify/functions/get-csv');
+
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            if (result.data && Array.isArray(result.data)) {
+                data = result.data;
+                // Reset sorting state when loading new data
+                originalData = null;
+                currentSort.column = null;
+                currentSort.direction = null;
+                render();
+
+                // Show success message with retry context if applicable
+                if (retry > 0) {
+                    showStatus(`✓ Database loaded successfully after ${retry + 1} attempts`);
+                } else {
+                    showStatus('✓ Database loaded successfully from cloud storage');
+                }
+                return;
+            }
+        } catch (error) {
+            console.error(`Load error (attempt ${retry + 1}/${maxRetries + 1}):`, error);
+
+            // If this was the last retry, show error to user
+            if (retry === maxRetries) {
+                showStatus('⚠️ Unable to connect to cloud storage. Please check your connection.', 'error', true);
+                // Keep default headers for display
+                render();
+                return;
+            }
+
+            // Wait before retrying with exponential backoff (1s, 2s, 4s)
+            const delay = 1000 * Math.pow(2, retry);
+            console.log(`Waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
-
-        const result = await response.json();
-
-        if (result.data && Array.isArray(result.data)) {
-            data = result.data;
-            // Reset sorting state when loading new data
-            originalData = null;
-            currentSort.column = null;
-            currentSort.direction = null;
-            render();
-            showStatus('✓ Database loaded successfully from cloud storage');
-            return;
-        }
-    } catch (error) {
-        console.error('Load error:', error);
-        showStatus('⚠️ Unable to connect to cloud storage. Please check your connection.', 'error', true);
-        // Keep default headers for display
-        render();
     }
 }
 
@@ -1561,8 +1609,6 @@ async function autoDisableOnLowCredits(state) {
 }
 
 // Monitor auto-check state periodically
-let _autoCheckMonitoringInterval = null;
-
 function startAutoCheckMonitoring() {
     // Check every 10 seconds
     _autoCheckMonitoringInterval = setInterval(async () => {
@@ -1593,8 +1639,29 @@ function startAutoCheckMonitoring() {
 }
 
 // ============================================================================
+// EXPOSE FUNCTIONS TO GLOBAL SCOPE FOR HTML ONCLICK HANDLERS
+// ============================================================================
+
+// Since script.js is loaded as a module (type="module"), all functions are scoped
+// to the module by default. We need to explicitly attach functions that are called
+// from HTML onclick/onchange handlers to the global window object.
+
+globalThis.logout = logout;
+globalThis.addRow = addRow;
+globalThis.delRow = delRow;
+globalThis.checkEOL = checkEOL;
+globalThis.downloadExcel = downloadExcel;
+globalThis.loadExcel = loadExcel;
+globalThis.manualSaveDatabase = manualSaveDatabase;
+globalThis.toggleDeleteButtons = toggleDeleteButtons;
+globalThis.clearDatabase = clearDatabase;
+globalThis.toggleAutoCheck = toggleAutoCheck;
+globalThis.manualTriggerAutoCheck = manualTriggerAutoCheck;
+globalThis.sortTable = sortTable;
+
+// ============================================================================
 // INITIALIZE APP
 // ============================================================================
 
-// Initialize when page loads
-document.addEventListener('DOMContentLoaded', init);
+// Note: init() is called from the authentication check at the top of this file
+// (after successful authentication), so no additional initialization is needed here.

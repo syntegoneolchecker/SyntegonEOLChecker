@@ -54,13 +54,11 @@ Set these in your Netlify dashboard under Site Settings > Environment Variables:
 | `EMAIL_USER` | Gmail account for sending emails | `your-account@gmail.com` |
 | `FROM_EMAIL` | From address for verification emails | `noreply@syntegon.com` |
 | `GROQ_API_KEY` | Groq LLM API key | `gsk_abc123...` |
-| `JP_PROXY` | Japan proxy URL (manufacturer-specific) | `http://user:pass@ip:port` |
 | `JWT_SECRET` | Secret key for JWT tokens (REQUIRED) | `your-random-64-char-hex` |
 | `LOG_LEVEL` | Logging level | `info` |
 | `NETLIFY_TOKEN` | Token for Netlify Blobs access | Provided by Netlify |
 | `SCRAPING_SERVICE_URL` | URL of Render scraping service | `https://eolscrapingservice.onrender.com` |
 | `TAVILY_API_KEY` | Tavily AI web search API key | `tvly-abc123...` |
-| `US_PROXY` | US proxy URL (manufacturer-specific) | `http://user:pass@ip:port` |
 
 ## API Rate Limits
 

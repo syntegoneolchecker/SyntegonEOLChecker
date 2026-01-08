@@ -1,10 +1,10 @@
 // Initialize EOL check job - Search with Tavily and save URLs
 const { createJob, saveJobUrls, saveFinalResult, saveUrlResult } = require('./lib/job-storage');
-const { cleanupOldLogs } = require('./lib/log-storage');
 const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { tavily } = require('@tavily/core');
 const logger = require('./lib/logger');
+const config = require('./lib/config');
 const { errorResponse, validationErrorResponse } = require('./lib/response-builder');
 
 /**
@@ -24,13 +24,13 @@ function getManufacturerUrl(maker, model) {
                 scrapingMethod: 'render'
             };
 
-        case 'オリエンタルモーター':
+        case 'ORIENTAL MOTOR':
             return {
                 url: `https://www.orientalmotor.co.jp/ja/products/products-search/replacement?hinmei=${encodedModel}`,
                 scrapingMethod: 'browserql' // Use BrowserQL for Cloudflare-protected site
             };
 
-        case 'ミスミ':
+        case 'MISUMI':
             return {
                 url: `https://jp.misumi-ec.com/vona2/result/?Keyword=${encodedModel}`,
                 scrapingMethod: 'render'
@@ -43,14 +43,14 @@ function getManufacturerUrl(maker, model) {
                 requiresValidation: true // Need to check if search returns results
             };
 
-        case 'キーエンス':
+        case 'KEYENCE':
             return {
                 url: 'https://www.keyence.co.jp/', // Base URL (actual search is interactive)
                 scrapingMethod: 'keyence_interactive', // Special method for interactive search
                 model: model // Pass model for interactive search
             };
 
-        case 'タキゲン':
+        case 'TAKIGEN':
             return {
                 url: `https://www.takigen.co.jp/search?k=${encodedModel}&d=0`,
                 scrapingMethod: 'render',
@@ -58,7 +58,7 @@ function getManufacturerUrl(maker, model) {
                 requiresExtraction: true // Extract product URL from search results
             };
 
-        case '日進電子':
+        case 'NISSIN ELECTRONIC':
             return {
                 url: `https://nissin-ele.co.jp/product/${encodedModel}`,
                 scrapingMethod: 'render',
@@ -72,35 +72,12 @@ function getManufacturerUrl(maker, model) {
                 scrapingMethod: 'render'
             };
 
-        case 'IDEC':
-            return {
-                url: `https://jp.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`,
-                scrapingMethod: 'idec_dual_site', // JP site first, US site fallback
-                model: model,
-                jpUrl: `https://jp.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`,
-                usUrl: `https://us.idec.com/search?text=${encodedModel}&includeDiscontinued=true&sort=relevance&type=products`
-            };
-
         case 'NBK':
             return {
                 url: `https://www.nbk1560.com/search/?q=${encodedModel}&SelectedLanguage=ja-JP&page=1&imgsize=1&doctype=all&sort=0&pagemax=10&htmlLang=ja`,
                 scrapingMethod: 'nbk_interactive', // Interactive search with product name preprocessing
                 model: model // Pass model for preprocessing (remove 'x' and '-')
             };
-
-        case 'オムロン':
-            {
-                // Preprocess model: replace spaces and / with _
-                const preprocessedModel = model.trim().replaceAll(' ', '_').replaceAll('/', '_');
-                const encodedPreprocessedModel = encodeURIComponent(preprocessedModel);
-                return {
-                    url: `https://www.fa.omron.co.jp/product/item/${encodedPreprocessedModel}`,
-                    scrapingMethod: 'omron_dual_page', // Try primary URL first, fallback to closed/search if error
-                    model: model, // Pass original model for fallback URL
-                    primaryUrl: `https://www.fa.omron.co.jp/product/item/${encodedPreprocessedModel}`,
-                    fallbackUrl: `https://www.fa.omron.co.jp/product/closed/search?keyword=${encodedModel}`
-                };
-            }
 
         default:
             return null; // No direct URL strategy - use Tavily search
@@ -241,10 +218,8 @@ exports.handler = async function(event, context) {
         const model = sanitizeString(requestBody.model, 200);
         logger.info('Creating job for:', { maker, model });
 
-        // Clean up old logs (runs before creating job, similar to job cleanup)
-        await cleanupOldLogs();
-
         // Create job (this also triggers job cleanup internally)
+        // Note: Log cleanup is now handled by scheduled-log-cleanup.js
         const jobId = await createJob(maker, model, context);
 
         // Process manufacturer strategy or fall back to search
@@ -409,6 +384,88 @@ async function handleDirectUrlStrategy(maker, model, jobId, strategy, context) {
         { scrapingMethod: strategy.scrapingMethod });
 }
 
+/**
+ * Check if a URL path ends with the product model name
+ * @param {string} url - URL to check
+ * @param {string} normalizedModel - Normalized (uppercase) product model
+ * @returns {boolean} True if URL ends with model name
+ */
+function urlEndsWithModel(url, normalizedModel) {
+    try {
+        const urlObj = new URL(url);
+        const pathSegments = urlObj.pathname.split('/').filter(Boolean);
+
+        if (pathSegments.length === 0) return false;
+
+        const lastSegment = pathSegments.at(-1);
+
+        // Decode URL encoding and normalize
+        const decodedSegment = decodeURIComponent(lastSegment).toUpperCase();
+
+        // Check exact match or common variations
+        return decodedSegment === normalizedModel ||
+               decodedSegment === normalizedModel.replaceAll('-', '') ||
+               decodedSegment === normalizedModel.replaceAll('-', '_');
+    } catch (e) {
+        logger.warn(`Failed to parse URL for model matching: ${url}`, e.message);
+        return false;
+    }
+}
+
+/**
+ * Select best 2 URLs from Tavily results using smart prioritization
+ * Prioritizes URLs ending with exact product model name
+ * @param {Array} tavilyResults - Array of Tavily search results
+ * @param {string} model - Product model to match
+ * @returns {Array} Best 2 URLs selected
+ */
+function selectBestUrls(tavilyResults, model) {
+    const normalizedModel = model.trim().toUpperCase();
+
+    // Categorize URLs
+    const exactMatchUrls = [];
+    const regularUrls = [];
+
+    for (const result of tavilyResults) {
+        if (urlEndsWithModel(result.url, normalizedModel)) {
+            exactMatchUrls.push(result);
+        } else {
+            regularUrls.push(result);
+        }
+    }
+
+        // Log selected URLs for debugging
+    tavilyResults.forEach((result, index) => {
+        logger.info(`Found URL Number ${index + 1}: ${result.url}`);
+    });
+
+    logger.info(`Smart URL selection: ${exactMatchUrls.length} exact matches, ${regularUrls.length} regular URLs from ${tavilyResults.length} total`);
+
+    // Select best 2 URLs based on priority
+    let selectedResults = [];
+
+    if (exactMatchUrls.length >= 2) {
+        // Use first 2 exact matches
+        selectedResults = exactMatchUrls.slice(0, 2);
+        logger.info(`Selected 2 URLs with exact model match in path`);
+    } else if (exactMatchUrls.length === 1) {
+        // Use 1 exact match + top 1 from regular
+        selectedResults = [exactMatchUrls[0], regularUrls[0]].filter(Boolean);
+        logger.info(`Selected 1 exact match + 1 top regular URL`);
+    } else {
+        // Use top 2 from regular (current behavior)
+        selectedResults = regularUrls.slice(0, 2);
+        logger.info(`No exact matches found, using top 2 regular URLs`);
+    }
+
+    // Log selected URLs for debugging
+    selectedResults.forEach((result, index) => {
+        logger.info(`Selected URL ${index + 1}: ${result.url}`);
+    });
+
+    return selectedResults;
+}
+
 function createUrlEntry(index, url, title, snippet, scrapingMethod = null) {
     const entry = {
         index,
@@ -463,7 +520,9 @@ async function performTavilySearch(maker, model, jobId, context) {
         return await handleNoSearchResults(maker, model, jobId, context);
     }
 
-    const urls = tavilyData.results.map((result, index) =>
+    // Smart URL selection: prioritize URLs ending with exact product model
+    const selectedResults = selectBestUrls(tavilyData.results, model);
+    const urls = selectedResults.map((result, index) =>
         createUrlEntry(index, result.url, result.title, result.content || '')
     );
 
@@ -475,9 +534,13 @@ async function performTavilySearch(maker, model, jobId, context) {
 
 function getTavilySearchOptions() {
     return {
-        searchDepth: 'advanced',
-        maxResults: 2,
+        searchDepth: config.TAVILY_SEARCH_DEPTH,
+        maxResults: config.TAVILY_MAX_RESULTS,
+        auto_parameters: false,
         includeDomains: [
+            'fa.omron.co.jp',
+            'jp.idec.com',
+            'us.idec.com',
             'ccs-grp.com',
             'automationdirect.com',
             'takigen.co.jp',
@@ -486,7 +549,6 @@ function getTavilySearchOptions() {
             'tamron.com',
             'search.sugatsune.co.jp',
             'sanwa.co.jp',
-            'jp.idec.com',
             'jp.misumi-ec.com',
             'mitsubishielectric.com',
             'kvm-switches-online.com',
@@ -502,7 +564,7 @@ function getTavilySearchOptions() {
             'habasit.com',
             'nagoya.sc',
             'amazon.co.jp',
-            'tps.co.jp/eol/',
+            'tps.co.jp/eol',
             'ccs-inc.co.jp',
             'shinkoh-faulhaber.jp',
             'anelva.canon',
@@ -529,7 +591,6 @@ function getTavilySearchOptions() {
             'apiste.co.jp',
             'tdklamda.com',
             'phoenixcontact.com',
-            'idec.com',
             'patlite.co.jp',
             'smcworld.com',
             'sanyodenki.co.jp',
@@ -537,7 +598,6 @@ function getTavilySearchOptions() {
             'sony.co.jp',
             'orientalmotor.co.jp',
             'keyence.co.jp',
-            'fa.omron.co.jp',
             'tme.com/jp',
             'ntn.co.jp'
         ]

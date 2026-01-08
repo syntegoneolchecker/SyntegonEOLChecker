@@ -183,7 +183,11 @@ function formatResults(job) {
         resultSection += `========================================\n`;
         resultSection += `Title: ${urlInfo.title}\n`;
         resultSection += `URL: ${result?.url || urlInfo.url}\n`;
-        resultSection += `Snippet: ${urlInfo.snippet}\n`;
+
+        // Only include snippet if we don't have full content (saves tokens)
+        if (!result?.fullContent) {
+            resultSection += `Snippet: ${urlInfo.snippet}\n`;
+        }
 
         if (result?.fullContent) {
             let processedContent = processTablesInContent(result.fullContent);
@@ -335,7 +339,7 @@ class GroqAnalyzer {
             model: 'openai/gpt-oss-120b',
             messages: [{ role: 'user', content: prompt }],
             temperature: 0,
-            max_completion_tokens: 8192,
+            max_completion_tokens: 4096,
             top_p: 1,
             stream: false,
             reasoning_effort: 'low',

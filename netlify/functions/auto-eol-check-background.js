@@ -189,7 +189,12 @@ async function executeEOLCheck(product, siteUrl) {
     logger.info(`Executing EOL check for: ${manufacturer} ${model} (SAP: ${sapNumber})`);
 
     if (!model || !manufacturer) {
-        logger.info('Missing model or manufacturer, skipping');
+        const missingField = !model && !manufacturer ? 'manufacturer/model' : !model ? 'model' : 'manufacturer';
+        logger.info(`Missing ${missingField}, disabling Auto Check for this product`);
+
+        // Disable Auto Check and update database with explanation
+        await disableAutoCheckForMissingData(sapNumber, missingField);
+
         return false;
     }
 
@@ -609,6 +614,72 @@ async function updateProduct(sapNumber, result) {
 
     } catch (error) {
         logger.error('Error updating product:', error);
+    }
+}
+
+// Helper: Disable Auto Check for product with missing manufacturer/model
+async function disableAutoCheckForMissingData(sapNumber, missingField) {
+    try {
+        logger.info(`Disabling Auto Check for ${sapNumber} (missing ${missingField})`);
+
+        const csvStore = getStore({
+            name: 'eol-database',
+            siteID: process.env.SITE_ID,
+            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+        });
+        const csvContent = await csvStore.get('database.csv');
+
+        if (!csvContent) {
+            logger.error('Database not found');
+            return;
+        }
+
+        logger.info('Database retrieved, parsing CSV...');
+
+        // Parse CSV using shared utility
+        const parseResult = parseCSV(csvContent);
+
+        if (!parseResult.success) {
+            logger.error('CSV parsing failed during Auto Check disable:', parseResult.error);
+            throw new Error(`CSV parsing failed: ${parseResult.error}`);
+        }
+
+        const data = parseResult.data;
+        logger.info(`CSV parsed, total rows: ${data.length}`);
+
+        // Find product by SAP number
+        const rowIndex = data.findIndex((row, i) => i > 0 && row[0] === sapNumber);
+
+        if (rowIndex === -1) {
+            logger.error(`Product ${sapNumber} not found in database`);
+            return;
+        }
+
+        logger.info(`Found product at row index ${rowIndex}`);
+        const row = data[rowIndex];
+
+        logger.info(`Before update - Auto Check (col 12): "${row[12]}", Status Comment (col 6): "${row[6]}"`);
+
+        // Update columns
+        row[6] = `Auto Check disabled: Missing ${missingField} information`; // Status Comment
+        row[11] = getGMT9DateTime(); // Information Date (GMT+9)
+        row[12] = 'NO'; // Auto Check disabled
+
+        logger.info(`After update - Auto Check (col 12): "${row[12]}", Status Comment (col 6): "${row[6]}"`);
+
+        // Convert back to CSV using shared utility
+        const updatedCsv = toCSV(data);
+        logger.info(`CSV converted, length: ${updatedCsv.length} bytes`);
+
+        // Save updated database
+        await csvStore.set('database.csv', updatedCsv);
+        logger.info('Database saved to Blobs storage');
+
+        logger.info(`✓ Auto Check disabled for ${sapNumber} (missing ${missingField})`);
+
+    } catch (error) {
+        logger.error('Error disabling Auto Check:', error);
+        throw error; // Re-throw to ensure error is visible
     }
 }
 

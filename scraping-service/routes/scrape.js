@@ -481,9 +481,8 @@ async function handleScrapeRequest(req, res) {
   }
 
   logger.info(`[${new Date().toISOString()}] Scraping URL: ${url}`);
-  if (callbackUrl) {
-    logger.info(`Callback URL provided: ${callbackUrl}`);
-  }
+  logger.info(`Callback URL provided: ${callbackUrl}`);
+
 
   try {
     // Try fast fetch first

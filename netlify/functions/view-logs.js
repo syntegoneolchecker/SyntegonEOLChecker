@@ -10,6 +10,12 @@ const { URLSearchParams } = require("node:url");
 const logger = require("./lib/logger");
 const { requireAuth } = require("./lib/auth-middleware");
 
+/**
+ * Note: Log cleanup is handled by scheduled-log-cleanup.js (runs every 6 hours)
+ * This function focuses on fast log retrieval and display only
+ * MAX_LOGS limit is enforced by the scheduled cleanup function
+ */
+
 // Parameter parsing - separate concern
 const parseParams = (params) => ({
     date: params.date,
@@ -95,7 +101,8 @@ const fetchLogsForDate = async (store, dateKey) => {
 
 const fetchLogBlobs = async (store, blobs) => {
     const logPromises = blobs.map((blob) =>
-        store.get(blob.key, { type: "json" }).catch(() => null)
+        store.get(blob.key, { type: "json" })
+            .catch(() => null)
     );
 
     const results = await Promise.allSettled(logPromises);
@@ -103,6 +110,7 @@ const fetchLogBlobs = async (store, blobs) => {
         .filter((result) => result.status === "fulfilled" && result.value)
         .map((result) => result.value);
 };
+
 
 // Response formatting - separate concern
 const formatResponse = (paginatedData, filters, format) => {
