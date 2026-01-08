@@ -245,6 +245,7 @@ button:disabled {
 
 .delete {
     background: #f44336;
+    padding: 8px 6px;
 }
 
 .delete:hover {
