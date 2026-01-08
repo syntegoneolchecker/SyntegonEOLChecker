@@ -1017,30 +1017,56 @@ async function manualSaveDatabase() {
 }
 
 async function loadFromServer() {
-    try {
-        const response = await fetch('/.netlify/functions/get-csv');
+    const maxRetries = 3;
 
-        if (!response.ok) {
-            throw new Error(`Server returned ${response.status}`);
+    for (let retry = 0; retry <= maxRetries; retry++) {
+        try {
+            // Show retry status to user (except on first attempt)
+            if (retry > 0) {
+                showStatus(`Retrying... (attempt ${retry + 1} of ${maxRetries + 1})`, 'info');
+                console.log(`Database load retry ${retry}/${maxRetries}`);
+            }
+
+            const response = await fetch('/.netlify/functions/get-csv');
+
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            if (result.data && Array.isArray(result.data)) {
+                data = result.data;
+                // Reset sorting state when loading new data
+                originalData = null;
+                currentSort.column = null;
+                currentSort.direction = null;
+                render();
+
+                // Show success message with retry context if applicable
+                if (retry > 0) {
+                    showStatus(`✓ Database loaded successfully after ${retry + 1} attempt${retry > 0 ? 's' : ''}`);
+                } else {
+                    showStatus('✓ Database loaded successfully from cloud storage');
+                }
+                return;
+            }
+        } catch (error) {
+            console.error(`Load error (attempt ${retry + 1}/${maxRetries + 1}):`, error);
+
+            // If this was the last retry, show error to user
+            if (retry === maxRetries) {
+                showStatus('⚠️ Unable to connect to cloud storage. Please check your connection.', 'error', true);
+                // Keep default headers for display
+                render();
+                return;
+            }
+
+            // Wait before retrying with exponential backoff (1s, 2s, 4s)
+            const delay = 1000 * Math.pow(2, retry);
+            console.log(`Waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
-
-        const result = await response.json();
-
-        if (result.data && Array.isArray(result.data)) {
-            data = result.data;
-            // Reset sorting state when loading new data
-            originalData = null;
-            currentSort.column = null;
-            currentSort.direction = null;
-            render();
-            showStatus('✓ Database loaded successfully from cloud storage');
-            return;
-        }
-    } catch (error) {
-        console.error('Load error:', error);
-        showStatus('⚠️ Unable to connect to cloud storage. Please check your connection.', 'error', true);
-        // Keep default headers for display
-        render();
     }
 }
 
