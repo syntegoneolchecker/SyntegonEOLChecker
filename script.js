@@ -1045,7 +1045,7 @@ async function loadFromServer() {
 
                 // Show success message with retry context if applicable
                 if (retry > 0) {
-                    showStatus(`✓ Database loaded successfully after ${retry + 1} attempt${retry > 0 ? 's' : ''}`);
+                    showStatus(`✓ Database loaded successfully after ${retry + 1} attempts`);
                 } else {
                     showStatus('✓ Database loaded successfully from cloud storage');
                 }
