@@ -531,7 +531,17 @@ async function performTavilySearch(maker, model, jobId, context) {
 
     return createSuccessResponse(jobId, 'urls_ready', urls.length);
 }
+//Test without includeDomains
+function getTavilySearchOptions() {
+    return {
+        searchDepth: config.TAVILY_SEARCH_DEPTH,
+        maxResults: config.TAVILY_MAX_RESULTS,
+        auto_parameters: false,
+        ]
+    };
+}
 
+/*
 function getTavilySearchOptions() {
     return {
         searchDepth: config.TAVILY_SEARCH_DEPTH,
@@ -603,6 +613,7 @@ function getTavilySearchOptions() {
         ]
     };
 }
+*/
 
 async function handleNoSearchResults(maker, model, jobId, context) {
     logger.info(`No search results found for ${maker} ${model}`);
