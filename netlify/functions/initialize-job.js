@@ -538,9 +538,6 @@ function getTavilySearchOptions() {
         searchDepth: config.TAVILY_SEARCH_DEPTH,
         maxResults: config.TAVILY_MAX_RESULTS,
         auto_parameters: false,
-        excludeDomains: [
-            'support.us.idec.com'
-        ],
         includeDomains: [
             'fa.omron.co.jp',
             'jp.idec.com',
@@ -574,7 +571,6 @@ function getTavilySearchOptions() {
             'anelva.canon',
             'takabel.com',
             'ysol.co.jp',
-            'digikey.jp',
             'rs-components.com',
             'fa-ubon.jp',
             'monotaro.com',
