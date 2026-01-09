@@ -12,7 +12,7 @@ const logger = require('./logger');
 function validateCommonEnvVars() {
     const required = [
         'SITE_ID',
-        'TAVILY_API_KEY',
+        'SERPAPI_API_KEY',
         'GROQ_API_KEY'
     ];
 
