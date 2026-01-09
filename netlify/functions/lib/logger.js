@@ -7,10 +7,8 @@
  * - ERROR: Errors only (best for production)
  * - NONE: Silent (not recommended)
  *
- * Logs are sent to both console (for immediate debugging) and central log storage
+ * Logs are sent to both console (for immediate debugging) and Supabase PostgreSQL
  */
-
-const { getStore } = require('@netlify/blobs');
 
 const LOG_LEVELS = {
     DEBUG: 0,
@@ -59,43 +57,25 @@ function getFunctionName() {
 }
 
 /**
- * Generate a random string for unique log IDs
- */
-function generateRandomId(length = 8) {
-    try {
-        return Array.from(crypto.getRandomValues(new Uint8Array(length)))
-            .map(b => b.toString(36))
-            .join('')
-            .replaceAll('.', '')
-            .substring(0, length);
-    } catch {
-        // Fallback to Math.random() if crypto fails
-        return Array.from({ length }, () =>
-            Math.floor(Math.random() * 36).toString(36)
-        ).join('');
-    }
-}
-
-/**
- * Write log directly to Netlify Blobs
- * Each log entry gets its own blob to prevent race conditions
+ * Send log to Supabase PostgreSQL
  * This is fire-and-forget to avoid blocking the main application
+ * Uses Supabase REST API with publishable API key
  */
 async function sendToCentralLog(level, message, context) {
     try {
         // Get function name dynamically for each log
         const functionSource = getFunctionName();
 
-        // Skip logging for log-ingest and view-logs functions to prevent recursion
-        if (functionSource.includes('log-ingest') || functionSource.includes('view-logs')) {
+        // Skip logging for view-logs function to prevent recursion
+        if (functionSource.includes('view-logs') || functionSource.includes('clear-logs')) {
             return;
         }
 
-        const store = getStore({
-            name: 'logs',
-            siteID: process.env.SITE_ID,
-            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
-        });
+        // Check if Supabase is configured
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_API_KEY) {
+            // Silently skip if not configured (allows graceful degradation)
+            return;
+        }
 
         const timestamp = new Date().toISOString();
         const logEntry = {
@@ -103,20 +83,21 @@ async function sendToCentralLog(level, message, context) {
             level,
             source: functionSource,
             message,
-            context
+            context: context || null
         };
 
-        // Create a unique key for this log entry to prevent race conditions
-        // Format: logs-YYYY-MM-DD-timestamp-randomId.json
-        const date = new Date(timestamp);
-        const dateKey = date.toISOString().split('T')[0];
-        const timestampMs = date.getTime();
-        const randomId = generateRandomId(8);
-        const logKey = `logs-${dateKey}-${timestampMs}-${randomId}.json`;
-
-        // Store as individual blob - fire and forget (don't await)
-        // No race condition possible because each log gets a unique blob
-        store.setJSON(logKey, logEntry).catch(() => {
+        // Send to Supabase via REST API - fire and forget (don't await)
+        fetch(`${process.env.SUPABASE_URL}/rest/v1/logs`, {
+            method: 'POST',
+            headers: {
+                'apikey': process.env.SUPABASE_API_KEY,
+                'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=minimal' // Don't return inserted data (faster)
+            },
+            body: JSON.stringify(logEntry),
+            signal: AbortSignal.timeout(5000) // 5 second timeout
+        }).catch(() => {
             // Silently ignore errors in central logging to avoid cascading failures
         });
     } catch {
