@@ -80,7 +80,7 @@ async function logout() {
 // Initialize the app
 async function init() {
     await loadFromServer();
-    await loadTavilyCredits();
+    await loadSerpAPICredits();
     await loadGroqUsage();
     await checkRenderHealth();
     await loadAutoCheckState();
@@ -485,7 +485,7 @@ async function updateRowWithEOLResults(rowIndex, result) {
     await saveToServer();
 
     // Refresh credits and rate limits
-    await loadTavilyCredits();
+    await loadSerpAPICredits();
     if (result.rateLimits) {
         updateGroqRateLimits(result.rateLimits);
     }
@@ -1106,12 +1106,12 @@ async function waitForRetry(retry) {
 // CREDITS AND USAGE MONITORING
 // ============================================================================
 
-async function loadTavilyCredits() {
+async function loadSerpAPICredits() {
     try {
-        const response = await fetch('/.netlify/functions/get-tavily-usage');
+        const response = await fetch('/.netlify/functions/get-serpapi-usage');
 
         if (!response.ok) {
-            throw new Error(`Failed to fetch Tavily credits: ${response.status}`);
+            throw new Error(`Failed to fetch SerpAPI usage: ${response.status}`);
         }
 
         const result = await response.json();
@@ -1123,21 +1123,24 @@ async function loadTavilyCredits() {
 
         creditsElement.textContent = `${remaining}/${limit} remaining`;
 
-        // Apply color coding based on remaining credits
+        // Apply color coding based on remaining searches
         creditsElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
 
-        if (remaining > 500) {
+        // Adjust thresholds based on typical SerpAPI limits
+        const percentRemaining = (remaining / limit) * 100;
+
+        if (percentRemaining > 50) {
             creditsElement.classList.add('credits-high');
-        } else if (remaining > 100) {
+        } else if (percentRemaining > 20) {
             creditsElement.classList.add('credits-medium');
         } else {
             creditsElement.classList.add('credits-low');
         }
 
     } catch (error) {
-        console.error('Failed to load Tavily credits:', error);
+        console.error('Failed to load SerpAPI usage:', error);
         const creditsElement = document.getElementById('credits-remaining');
-        creditsElement.textContent = 'Error loading credits';
+        creditsElement.textContent = 'Error loading usage';
         creditsElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
     }
 }
@@ -1628,7 +1631,7 @@ async function autoDisableOnLowCredits(state) {
     const remaining = parseCreditsRemaining(creditsElement.textContent);
     if (remaining === null || remaining > 50) return;
 
-    console.log('Auto-disabling auto-check due to low credits:', remaining);
+    console.log('Auto-disabling auto-check due to low searches:', remaining);
 
     // Disable auto-check
     await setAutoCheckState({ enabled: false });
@@ -1637,7 +1640,7 @@ async function autoDisableOnLowCredits(state) {
     const toggle = document.getElementById('auto-check-toggle');
     if (toggle) toggle.checked = false;
 
-    showStatus('Auto EOL Check disabled - Tavily credits too low (≤50)', 'info');
+    showStatus('Auto EOL Check disabled - SerpAPI searches too low (≤50)', 'info');
 }
 
 // Monitor auto-check state periodically
