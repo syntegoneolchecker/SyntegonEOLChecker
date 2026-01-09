@@ -1,36 +1,8 @@
 // Receive results from Render scraping service and save them
 const { saveUrlResult, getJob } = require('./lib/job-storage');
+const { errorResponse, methodNotAllowedResponse, notFoundResponse } = require('./lib/response-builder');
+const { triggerFetchUrl } = require('./lib/fire-and-forget');
 const logger = require('./lib/logger');
-
-/**
- * Trigger fetch-url for the next pending URL
- * Must be awaited to ensure the HTTP request completes before function terminates
- */
-async function triggerFetch(jobId, urlInfo, baseUrl) {
-    try {
-        const payload = {
-            jobId,
-            urlIndex: urlInfo.index,
-            url: urlInfo.url,
-            title: urlInfo.title,
-            snippet: urlInfo.snippet,
-            scrapingMethod: urlInfo.scrapingMethod
-        };
-
-        // Pass model for interactive searches (KEYENCE)
-        if (urlInfo.model) {
-            payload.model = urlInfo.model;
-        }
-
-        await fetch(`${baseUrl}/.netlify/functions/fetch-url`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-    } catch (error) {
-        logger.error('Failed to trigger next fetch:', error);
-    }
-}
 
 
 /**
@@ -80,13 +52,13 @@ async function retryBlobsOperation(operationName, operation, maxRetries = 5) {
 
 /**
  * IMPORTANT: This function must complete within Netlify's 30s timeout
- * - We await triggerFetch to ensure next URL is triggered (fast, < 1s)
+ * - We await triggerFetchUrl (fire-and-forget helper with retry) to ensure next URL is triggered (fast, < 1s)
  * - We skip triggering analysis (let polling loop handle it)
  * - This prevents timeouts when analyze-job waits for Groq token reset (30-60s)
  */
 exports.handler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
-        return { statusCode: 405, body: 'Method Not Allowed' };
+        return methodNotAllowedResponse();
     }
 
     const startTime = Date.now();
@@ -98,8 +70,8 @@ exports.handler = async function(event, context) {
         jobId = _jobId;
         urlIndex = _urlIndex;
 
-        logger.info(`[CALLBACK DEBUG] ===== CALLBACK START ===== Time: ${invocationTimestamp}`);
-        logger.info(`[CALLBACK DEBUG] Job ${jobId}, URL ${urlIndex} (${content?.length || 0} chars)`);
+        logger.debug(`[CALLBACK] ===== CALLBACK START ===== Time: ${invocationTimestamp}`);
+        logger.debug(`[CALLBACK] Job ${jobId}, URL ${urlIndex} (${content?.length || 0} chars)`);
 
         // Construct base URL from request headers
         const protocol = event.headers['x-forwarded-proto'] || 'https';
@@ -109,7 +81,7 @@ exports.handler = async function(event, context) {
         // Save the result WITH RETRY LOGIC
         let allDone;
         try {
-            logger.info(`[CALLBACK DEBUG] Attempting to save URL result for job ${jobId}, URL ${urlIndex}`);
+            logger.debug(`[CALLBACK] Attempting to save URL result for job ${jobId}, URL ${urlIndex}`);
             allDone = await retryBlobsOperation(
                 `saveUrlResult(${jobId}, ${urlIndex})`,
                 async () => await saveUrlResult(jobId, urlIndex, {
@@ -119,44 +91,51 @@ exports.handler = async function(event, context) {
                     fullContent: content
                 }, context)
             );
-            logger.info(`[CALLBACK DEBUG] URL result saved successfully. All URLs done: ${allDone}`);
+            logger.debug(`[CALLBACK] URL result saved successfully. All URLs done: ${allDone}`);
         } catch (error) {
-            logger.error(`[CALLBACK DEBUG] CRITICAL: Failed to save URL result after retries:`, error);
-            return {
-                statusCode: 500,
-                body: JSON.stringify({
-                    error: 'Failed to save result to storage after retries',
-                    details: error.message
-                })
-            };
+            logger.error(`[CALLBACK] CRITICAL: Failed to save URL result after retries:`, error);
+            return errorResponse('Failed to save result to storage after retries', error.message);
         }
 
         // Get job for next URL triggering
-        logger.info(`[CALLBACK DEBUG] Retrieving job ${jobId} to check for next steps`);
+        logger.debug(`[CALLBACK] Retrieving job ${jobId} to check for next steps`);
         const job = await getJob(jobId, context);
 
         // Continue pipeline: trigger next URL or let polling loop handle analysis
         if (allDone) {
             // All URLs complete - let polling loop detect and trigger analysis
             // We don't trigger analysis here to avoid 30s timeout (analyze-job can take 30-60s waiting for Groq tokens)
-            logger.info(`[CALLBACK DEBUG] ✓ All URLs complete for job ${jobId}. Polling loop will trigger analysis.`);
+            logger.debug(`[CALLBACK] ✓ All URLs complete for job ${jobId}. Polling loop will trigger analysis.`);
         } else {
             // Find and trigger next pending URL
-            logger.info(`[CALLBACK DEBUG] Checking for next pending URL...`);
+            logger.debug(`[CALLBACK] Checking for next pending URL...`);
 
             if (job) {
-                logger.info(`[CALLBACK DEBUG] Job retrieved. Total URLs: ${job.urls?.length}`);
+                logger.debug(`[CALLBACK] Job retrieved. Total URLs: ${job.urls?.length}`);
                 const nextUrl = job.urls.find(u => u.status === 'pending');
 
                 if (nextUrl) {
-                    logger.info(`[CALLBACK DEBUG] Found pending URL ${nextUrl.index}: ${nextUrl.url}. Triggering fetch.`);
-                    await triggerFetch(jobId, nextUrl, baseUrl);
-                    logger.info(`[CALLBACK DEBUG] Next URL ${nextUrl.index} triggered successfully`);
+                    logger.debug(`[CALLBACK] Found pending URL ${nextUrl.index}: ${nextUrl.url}. Triggering fetch.`);
+                    // Build payload for fire-and-forget helper
+                    const payload = {
+                        jobId,
+                        urlIndex: nextUrl.index,
+                        url: nextUrl.url,
+                        title: nextUrl.title,
+                        snippet: nextUrl.snippet,
+                        scrapingMethod: nextUrl.scrapingMethod
+                    };
+                    // Pass model for interactive searches (KEYENCE)
+                    if (nextUrl.model) {
+                        payload.model = nextUrl.model;
+                    }
+                    await triggerFetchUrl(baseUrl, payload);
+                    logger.debug(`[CALLBACK] Next URL ${nextUrl.index} triggered successfully`);
                 } else {
-                    logger.warn(`[CALLBACK DEBUG] No more pending URLs found (this should not happen)`);
+                    logger.warn(`[CALLBACK] No more pending URLs found (this should not happen)`);
                 }
             } else {
-                logger.error(`[CALLBACK DEBUG] Failed to get job ${jobId} for next URL trigger`);
+                logger.error(`[CALLBACK] Failed to get job ${jobId} for next URL trigger`);
             }
         }
 
@@ -176,9 +155,6 @@ exports.handler = async function(event, context) {
             stack: error.stack
         });
 
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: error.message })
-        };
+        return errorResponse(error.message);
     }
 };

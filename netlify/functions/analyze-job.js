@@ -1,5 +1,6 @@
 // Run LLM analysis on fetched results
 const { getJob, saveFinalResult, updateJobStatus } = require('./lib/job-storage');
+const { errorResponse, methodNotAllowedResponse, notFoundResponse } = require('./lib/response-builder');
 const { processTablesInContent, filterIrrelevantTables, smartTruncate } = require('./lib/content-truncator');
 const RE2 = require('re2');
 const logger = require('./lib/logger');
@@ -73,7 +74,7 @@ function parseTimeToSeconds(timeStr) {
 
 exports.handler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
-        return { statusCode: 405, body: 'Method Not Allowed' };
+        return methodNotAllowedResponse();
     }
 
     const invocationTimestamp = new Date().toISOString();
@@ -81,25 +82,22 @@ exports.handler = async function(event, context) {
     try {
         const { jobId } = JSON.parse(event.body);
 
-        logger.info(`[ANALYZE DEBUG] ===== ANALYSIS START ===== Time: ${invocationTimestamp}`);
-        logger.info(`[ANALYZE DEBUG] Starting analysis for job ${jobId}`);
+        logger.debug(`[ANALYZE] ===== ANALYSIS START ===== Time: ${invocationTimestamp}`);
+        logger.debug(`[ANALYZE] Starting analysis for job ${jobId}`);
 
         const job = await getJob(jobId, context);
 
         if (!job) {
-            logger.warn(`[ANALYZE DEBUG] Job ${jobId} not found`);
-            return {
-                statusCode: 404,
-                body: JSON.stringify({ error: 'Job not found' })
-            };
+            logger.warn(`[ANALYZE] Job ${jobId} not found`);
+            return notFoundResponse('Job');
         }
 
-        logger.info(`[ANALYZE DEBUG] Job retrieved. Current status: ${job.status}, URLs: ${job.urls?.length}, Completed: ${job.urls?.filter(u => u.status === 'complete').length}`);
+        logger.debug(`[ANALYZE] Job retrieved. Current status: ${job.status}, URLs: ${job.urls?.length}, Completed: ${job.urls?.filter(u => u.status === 'complete').length}`);
 
         // Update status to analyzing
-        logger.info(`[ANALYZE DEBUG] Updating job status to 'analyzing'`);
+        logger.debug(`[ANALYZE] Updating job status to 'analyzing'`);
         await updateJobStatus(jobId, 'analyzing', null, context);
-        logger.info(`[ANALYZE DEBUG] Job status updated to 'analyzing'`);
+        logger.debug(`[ANALYZE] Job status updated to 'analyzing'`);
 
         // FIX: Check Groq token availability BEFORE analysis
         const tokenCheck = await checkGroqTokenAvailability();
@@ -159,10 +157,7 @@ exports.handler = async function(event, context) {
             logger.info(`Exception thrown: ${e}`);
         }
 
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: error.message })
-        };
+        return errorResponse(error.message);
     }
 };
 

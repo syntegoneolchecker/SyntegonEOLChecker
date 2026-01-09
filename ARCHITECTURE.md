@@ -17,7 +17,7 @@ All architectural decisions are driven by these **hard limits**:
 | **Tavily Search** | 1,000 tokens/month | - 2 Tokens per search, only 2 search results used due to LLM Token constraints<br/>- Manufacturer-specific direct URLs to skip search<br/>- 20 product limit on daily auto-checks |
 | **BrowserQL** | 1,000 tokens/month<br/>(1 token = 30 seconds) | - Use ONLY for Cloudflare-protected sites<br/>- Puppeteer (free) for everything else |
 | **Render (Scraping Service)** | 512MB RAM<br/>750 hours/month | - Aggressive memory management<br/>- Self-restart when approaching limit<br/>- Sequential scraping (no concurrency) |
-| **Netlify Blobs** | Limited storage | - Job cleanup after 5 minutes<br/>- No historical data retention |
+| **Netlify Blobs** | Limited storage | - Job cleanup after 24 hours (1440 minutes)<br/>- No historical data retention |
 
 ### Key Architectural Decisions
 
@@ -163,7 +163,7 @@ async function createJob(maker, model, context) {
     ↓
 [job-status] Frontend gets final result
     ↓
-[Job cleanup after 5min]
+[Job cleanup after 24 hours]
 ```
 
 ### Automatic Daily Check (21:00 GMT+9)

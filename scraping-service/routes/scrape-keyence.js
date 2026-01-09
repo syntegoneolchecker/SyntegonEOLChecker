@@ -170,7 +170,7 @@ async function handleKeyenceScrapeRequest(req, res) {
 
     // Generate unique task ID for tracking
     const taskId = `keyence_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    logger.info(`[KEYENCE DEBUG] About to send 202 response, task ID: ${taskId}`);
+    logger.debug(`[KEYENCE] About to send 202 response, task ID: ${taskId}`);
 
     // Respond immediately with 202 Accepted (fire-and-forget)
     res.status(202).json({
@@ -179,16 +179,16 @@ async function handleKeyenceScrapeRequest(req, res) {
         message: 'KEYENCE search started, results will be sent via callback'
     });
 
-    logger.info(`[KEYENCE DEBUG] 202 response sent, about to enqueue task ${taskId}`);
+    logger.debug(`[KEYENCE] 202 response sent, about to enqueue task ${taskId}`);
 
     // Enqueue task in background (don't await - true fire-and-forget)
     enqueuePuppeteerTask(async () => {
-        logger.info(`[KEYENCE DEBUG] Task ${taskId} - Starting execution in queue`);
+        logger.debug(`[KEYENCE] Task ${taskId} - Starting execution in queue`);
         let browser = null;
         const callbackSent = false;
 
         try {
-            logger.info(`[KEYENCE DEBUG] Task ${taskId} - In try block, about to launch browser`);
+            logger.debug(`[KEYENCE] Task ${taskId} - In try block, about to launch browser`);
             browser = await launchBrowser();
             const page = await browser.newPage();
 
@@ -204,27 +204,27 @@ async function handleKeyenceScrapeRequest(req, res) {
             });
 
             // Perform search
-            logger.info(`[KEYENCE DEBUG] Task ${taskId} - Starting KEYENCE search for model: ${model}`);
+            logger.debug(`[KEYENCE] Task ${taskId} - Starting KEYENCE search for model: ${model}`);
             const finalUrl = await performKeyenceSearch(page, model);
-            logger.info(`[KEYENCE DEBUG] Task ${taskId} - Final page URL: ${String(finalUrl)}`);
+            logger.debug(`[KEYENCE] Task ${taskId} - Final page URL: ${String(finalUrl)}`);
 
             // Extract content
-            logger.info(`[KEYENCE DEBUG] Task ${taskId} - Extracting content from page`);
+            logger.debug(`[KEYENCE] Task ${taskId} - Extracting content from page`);
             const { text, title } = await extractKeyenceContent(page);
-            logger.info(`[KEYENCE DEBUG] Task ${taskId} - Extracted ${text.length} characters`);
+            logger.debug(`[KEYENCE] Task ${taskId} - Extracted ${text.length} characters`);
 
             // Validate content
             const finalContent = validateKeyenceContent(text);
-            logger.info(`[KEYENCE DEBUG] Task ${taskId} - Content validated, final length: ${finalContent.length} characters`);
+            logger.debug(`[KEYENCE] Task ${taskId} - Content validated, final length: ${finalContent.length} characters`);
 
             // Close browser before callback
             await browser.close();
             browser = null;
-            logger.info(`[KEYENCE DEBUG] Task ${taskId} - Browser closed, memory freed`);
+            logger.debug(`[KEYENCE] Task ${taskId} - Browser closed, memory freed`);
 
             // Send callback
             if (callbackUrl) {
-                logger.info(`[KEYENCE DEBUG] Task ${taskId} - Sending success callback to ${callbackUrl}`);
+                logger.debug(`[KEYENCE] Task ${taskId} - Sending success callback to ${callbackUrl}`);
                 await sendCallback(callbackUrl, {
                     jobId,
                     urlIndex,
@@ -233,36 +233,36 @@ async function handleKeyenceScrapeRequest(req, res) {
                     snippet: `KEYENCE search result for ${model}`,
                     url: finalUrl
                 });
-                logger.info(`[KEYENCE DEBUG] Task ${taskId} - Success callback sent`);
+                logger.debug(`[KEYENCE] Task ${taskId} - Success callback sent`);
             }
 
             // Cleanup
-            logger.info(`[KEYENCE DEBUG] Task ${taskId} - Performing cleanup`);
+            logger.debug(`[KEYENCE] Task ${taskId} - Performing cleanup`);
             forceGarbageCollection();
             trackMemoryUsage(`keyence_complete_${requestCount}`);
             scheduleRestartIfNeeded();
-            logger.info(`[KEYENCE DEBUG] Task ${taskId} - Task completed successfully`);
+            logger.debug(`[KEYENCE] Task ${taskId} - Task completed successfully`);
 
             // Response already sent (202), no need to return result
 
         } catch (error) {
-            logger.error(`[KEYENCE DEBUG] Task ${taskId} - KEYENCE scraping error:`, error);
-            logger.error(`[KEYENCE DEBUG] Task ${taskId} - Error details:`, error.message);
-            logger.error(`[KEYENCE DEBUG] Task ${taskId} - Error stack:`, error.stack);
+            logger.error(`[KEYENCE] Task ${taskId} - KEYENCE scraping error:`, error);
+            logger.error(`[KEYENCE] Task ${taskId} - Error details:`, error.message);
+            logger.error(`[KEYENCE] Task ${taskId} - Error stack:`, error.stack);
 
             // Close browser
             if (browser) {
                 try {
                     await browser.close();
-                    logger.info(`[KEYENCE DEBUG] Task ${taskId} - Browser closed after error, memory freed`);
+                    logger.debug(`[KEYENCE] Task ${taskId} - Browser closed after error, memory freed`);
                 } catch (closeError) {
-                    logger.error(`[KEYENCE DEBUG] Task ${taskId} - Error closing browser after KEYENCE scraping error:`, closeError);
+                    logger.error(`[KEYENCE] Task ${taskId} - Error closing browser after KEYENCE scraping error:`, closeError);
                 }
             }
 
             // Send error callback
             if (callbackUrl && !callbackSent) {
-                logger.info(`[KEYENCE DEBUG] Task ${taskId} - Sending error callback to ${callbackUrl}`);
+                logger.debug(`[KEYENCE] Task ${taskId} - Sending error callback to ${callbackUrl}`);
                 await sendCallback(callbackUrl, {
                     jobId,
                     urlIndex,
@@ -271,11 +271,11 @@ async function handleKeyenceScrapeRequest(req, res) {
                     snippet: '',
                     url: 'https://www.keyence.co.jp/'
                 });
-                logger.info(`[KEYENCE DEBUG] Task ${taskId} - Error callback sent`);
+                logger.debug(`[KEYENCE] Task ${taskId} - Error callback sent`);
             }
 
             // Force restart after KEYENCE check
-            logger.info(`[KEYENCE DEBUG] Task ${taskId} - KEYENCE check failed - forcing restart to free memory`);
+            logger.debug(`[KEYENCE] Task ${taskId} - KEYENCE check failed - forcing restart to free memory`);
             setShutdownState(true);
             scheduleRestartIfNeeded();
 
@@ -292,11 +292,11 @@ async function handleKeyenceScrapeRequest(req, res) {
         }
     }).catch(error => {
         // Error already logged and callback already sent
-        logger.error(`[KEYENCE DEBUG] Task ${taskId} - Background KEYENCE scraping failed:`, error.message);
-        logger.error(`[KEYENCE DEBUG] Task ${taskId} - Error stack:`, error.stack);
+        logger.error(`[KEYENCE] Task ${taskId} - Background KEYENCE scraping failed:`, error.message);
+        logger.error(`[KEYENCE] Task ${taskId} - Error stack:`, error.stack);
     });
 
-    logger.info(`[KEYENCE DEBUG] Task ${taskId} enqueued successfully, continuing...`);
+    logger.debug(`[KEYENCE] Task ${taskId} enqueued successfully, continuing...`);
 
     // Response already sent above (202 Accepted)
 }
