@@ -189,7 +189,8 @@ async function executeEOLCheck(product, siteUrl) {
     logger.info(`Executing EOL check for: ${manufacturer} ${model} (SAP: ${sapNumber})`);
 
     if (!model || !manufacturer) {
-        const missingField = !model && !manufacturer ? 'manufacturer/model' : !model ? 'model' : 'manufacturer';
+        const missingModelOrManufacturer = model ? 'manufacturer' : 'model';
+        const missingField = !model && !manufacturer ? 'manufacturer/model' : missingModelOrManufacturer;
         logger.info(`Missing ${missingField}, disabling Auto Check for this product`);
 
         // Disable Auto Check and update database with explanation

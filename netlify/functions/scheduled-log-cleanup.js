@@ -50,12 +50,10 @@ async function deleteInBatches(store, blobsToDelete, batchSize = 100) {
         for (const result of results) {
             if (result.status === 'fulfilled') {
                 deletedCount++;
-            } else {
+            } else if (!result.reason?.message?.includes('404')) {
                 // Log error but continue (might be 404 if already deleted)
-                if (!result.reason?.message?.includes('404')) {
-                    failedCount++;
-                    console.error(`Failed to delete blob: ${result.reason?.message}`);
-                }
+                failedCount++;
+                console.error(`Failed to delete blob: ${result.reason?.message}`);
             }
         }
     }
@@ -159,7 +157,7 @@ async function cleanupLogs() {
 /**
  * Scheduled handler (runs on schedule defined in netlify.toml)
  */
-const handler = async (event) => {
+const handler = async (_event) => {
     console.log('[LOG CLEANUP] Scheduled cleanup triggered');
 
     try {
