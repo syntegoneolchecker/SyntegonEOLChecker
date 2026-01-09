@@ -50,7 +50,7 @@ module.exports = {
 
     // === AUTO-CHECK LIMITS ===
     MAX_AUTO_CHECKS_PER_DAY: 10,        // Daily auto-check limit (reduced for SerpAPI)
-    MIN_SERPAPI_CREDITS_FOR_AUTO: 50,   // Min SerpAPI credits to enable auto-check
+    MIN_SERPAPI_CREDITS_FOR_AUTO: 30,   // Min SerpAPI credits to enable auto-check
     AUTO_CHECK_SCHEDULE_CRON: '0 12 * * *', // Daily at 21:00 GMT+9 (12:00 UTC)
 
     // === RETRY LOGIC ===
