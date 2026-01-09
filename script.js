@@ -1020,54 +1020,86 @@ async function loadFromServer() {
     const maxRetries = 3;
 
     for (let retry = 0; retry <= maxRetries; retry++) {
-        try {
-            // Show retry status to user (except on first attempt)
-            if (retry > 0) {
-                showStatus(`Retrying... (attempt ${retry + 1} of ${maxRetries + 1})`, 'info');
-                console.log(`Database load retry ${retry}/${maxRetries}`);
-            }
+        const isLastAttempt = retry === maxRetries;
+        const success = await attemptLoad(retry, maxRetries);
 
-            const response = await fetch('/.netlify/functions/get-csv');
-
-            if (!response.ok) {
-                throw new Error(`Server returned ${response.status}`);
-            }
-
-            const result = await response.json();
-
-            if (result.data && Array.isArray(result.data)) {
-                data = result.data;
-                // Reset sorting state when loading new data
-                originalData = null;
-                currentSort.column = null;
-                currentSort.direction = null;
-                render();
-
-                // Show success message with retry context if applicable
-                if (retry > 0) {
-                    showStatus(`✓ Database loaded successfully after ${retry + 1} attempts`);
-                } else {
-                    showStatus('✓ Database loaded successfully from cloud storage');
-                }
-                return;
-            }
-        } catch (error) {
-            console.error(`Load error (attempt ${retry + 1}/${maxRetries + 1}):`, error);
-
-            // If this was the last retry, show error to user
-            if (retry === maxRetries) {
-                showStatus('⚠️ Unable to connect to cloud storage. Please check your connection.', 'error', true);
-                // Keep default headers for display
-                render();
-                return;
-            }
-
-            // Wait before retrying with exponential backoff (1s, 2s, 4s)
-            const delay = 1000 * Math.pow(2, retry);
-            console.log(`Waiting ${delay}ms before retry...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
+        if (success) return;
+        if (isLastAttempt) {
+            handleFinalFailure();
+            return;
         }
+
+        await waitForRetry(retry);
     }
+}
+
+async function attemptLoad(retry, maxRetries) {
+    try {
+        await handleRetryStatus(retry, maxRetries);
+        const result = await fetchData();
+
+        if (isValidData(result)) {
+            processSuccessfulLoad(result, retry);
+            return true;
+        }
+    } catch (error) {
+        handleLoadError(error, retry, maxRetries);
+    }
+    return false;
+}
+
+async function handleRetryStatus(retry, maxRetries) {
+    if (retry === 0) return;
+
+    const statusMessage = `Retrying... (attempt ${retry + 1} of ${maxRetries + 1})`;
+    showStatus(statusMessage, 'info');
+    console.log(`Database load retry ${retry}/${maxRetries}`);
+}
+
+async function fetchData() {
+    const response = await fetch('/.netlify/functions/get-csv');
+
+    if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+    }
+
+    return response.json();
+}
+
+function isValidData(result) {
+    return result.data && Array.isArray(result.data);
+}
+
+function processSuccessfulLoad(result, retry) {
+    data = result.data;
+    // Reset sorting state when loading new data
+    originalData = null;
+    currentSort.column = null;
+    currentSort.direction = null;
+    render();
+
+    const successMessage = retry > 0
+        ? `✓ Database loaded successfully after ${retry + 1} attempts`
+        : '✓ Database loaded successfully from cloud storage';
+
+    showStatus(successMessage);
+}
+
+function handleLoadError(error, retry, maxRetries) {
+    console.error(`Load error (attempt ${retry + 1}/${maxRetries + 1}):`, error);
+    // Error handling logic is now in attemptLoad's caller
+}
+
+function handleFinalFailure() {
+    showStatus('⚠️ Unable to connect to cloud storage. Please check your connection.', 'error', true);
+    render();
+}
+
+async function waitForRetry(retry) {
+    // Wait before retrying with exponential backoff (1s, 2s, 4s)
+    const delay = 1000 * Math.pow(2, retry);
+    console.log(`Waiting ${delay}ms before retry...`);
+    await new Promise(resolve => setTimeout(resolve, delay));
 }
 
 // ============================================================================
