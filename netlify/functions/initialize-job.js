@@ -1,15 +1,15 @@
-// Initialize EOL check job - Search with Tavily and save URLs
+// Initialize EOL check job - Search with SerpAPI and save URLs
 const { createJob, saveJobUrls, saveFinalResult, saveUrlResult } = require('./lib/job-storage');
 const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
-const { tavily } = require('@tavily/core');
+const { getJson } = require('serpapi');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
 const { errorResponse, validationErrorResponse } = require('./lib/response-builder');
 
 /**
  * Get manufacturer-specific direct URL if available
- * Returns null if manufacturer requires Tavily search
+ * Returns null if manufacturer requires SerpAPI search
  * Returns object with { url, scrapingMethod } if direct URL available
  * scrapingMethod: 'render' (default Puppeteer) or 'browserql' (for Cloudflare-protected sites)
  */
@@ -80,7 +80,7 @@ function getManufacturerUrl(maker, model) {
             };
 
         default:
-            return null; // No direct URL strategy - use Tavily search
+            return null; // No direct URL strategy - use SerpAPI search
     }
 }
 
@@ -228,8 +228,8 @@ exports.handler = async function(event, context) {
             return strategyResult;
         }
 
-        // Perform Tavily search as fallback
-        return await performTavilySearch(maker, model, jobId, context);
+        // Perform SerpAPI search as fallback
+        return await performSerpAPISearch(maker, model, jobId, context);
 
     } catch (error) {
         logger.error('Initialize job error:', error);
@@ -284,8 +284,8 @@ async function handleValidationRequiredStrategy(maker, model, jobId, strategy, c
             return await handleStandardValidationStrategy(maker, model, jobId, strategy, context);
         }
     } catch (error) {
-        logger.error(`Validation scraping failed for ${maker}: ${error.message}, falling back to Tavily search`);
-        return null; // Fall through to Tavily search
+        logger.error(`Validation scraping failed for ${maker}: ${error.message}, falling back to SerpAPI search`);
+        return null; // Fall through to SerpAPI search
     }
 }
 
@@ -296,7 +296,7 @@ async function handleExtractionStrategy(maker, model, jobId, strategy, context) 
     const productPath = extractTakigenProductUrl(searchHtml);
 
     if (!productPath) {
-        logger.info(`No product found in ${maker} search results, falling back to Tavily search`);
+        logger.info(`No product found in ${maker} search results, falling back to SerpAPI search`);
         return null;
     }
 
@@ -319,7 +319,7 @@ async function handle404CheckStrategy(maker, model, jobId, strategy, context) {
     const html = await fetchHtml(strategy.url);
 
     if (is404Page(html)) {
-        logger.info(`404 page detected for ${strategy.url}, falling back to Tavily search`);
+        logger.info(`404 page detected for ${strategy.url}, falling back to SerpAPI search`);
         return null;
     }
 
@@ -339,7 +339,7 @@ async function handleStandardValidationStrategy(maker, model, jobId, strategy, c
     const scrapeResult = await scrapeWithBrowserQL(strategy.url);
 
     if (hasNoSearchResults(scrapeResult.content)) {
-        logger.info(`No search results found on ${strategy.url}, falling back to Tavily search`);
+        logger.info(`No search results found on ${strategy.url}, falling back to SerpAPI search`);
         return null;
     }
 
@@ -413,21 +413,21 @@ function urlEndsWithModel(url, normalizedModel) {
 }
 
 /**
- * Select best 2 URLs from Tavily results using smart prioritization
+ * Select best 2 URLs from SerpAPI results using smart prioritization
  * Prioritizes URLs ending with exact product model name
- * @param {Array} tavilyResults - Array of Tavily search results
+ * @param {Array} serpResults - Array of SerpAPI organic search results
  * @param {string} model - Product model to match
  * @returns {Array} Best 2 URLs selected
  */
-function selectBestUrls(tavilyResults, model) {
+function selectBestUrls(serpResults, model) {
     const normalizedModel = model.trim().toUpperCase();
 
     // Categorize URLs
     const exactMatchUrls = [];
     const regularUrls = [];
 
-    for (const result of tavilyResults) {
-        if (urlEndsWithModel(result.url, normalizedModel)) {
+    for (const result of serpResults) {
+        if (urlEndsWithModel(result.link, normalizedModel)) {
             exactMatchUrls.push(result);
         } else {
             regularUrls.push(result);
@@ -435,11 +435,11 @@ function selectBestUrls(tavilyResults, model) {
     }
 
         // Log selected URLs for debugging
-    tavilyResults.forEach((result, index) => {
-        logger.info(`Found URL Number ${index + 1}: ${result.url}`);
+    serpResults.forEach((result, index) => {
+        logger.info(`Found URL Number ${index + 1}: ${result.link}`);
     });
 
-    logger.info(`Smart URL selection: ${exactMatchUrls.length} exact matches, ${regularUrls.length} regular URLs from ${tavilyResults.length} total`);
+    logger.info(`Smart URL selection: ${exactMatchUrls.length} exact matches, ${regularUrls.length} regular URLs from ${serpResults.length} total`);
 
     // Select best 2 URLs based on priority
     let selectedResults = [];
@@ -460,7 +460,7 @@ function selectBestUrls(tavilyResults, model) {
 
     // Log selected URLs for debugging
     selectedResults.forEach((result, index) => {
-        logger.info(`Selected URL ${index + 1}: ${result.url}`);
+        logger.info(`Selected URL ${index + 1}: ${result.link}`);
     });
 
     return selectedResults;
@@ -500,30 +500,44 @@ function createSuccessResponse(jobId, status, urlCount, strategy, additionalData
     return response;
 }
 
-async function performTavilySearch(maker, model, jobId, context) {
+async function performSerpAPISearch(maker, model, jobId, context) {
     const searchQuery = `${maker} ${model}`;
 
-    // Initialize Tavily client
-    const tavilyClient = tavily({ apiKey: process.env.TAVILY_API_KEY });
+    logger.info(`Performing SerpAPI search for: ${searchQuery}`);
 
-    let tavilyData;
+    let serpData;
     try {
-        tavilyData = await tavilyClient.search(searchQuery, getTavilySearchOptions());
+        // Perform synchronous SerpAPI search
+        serpData = await new Promise((resolve, reject) => {
+            getJson({
+                api_key: process.env.SERPAPI_API_KEY,
+                engine: config.SERPAPI_ENGINE,
+                q: searchQuery,
+                google_domain: config.SERPAPI_GOOGLE_DOMAIN
+            }, (json) => {
+                if (json.error) {
+                    reject(new Error(json.error));
+                } else {
+                    resolve(json);
+                }
+            });
+        });
     } catch (error) {
-        logger.error('Tavily API error:', error);
-        return errorResponse('Tavily API failed', error.message, 500);
+        logger.error('SerpAPI error:', error);
+        return errorResponse('SerpAPI failed', error.message, 500);
     }
 
-    logger.info(`Tavily returned ${tavilyData.results?.length || 0} results`);
+    const organicResults = serpData.organic_results || [];
+    logger.info(`SerpAPI returned ${organicResults.length} organic results`);
 
-    if (!tavilyData.results || tavilyData.results.length === 0) {
+    if (organicResults.length === 0) {
         return await handleNoSearchResults(maker, model, jobId, context);
     }
 
     // Smart URL selection: prioritize URLs ending with exact product model
-    const selectedResults = selectBestUrls(tavilyData.results, model);
+    const selectedResults = selectBestUrls(organicResults, model);
     const urls = selectedResults.map((result, index) =>
-        createUrlEntry(index, result.url, result.title, result.content || '')
+        createUrlEntry(index, result.link, result.title, result.snippet || '')
     );
 
     await saveJobUrls(jobId, urls, context);
@@ -532,77 +546,6 @@ async function performTavilySearch(maker, model, jobId, context) {
     return createSuccessResponse(jobId, 'urls_ready', urls.length);
 }
 
-
-function getTavilySearchOptions() {
-    return {
-        searchDepth: config.TAVILY_SEARCH_DEPTH,
-        maxResults: config.TAVILY_MAX_RESULTS,
-        auto_parameters: false,
-        includeDomains: [
-            'fa.omron.co.jp',
-            'jp.idec.com',
-            'us.idec.com',
-            'ccs-grp.com',
-            'automationdirect.com',
-            'takigen.co.jp',
-            'mitsubishielectric.co.jp',
-            'sentei.nissei-gtr.co.jp',
-            'tamron.com',
-            'search.sugatsune.co.jp',
-            'sanwa.co.jp',
-            'jp.misumi-ec.com',
-            'mitsubishielectric.com',
-            'kvm-switches-online.com',
-            'daitron.co.jp',
-            'kdwan.co.jp',
-            'hewtech.co.jp',
-            'directindustry.com',
-            'printerland.co.uk',
-            'orimvexta.co.jp',
-            'sankyo-seisakusho.co.jp',
-            'tsubakimoto.co.jp',
-            'nbk1560.com',
-            'habasit.com',
-            'nagoya.sc',
-            'amazon.co.jp',
-            'tps.co.jp/eol',
-            'ccs-inc.co.jp',
-            'shinkoh-faulhaber.jp',
-            'anelva.canon',
-            'takabel.com',
-            'ysol.co.jp',
-            'rs-components.com',
-            'fa-ubon.jp',
-            'monotaro.com',
-            'fujitsu.com',
-            'hubbell.com',
-            'adlinktech.com',
-            'touchsystems.com',
-            'elotouch.com',
-            'aten.com',
-            'canon.com',
-            'axiomtek.com',
-            'apc.com',
-            'hp.com',
-            'fujielectric.co.jp',
-            'panasonic.jp',
-            'wago.com',
-            'schmersal.com',
-            'apiste.co.jp',
-            'tdklamda.com',
-            'phoenixcontact.com',
-            'patlite.co.jp',
-            'smcworld.com',
-            'sanyodenki.co.jp',
-            'nissin-ele.co.jp',
-            'sony.co.jp',
-            'orientalmotor.co.jp',
-            'keyence.co.jp',
-            'tme.com/jp',
-            'ntn.co.jp'
-        ]
-    };
-}
 
 
 async function handleNoSearchResults(maker, model, jobId, context) {

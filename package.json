@@ -12,7 +12,7 @@
   "dependencies": {
     "@netlify/blobs": "^8.1.0",
     "@netlify/functions": "^2.8.2",
-    "@tavily/core": "^0.6.0",
+    "serpapi": "^3.0.0",
     "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^7.0.12",
