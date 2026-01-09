@@ -536,8 +536,7 @@ function getTavilySearchOptions() {
     return {
         searchDepth: config.TAVILY_SEARCH_DEPTH,
         maxResults: config.TAVILY_MAX_RESULTS,
-        auto_parameters: false,
-        ]
+        auto_parameters: false
     };
 }
 
