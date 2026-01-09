@@ -7,8 +7,8 @@
  * - ERROR: Errors only (best for production)
  * - NONE: Silent (not recommended)
  *
- * Logs are sent to both console (for immediate debugging) and central log storage
- * Set NETLIFY_SITE_URL environment variable to enable central logging
+ * Logs are sent to both console (for immediate debugging) and Supabase PostgreSQL
+ * Set SUPABASE_URL and SUPABASE_API_KEY environment variables to enable central logging
  */
 
 const LOG_LEVELS = {
@@ -26,33 +26,38 @@ const currentLevel = LOG_LEVELS[process.env.LOG_LEVEL?.toUpperCase()] ?? LOG_LEV
 const functionSource = 'render/scraping-service';
 
 /**
- * Send log to central ingestion endpoint
+ * Send log to Supabase PostgreSQL
  * This is fire-and-forget to avoid blocking the main application
+ * Uses Supabase REST API with publishable API key
  */
 async function sendToCentralLog(level, message, context) {
     try {
-        // Get the Netlify site URL from environment variable
-        const siteUrl = process.env.NETLIFY_SITE_URL;
-        if (!siteUrl) {
+        // Check if Supabase is configured
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_API_KEY) {
             // Central logging not configured, skip silently
             return;
         }
 
-        const logEndpoint = `${siteUrl}/.netlify/functions/log-ingest`;
-
+        const timestamp = new Date().toISOString();
         const logEntry = {
-            timestamp: new Date().toISOString(),
+            timestamp,
             level,
             source: functionSource,
             message,
-            context
+            context: context || null
         };
 
-        // Fire and forget - don't await to avoid blocking
-        fetch(logEndpoint, {
+        // Send to Supabase via REST API - fire and forget (don't await)
+        fetch(`${process.env.SUPABASE_URL}/rest/v1/logs`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(logEntry)
+            headers: {
+                'apikey': process.env.SUPABASE_API_KEY,
+                'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=minimal' // Don't return inserted data (faster)
+            },
+            body: JSON.stringify(logEntry),
+            signal: AbortSignal.timeout(5000) // 5 second timeout
         }).catch(() => {
             // Silently ignore errors in central logging to avoid cascading failures
         });

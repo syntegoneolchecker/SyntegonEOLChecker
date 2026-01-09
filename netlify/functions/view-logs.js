@@ -1,19 +1,16 @@
 /**
  * Log viewer endpoint
- * Retrieves and displays logs from Netlify Blobs
+ * Retrieves and displays logs from Supabase PostgreSQL
  * Supports filtering by date, source, level, and search term
- * Returns logs sorted chronologically
+ * Returns logs sorted chronologically with pagination
  */
 
-const { getStore } = require("@netlify/blobs");
-const { URLSearchParams } = require("node:url");
 const logger = require("./lib/logger");
 const { requireAuth } = require("./lib/auth-middleware");
 
 /**
- * Note: Log cleanup is handled by scheduled-log-cleanup.js (runs every 6 hours)
+ * Note: Log cleanup is handled by Supabase (automatic or via scheduled function)
  * This function focuses on fast log retrieval and display only
- * MAX_LOGS limit is enforced by the scheduled cleanup function
  */
 
 // Parameter parsing - separate concern
@@ -28,89 +25,92 @@ const parseParams = (params) => ({
     limit: Math.min(1000, Math.max(1, Number.parseInt(params.limit) || 100)),
 });
 
-// Date calculation - separate concern
-const getDatesToFetch = (specifiedDate, days) => {
-    if (specifiedDate) {
-        return [specifiedDate];
+/**
+ * Fetch logs from Supabase with filters
+ */
+const fetchLogsFromSupabase = async (filters) => {
+    const { date, source, level, search, days, offset, limit } = filters;
+
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_API_KEY) {
+        throw new Error('Supabase not configured. Set SUPABASE_URL and SUPABASE_API_KEY environment variables.');
     }
 
-    const dates = [];
-    for (let i = 0; i < days; i++) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        dates.push(date.toISOString().split("T")[0]);
+    // Build query parameters
+    const params = new URLSearchParams();
+
+    // Order by timestamp descending
+    params.set('order', 'timestamp.desc');
+
+    // Pagination
+    params.set('limit', limit.toString());
+    params.set('offset', offset.toString());
+
+    // Date filter
+    if (date) {
+        // Specific date
+        const startOfDay = `${date}T00:00:00.000Z`;
+        const endOfDay = `${date}T23:59:59.999Z`;
+        params.set('timestamp', `gte.${startOfDay}`);
+        params.set('timestamp', `lte.${endOfDay}`);
+    } else if (days) {
+        // Last N days
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        params.set('timestamp', `gte.${startDate.toISOString()}`);
     }
-    return dates;
-};
 
-// Log filtering - separate concern with clear predicates
-const filterLogs = (logs, filters) => {
-    const { source, level, search } = filters;
-    let filtered = logs;
-
-    if (source) {
-        const sourceLower = source.toLowerCase();
-        filtered = filtered.filter((log) =>
-            log.source.toLowerCase().includes(sourceLower)
-        );
-    }
-
+    // Level filter
     if (level) {
-        const levelUpper = level.toUpperCase();
-        filtered = filtered.filter(
-            (log) => log.level.toUpperCase() === levelUpper
-        );
+        params.set('level', `eq.${level.toUpperCase()}`);
     }
 
+    // Source filter (case-insensitive partial match)
+    if (source) {
+        params.set('source', `ilike.*${source}*`);
+    }
+
+    // Search filter (search in message field)
     if (search) {
-        const searchLower = search.toLowerCase();
-        filtered = filtered.filter((log) => {
-            const message =
-                typeof log.message === "string"
-                    ? log.message
-                    : JSON.stringify(log.message);
-            const context = log.context ? JSON.stringify(log.context) : "";
-            return (
-                message.toLowerCase().includes(searchLower) ||
-                context.toLowerCase().includes(searchLower) ||
-                log.source.toLowerCase().includes(searchLower)
-            );
-        });
+        params.set('message', `ilike.*${search}*`);
     }
 
-    return filtered;
-};
+    // Fetch logs from Supabase
+    const url = `${process.env.SUPABASE_URL}/rest/v1/logs?${params.toString()}`;
 
-// Log fetching - separate concern (parallelized for performance)
-const fetchLogsForDates = async (store, dates) => {
-    const logPromises = dates.map((dateKey) =>
-        fetchLogsForDate(store, dateKey)
-    );
-    const logsArrays = await Promise.all(logPromises);
-    return logsArrays.flat();
-};
+    const response = await fetch(url, {
+        headers: {
+            'apikey': process.env.SUPABASE_API_KEY,
+            'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
+            'Content-Type': 'application/json'
+        }
+    });
 
-const fetchLogsForDate = async (store, dateKey) => {
-    try {
-        const { blobs } = await store.list({ prefix: `logs-${dateKey}-` });
-        return await fetchLogBlobs(store, blobs);
-    } catch {
-        return [];
+    if (!response.ok) {
+        throw new Error(`Supabase query failed: ${response.status} ${response.statusText}`);
     }
+
+    const logs = await response.json();
+
+    // Get total count for pagination (without limit/offset)
+    const countParams = new URLSearchParams(params);
+    countParams.delete('limit');
+    countParams.delete('offset');
+    countParams.delete('order');
+
+    const countUrl = `${process.env.SUPABASE_URL}/rest/v1/logs?${countParams.toString()}`;
+    const countResponse = await fetch(countUrl, {
+        method: 'HEAD',
+        headers: {
+            'apikey': process.env.SUPABASE_API_KEY,
+            'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
+            'Prefer': 'count=exact'
+        }
+    });
+
+    const totalCount = Number.parseInt(countResponse.headers.get('content-range')?.split('/')[1] || '0');
+
+    return { logs, totalCount };
 };
-
-const fetchLogBlobs = async (store, blobs) => {
-    const logPromises = blobs.map((blob) =>
-        store.get(blob.key, { type: "json" })
-            .catch(() => null)
-    );
-
-    const results = await Promise.allSettled(logPromises);
-    return results
-        .filter((result) => result.status === "fulfilled" && result.value)
-        .map((result) => result.value);
-};
-
 
 // Response formatting - separate concern
 const formatResponse = (paginatedData, filters, format) => {
@@ -158,38 +158,24 @@ const viewLogsHandler = async (event) => {
         const { date, source, level, search, days, format, offset, limit } =
             parseParams(params);
 
-        const store = getStore({
-            name: "logs",
-            siteID: process.env.SITE_ID,
-            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN,
-        });
+        const filters = { date, source, level, search, days, offset, limit };
 
-        const datesToFetch = getDatesToFetch(date, days);
-        const allLogs = await fetchLogsForDates(store, datesToFetch);
+        // Fetch from Supabase
+        const { logs, totalCount } = await fetchLogsFromSupabase(filters);
 
-        const filters = { source, level, search, days };
-        const filteredLogs = filterLogs(allLogs, filters);
-
-        // Sort descending (newest first) for pagination
-        filteredLogs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-
-        // Apply pagination and reverse each page slice
-        // This shows newest logs on page 1, with oldest at top and newest at bottom within each page
-        const totalCount = filteredLogs.length;
-        const paginatedLogs = filteredLogs
-            .slice(offset, offset + limit)
-            .reverse();
+        // Reverse logs to show oldest first within the page (newest pages first)
+        const reversedLogs = [...logs].reverse();
         const hasMore = offset + limit < totalCount;
 
         const paginatedData = {
-            logs: paginatedLogs,
+            logs: reversedLogs,
             totalCount,
             offset,
             limit,
             hasMore,
         };
 
-        return formatResponse(paginatedData, filters, format);
+        return formatResponse(paginatedData, { source, level, search, days }, format);
     } catch (error) {
         return errorResponse(error);
     }
@@ -378,7 +364,7 @@ function generateHTMLTemplate(data) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Centralized Logs</title>
+  <title>Centralized Logs (Supabase)</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -559,7 +545,7 @@ function generateHTMLTemplate(data) {
 <body>
   <div class="container">
     <div class="header">
-      <h1>📊 Centralized Logs</h1>
+      <h1>📊 Centralized Logs (Supabase)</h1>
       <div class="meta">
         Showing ${showingFrom}-${showingTo} of ${totalCount} log entries
         ${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ""}
