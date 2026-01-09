@@ -385,29 +385,17 @@ async function handleDirectUrlStrategy(maker, model, jobId, strategy, context) {
 }
 
 /**
- * Check if a URL path ends with the product model name
+ * Check if a URL string ends with the product model name (exact match only)
  * @param {string} url - URL to check
  * @param {string} normalizedModel - Normalized (uppercase) product model
- * @returns {boolean} True if URL ends with model name
+ * @returns {boolean} True if URL string ends with exact model name
  */
 function urlEndsWithModel(url, normalizedModel) {
     try {
-        const urlObj = new URL(url);
-        const pathSegments = urlObj.pathname.split('/').filter(Boolean);
-
-        if (pathSegments.length === 0) return false;
-
-        const lastSegment = pathSegments.at(-1);
-
-        // Decode URL encoding and normalize
-        const decodedSegment = decodeURIComponent(lastSegment).toUpperCase();
-
-        // Check exact match or common variations
-        return decodedSegment === normalizedModel ||
-               decodedSegment === normalizedModel.replaceAll('-', '') ||
-               decodedSegment === normalizedModel.replaceAll('-', '_');
+        // Simple case-insensitive string check: does the URL end with the model name?
+        return url.toUpperCase().endsWith(normalizedModel);
     } catch (e) {
-        logger.warn(`Failed to parse URL for model matching: ${url}`, e.message);
+        logger.warn(`Failed to check URL for model matching: ${url}`, e.message);
         return false;
     }
 }
