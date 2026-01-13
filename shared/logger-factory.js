@@ -125,8 +125,11 @@ function sanitizeArgs(...args) {
 }
 
 /**
- * Format arguments for logging with deep sanitization
- * Used for central logging (Supabase) to ensure all strings are safe
+ * Format arguments for logging
+ * Used for central logging (Supabase)
+ *
+ * Note: Expects already-sanitized arguments from sanitizeArgs()
+ * The sanitization functions are idempotent, so double-sanitization is safe
  */
 function formatMessage(...args) {
     return args.map(arg => {
@@ -148,8 +151,11 @@ function formatMessage(...args) {
 }
 
 /**
- * Extract and sanitize context object from arguments
- * Returns a sanitized context safe for central logging
+ * Extract context object from arguments
+ * Returns a context object safe for central logging
+ *
+ * Note: Expects already-sanitized arguments from sanitizeArgs()
+ * The sanitization functions are idempotent, so double-sanitization is safe
  */
 function extractContext(...args) {
     const contextObj = {};
@@ -234,8 +240,8 @@ function createLogger(getFunctionSource, skipSources = []) {
             if (currentLevel <= LOG_LEVELS.DEBUG) {
                 const sanitized = sanitizeArgs(...args);
                 console.log('[DEBUG]', ...sanitized);
-                const message = formatMessage(...args);
-                const context = extractContext(...args);
+                const message = formatMessage(...sanitized);
+                const context = extractContext(...sanitized);
                 sendToCentralLog('DEBUG', message, context);
             }
         },
@@ -248,8 +254,8 @@ function createLogger(getFunctionSource, skipSources = []) {
             if (currentLevel <= LOG_LEVELS.INFO) {
                 const sanitized = sanitizeArgs(...args);
                 console.log('[INFO]', ...sanitized);
-                const message = formatMessage(...args);
-                const context = extractContext(...args);
+                const message = formatMessage(...sanitized);
+                const context = extractContext(...sanitized);
                 sendToCentralLog('INFO', message, context);
             }
         },
@@ -262,8 +268,8 @@ function createLogger(getFunctionSource, skipSources = []) {
             if (currentLevel <= LOG_LEVELS.WARN) {
                 const sanitized = sanitizeArgs(...args);
                 console.warn('[WARN]', ...sanitized);
-                const message = formatMessage(...args);
-                const context = extractContext(...args);
+                const message = formatMessage(...sanitized);
+                const context = extractContext(...sanitized);
                 sendToCentralLog('WARN', message, context);
             }
         },
@@ -276,8 +282,8 @@ function createLogger(getFunctionSource, skipSources = []) {
             if (currentLevel <= LOG_LEVELS.ERROR) {
                 const sanitized = sanitizeArgs(...args);
                 console.error('[ERROR]', ...sanitized);
-                const message = formatMessage(...args);
-                const context = extractContext(...args);
+                const message = formatMessage(...sanitized);
+                const context = extractContext(...sanitized);
                 sendToCentralLog('ERROR', message, context);
             }
         },
