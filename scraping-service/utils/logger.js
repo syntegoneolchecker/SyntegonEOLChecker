@@ -13,7 +13,7 @@
  * Set SUPABASE_URL and SUPABASE_API_KEY environment variables to enable central logging
  */
 
-const { createLogger } = require('../../shared/logger-factory');
+const { createLogger } = require('shared/logger-factory');
 
 /**
  * Get the function source for Render service
