@@ -1,4 +1,4 @@
-/**
+/** 
  * Shared logger factory
  * Creates a logger instance with centralized logging capabilities
  *
