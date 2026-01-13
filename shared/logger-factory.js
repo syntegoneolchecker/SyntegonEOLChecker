@@ -239,8 +239,8 @@ function createLogger(getFunctionSource, skipSources = []) {
         debug: (...args) => {
             if (currentLevel <= LOG_LEVELS.DEBUG) {
                 const sanitized = sanitizeArgs(...args);
-                console.log('[DEBUG]', ...sanitized);
                 const message = formatMessage(...sanitized);
+                console.log('[DEBUG] ' + message);
                 const context = extractContext(...sanitized);
                 sendToCentralLog('DEBUG', message, context);
             }
@@ -253,7 +253,7 @@ function createLogger(getFunctionSource, skipSources = []) {
         info: (...args) => {
             if (currentLevel <= LOG_LEVELS.INFO) {
                 const sanitized = sanitizeArgs(...args);
-                console.log('[INFO]', ...sanitized);
+                console.log('[INFO] ' + message);
                 const message = formatMessage(...sanitized);
                 const context = extractContext(...sanitized);
                 sendToCentralLog('INFO', message, context);
@@ -267,7 +267,7 @@ function createLogger(getFunctionSource, skipSources = []) {
         warn: (...args) => {
             if (currentLevel <= LOG_LEVELS.WARN) {
                 const sanitized = sanitizeArgs(...args);
-                console.warn('[WARN]', ...sanitized);
+                console.warn('[WARN] ' + message);
                 const message = formatMessage(...sanitized);
                 const context = extractContext(...sanitized);
                 sendToCentralLog('WARN', message, context);
@@ -281,7 +281,7 @@ function createLogger(getFunctionSource, skipSources = []) {
         error: (...args) => {
             if (currentLevel <= LOG_LEVELS.ERROR) {
                 const sanitized = sanitizeArgs(...args);
-                console.error('[ERROR]', ...sanitized);
+                console.error('[ERROR] ' + message);
                 const message = formatMessage(...sanitized);
                 const context = extractContext(...sanitized);
                 sendToCentralLog('ERROR', message, context);
