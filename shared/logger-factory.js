@@ -253,8 +253,8 @@ function createLogger(getFunctionSource, skipSources = []) {
         info: (...args) => {
             if (currentLevel <= LOG_LEVELS.INFO) {
                 const sanitized = sanitizeArgs(...args);
-                console.log('[INFO] ' + message);
                 const message = formatMessage(...sanitized);
+                console.log('[INFO] ' + message);
                 const context = extractContext(...sanitized);
                 sendToCentralLog('INFO', message, context);
             }
