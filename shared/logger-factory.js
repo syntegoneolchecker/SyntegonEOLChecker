@@ -267,8 +267,8 @@ function createLogger(getFunctionSource, skipSources = []) {
         warn: (...args) => {
             if (currentLevel <= LOG_LEVELS.WARN) {
                 const sanitized = sanitizeArgs(...args);
-                console.warn('[WARN] ' + message);
                 const message = formatMessage(...sanitized);
+                console.warn('[WARN] ' + message);
                 const context = extractContext(...sanitized);
                 sendToCentralLog('WARN', message, context);
             }
