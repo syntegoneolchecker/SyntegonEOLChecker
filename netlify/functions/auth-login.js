@@ -1,7 +1,8 @@
 const { loginUser } = require('./lib/auth-manager');
 const { generateAuthCookie } = require('./lib/auth-middleware');
 const logger = require('./lib/logger');
-const { checkRateLimit, recordAttempt, clearRateLimit, getClientIP } = require('./lib/rate-limiter');
+const { recordAttempt, clearRateLimit } = require('./lib/rate-limiter');
+const { validateAuthRequest } = require('./lib/auth-helpers');
 
 /**
  * User Login Endpoint
@@ -28,70 +29,15 @@ const { checkRateLimit, recordAttempt, clearRateLimit, getClientIP } = require('
  */
 
 exports.handler = async (event) => {
-    // Handle CORS preflight
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 204,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS'
-            },
-            body: ''
-        };
+    // Validate request and handle common errors
+    const validation = await validateAuthRequest(event, 'login');
+    if (validation.error) {
+        return validation.error;
     }
 
-    // Only allow POST requests
-    if (event.httpMethod !== 'POST') {
-        return {
-            statusCode: 405,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            body: JSON.stringify({ error: 'Method not allowed' })
-        };
-    }
+    const { email, password, clientIP } = validation;
 
     try {
-        const { email, password } = JSON.parse(event.body);
-
-        // Validate input
-        if (!email || !password) {
-            return {
-                statusCode: 400,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                body: JSON.stringify({
-                    success: false,
-                    message: 'Email and password are required'
-                })
-            };
-        }
-
-        // Check rate limit
-        const clientIP = getClientIP(event);
-        const rateLimit = await checkRateLimit('login', clientIP);
-
-        if (!rateLimit.allowed) {
-            logger.warn(`Rate limit exceeded for login from IP: ${clientIP}`);
-            return {
-                statusCode: 429,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Retry-After': rateLimit.retryAfter.toString()
-                },
-                body: JSON.stringify({
-                    success: false,
-                    message: rateLimit.message,
-                    retryAfter: rateLimit.retryAfter
-                })
-            };
-        }
-
         // Attempt login
         const result = await loginUser(email, password);
 
