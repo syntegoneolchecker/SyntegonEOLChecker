@@ -41,32 +41,98 @@ function sanitizeForLog(str) {
 }
 
 /**
+ * Deep sanitize a value for safe logging
+ * Recursively sanitizes all strings in objects and arrays
+ * Handles cycles with WeakSet to prevent infinite loops
+ *
+ * @param {*} value - Value to sanitize
+ * @param {WeakSet} seen - Set to track visited objects for cycle detection
+ * @returns {*} Sanitized value safe for logging
+ */
+function sanitizeValueForLog(value, seen = new WeakSet()) {
+    // Handle primitives (number, boolean, bigint, symbol, undefined, null)
+    if (value === null || value === undefined) {
+        return value;
+    }
+
+    const type = typeof value;
+    if (type === 'number' || type === 'boolean' || type === 'bigint' || type === 'symbol') {
+        return value;
+    }
+
+    // Handle strings
+    if (type === 'string') {
+        return sanitizeForLog(value);
+    }
+
+    // Handle functions (return string representation, sanitized)
+    if (type === 'function') {
+        return sanitizeForLog('[Function: ' + (value.name || 'anonymous') + ']');
+    }
+
+    // Handle Errors - convert to plain object with sanitized properties
+    if (value instanceof Error) {
+        const sanitizedError = {
+            name: sanitizeForLog(value.name),
+            message: sanitizeForLog(value.message),
+            stack: sanitizeForLog(value.stack || '')
+        };
+
+        // Include any enumerable properties on the error
+        for (const key in value) {
+            if (Object.prototype.hasOwnProperty.call(value, key)) {
+                sanitizedError[key] = sanitizeValueForLog(value[key], seen);
+            }
+        }
+
+        return sanitizedError;
+    }
+
+    // Cycle detection for objects and arrays
+    if (typeof value === 'object') {
+        if (seen.has(value)) {
+            return '[Circular Reference]';
+        }
+        seen.add(value);
+
+        // Handle arrays
+        if (Array.isArray(value)) {
+            return value.map(item => sanitizeValueForLog(item, seen));
+        }
+
+        // Handle plain objects
+        const sanitized = {};
+        for (const key in value) {
+            if (Object.prototype.hasOwnProperty.call(value, key)) {
+                // Sanitize both key and value
+                const sanitizedKey = sanitizeForLog(String(key));
+                sanitized[sanitizedKey] = sanitizeValueForLog(value[key], seen);
+            }
+        }
+        return sanitized;
+    }
+
+    // Fallback for any other types
+    return value;
+}
+
+/**
  * Sanitize all arguments for safe logging
- * Returns sanitized copies suitable for console output
+ * Returns deeply sanitized copies suitable for console output
  */
 function sanitizeArgs(...args) {
+    return args.map(arg => sanitizeValueForLog(arg));
+}
+
+/**
+ * Format arguments for logging with deep sanitization
+ * Used for central logging (Supabase) to ensure all strings are safe
+ */
+function formatMessage(...args) {
     return args.map(arg => {
         if (typeof arg === 'string') {
             return sanitizeForLog(arg);
         }
-        if (arg instanceof Error) {
-            // Create sanitized error object
-            const sanitizedError = new Error(sanitizeForLog(arg.message));
-            sanitizedError.name = sanitizeForLog(arg.name);
-            sanitizedError.stack = sanitizeForLog(arg.stack || '');
-            return sanitizedError;
-        }
-        // For objects/arrays, return as-is (JSON.stringify will handle them)
-        return arg;
-    });
-}
-
-/**
- * Format arguments for logging with sanitization
- */
-function formatMessage(...args) {
-    return args.map(arg => {
-        if (typeof arg === 'string') return sanitizeForLog(arg);
         if (arg instanceof Error) {
             // Sanitize error messages and stack traces
             const name = sanitizeForLog(arg.name);
@@ -74,12 +140,16 @@ function formatMessage(...args) {
             const stack = sanitizeForLog(arg.stack || '');
             return `${name}: ${message}\n${stack}`;
         }
-        return JSON.stringify(arg);
+        // Sanitize the value deeply before JSON stringifying
+        // This ensures no raw tainted strings slip through in objects/arrays
+        const sanitized = sanitizeValueForLog(arg);
+        return JSON.stringify(sanitized);
     }).join(' ');
 }
 
 /**
- * Extract context object from arguments
+ * Extract and sanitize context object from arguments
+ * Returns a sanitized context safe for central logging
  */
 function extractContext(...args) {
     const contextObj = {};
@@ -88,7 +158,11 @@ function extractContext(...args) {
             Object.assign(contextObj, arg);
         }
     });
-    return Object.keys(contextObj).length > 0 ? contextObj : undefined;
+    if (Object.keys(contextObj).length === 0) {
+        return undefined;
+    }
+    // Deep sanitize the context to remove any tainted strings
+    return sanitizeValueForLog(contextObj);
 }
 
 /**
