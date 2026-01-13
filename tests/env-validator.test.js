@@ -12,7 +12,7 @@ describe('Environment Validator', () => {
 
         // Clear all relevant env vars
         delete process.env.SITE_ID;
-        delete process.env.TAVILY_API_KEY;
+        delete process.env.SERPAPI_API_KEY;
         delete process.env.GROQ_API_KEY;
         delete process.env.NETLIFY_BLOBS_TOKEN;
         delete process.env.NETLIFY_TOKEN;
@@ -38,14 +38,14 @@ describe('Environment Validator', () => {
 
     describe('validateCommonEnvVars', () => {
         test('should throw if SITE_ID is missing', () => {
-            process.env.TAVILY_API_KEY = 'test-key';
+            process.env.SERPAPI_API_KEY = 'test-key';
             process.env.GROQ_API_KEY = 'test-key';
 
             expect(() => envValidator.validateCommonEnvVars())
                 .toThrow('Missing required environment variables');
         });
 
-        test('should throw if TAVILY_API_KEY is missing', () => {
+        test('should throw if SERPAPI_API_KEY is missing', () => {
             process.env.SITE_ID = 'test-site';
             process.env.GROQ_API_KEY = 'test-key';
 
@@ -55,7 +55,7 @@ describe('Environment Validator', () => {
 
         test('should throw if GROQ_API_KEY is missing', () => {
             process.env.SITE_ID = 'test-site';
-            process.env.TAVILY_API_KEY = 'test-key';
+            process.env.SERPAPI_API_KEY = 'test-key';
 
             expect(() => envValidator.validateCommonEnvVars())
                 .toThrow('Missing required environment variables');
@@ -63,7 +63,7 @@ describe('Environment Validator', () => {
 
         test('should not throw if all required vars are present', () => {
             process.env.SITE_ID = 'test-site';
-            process.env.TAVILY_API_KEY = 'test-tavily-key';
+            process.env.SERPAPI_API_KEY = 'test-serpapi-key';
             process.env.GROQ_API_KEY = 'test-groq-key';
 
             expect(() => envValidator.validateCommonEnvVars()).not.toThrow();
