@@ -15,12 +15,65 @@ const LOG_LEVELS = {
 };
 
 /**
- * Format arguments for logging
+ * Sanitize string for safe logging (prevents log injection attacks)
+ * Removes:
+ * - Newline characters (\n, \r) - prevents fake log entry injection
+ * - ANSI escape codes - prevents terminal manipulation
+ * - Control characters (0x00-0x1F except tab) - prevents other injection attacks
+ *
+ * @param {string} str - String to sanitize
+ * @returns {string} Sanitized string safe for logging
+ */
+function sanitizeForLog(str) {
+    if (typeof str !== 'string') {
+        return str;
+    }
+
+    return str
+        // Remove ANSI escape codes (e.g., \x1b[31m for colors)
+        .replace(/\x1b\[[0-9;]*m/g, '')
+        // Replace newlines with escaped versions to prevent log injection
+        .replace(/\r\n/g, '\\r\\n')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        // Remove other control characters except tab (0x09)
+        .replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '');
+}
+
+/**
+ * Sanitize all arguments for safe logging
+ * Returns sanitized copies suitable for console output
+ */
+function sanitizeArgs(...args) {
+    return args.map(arg => {
+        if (typeof arg === 'string') {
+            return sanitizeForLog(arg);
+        }
+        if (arg instanceof Error) {
+            // Create sanitized error object
+            const sanitizedError = new Error(sanitizeForLog(arg.message));
+            sanitizedError.name = sanitizeForLog(arg.name);
+            sanitizedError.stack = sanitizeForLog(arg.stack || '');
+            return sanitizedError;
+        }
+        // For objects/arrays, return as-is (JSON.stringify will handle them)
+        return arg;
+    });
+}
+
+/**
+ * Format arguments for logging with sanitization
  */
 function formatMessage(...args) {
     return args.map(arg => {
-        if (typeof arg === 'string') return arg;
-        if (arg instanceof Error) return `${arg.name}: ${arg.message}\n${arg.stack}`;
+        if (typeof arg === 'string') return sanitizeForLog(arg);
+        if (arg instanceof Error) {
+            // Sanitize error messages and stack traces
+            const name = sanitizeForLog(arg.name);
+            const message = sanitizeForLog(arg.message);
+            const stack = sanitizeForLog(arg.stack || '');
+            return `${name}: ${message}\n${stack}`;
+        }
         return JSON.stringify(arg);
     }).join(' ');
 }
@@ -105,7 +158,8 @@ function createLogger(getFunctionSource, skipSources = []) {
          */
         debug: (...args) => {
             if (currentLevel <= LOG_LEVELS.DEBUG) {
-                console.log('[DEBUG]', ...args);
+                const sanitized = sanitizeArgs(...args);
+                console.log('[DEBUG]', ...sanitized);
                 const message = formatMessage(...args);
                 const context = extractContext(...args);
                 sendToCentralLog('DEBUG', message, context);
@@ -118,7 +172,8 @@ function createLogger(getFunctionSource, skipSources = []) {
          */
         info: (...args) => {
             if (currentLevel <= LOG_LEVELS.INFO) {
-                console.log('[INFO]', ...args);
+                const sanitized = sanitizeArgs(...args);
+                console.log('[INFO]', ...sanitized);
                 const message = formatMessage(...args);
                 const context = extractContext(...args);
                 sendToCentralLog('INFO', message, context);
@@ -131,7 +186,8 @@ function createLogger(getFunctionSource, skipSources = []) {
          */
         warn: (...args) => {
             if (currentLevel <= LOG_LEVELS.WARN) {
-                console.warn('[WARN]', ...args);
+                const sanitized = sanitizeArgs(...args);
+                console.warn('[WARN]', ...sanitized);
                 const message = formatMessage(...args);
                 const context = extractContext(...args);
                 sendToCentralLog('WARN', message, context);
@@ -144,7 +200,8 @@ function createLogger(getFunctionSource, skipSources = []) {
          */
         error: (...args) => {
             if (currentLevel <= LOG_LEVELS.ERROR) {
-                console.error('[ERROR]', ...args);
+                const sanitized = sanitizeArgs(...args);
+                console.error('[ERROR]', ...sanitized);
                 const message = formatMessage(...args);
                 const context = extractContext(...args);
                 sendToCentralLog('ERROR', message, context);
