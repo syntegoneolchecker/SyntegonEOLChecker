@@ -281,8 +281,8 @@ function createLogger(getFunctionSource, skipSources = []) {
         error: (...args) => {
             if (currentLevel <= LOG_LEVELS.ERROR) {
                 const sanitized = sanitizeArgs(...args);
-                console.error('[ERROR] ' + message);
                 const message = formatMessage(...sanitized);
+                console.error('[ERROR] ' + message);
                 const context = extractContext(...sanitized);
                 sendToCentralLog('ERROR', message, context);
             }
