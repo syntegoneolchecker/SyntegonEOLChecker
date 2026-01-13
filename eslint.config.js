@@ -42,6 +42,7 @@ module.exports = [
                 FileReader: 'readonly',
                 Blob: 'readonly',
                 structuredClone: 'readonly', // Modern browser API
+                URLSearchParams: 'readonly',
                 // External libraries
                 XLSX: 'readonly'
             }

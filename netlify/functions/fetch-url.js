@@ -1,6 +1,6 @@
 // Fetch a single URL - trigger Render scraping with callback OR use BrowserQL for Cloudflare-protected sites
 const { markUrlFetching, saveUrlResult, getJob } = require('./lib/job-storage');
-const { errorResponse, methodNotAllowedResponse, notFoundResponse } = require('./lib/response-builder');
+const { errorResponse, methodNotAllowedResponse} = require('./lib/response-builder');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { retryWithBackoff } = require('./lib/retry-helpers');
 const { triggerFetchUrl, triggerAnalyzeJob } = require('./lib/fire-and-forget');

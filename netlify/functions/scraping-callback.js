@@ -1,6 +1,6 @@
 // Receive results from Render scraping service and save them
 const { saveUrlResult, getJob } = require('./lib/job-storage');
-const { errorResponse, methodNotAllowedResponse, notFoundResponse } = require('./lib/response-builder');
+const { errorResponse, methodNotAllowedResponse} = require('./lib/response-builder');
 const { triggerFetchUrl } = require('./lib/fire-and-forget');
 const logger = require('./lib/logger');
 

@@ -489,9 +489,13 @@ function createSuccessResponse(jobId, status, urlCount, strategy, additionalData
 }
 
 async function performSerpAPISearch(maker, model, jobId, context) {
-    const searchQuery = `${maker} ${model}`;
+    let searchQuery = `${maker} ${model}`;
 
-    logger.info(`Performing SerpAPI search for: ${searchQuery}`);
+    logger.info(`Performing SerpAPI search for ${searchQuery} with sites to search`);
+
+    // Constructing query with sites to search from config
+    config.SERPAPI_SITES_TO_SEARCH.forEach(site => searchQuery += ' site:' + site + ' OR');
+    searchQuery = searchQuery.slice(0, -3);
 
     let serpData;
     try {
@@ -533,7 +537,6 @@ async function performSerpAPISearch(maker, model, jobId, context) {
 
     return createSuccessResponse(jobId, 'urls_ready', urls.length);
 }
-
 
 
 async function handleNoSearchResults(maker, model, jobId, context) {
