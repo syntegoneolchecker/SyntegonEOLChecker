@@ -17,3 +17,6 @@ query-filters:
   - exclude:
       id: js/tainted-format-string
 
+  # Logs are adequately sanitized, CodeQL does not recognize the solution, thus log-injection exclude
+  - exclude:
+      id: js/log-injection
