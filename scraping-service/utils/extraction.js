@@ -1,6 +1,7 @@
 // Content extraction utilities
 const RE2 = require('re2');
 const pdfParse = require('pdf-parse');
+const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 const { decodeWithProperEncoding } = require('./encoding');
 const { isSafePublicUrl } = require('./validation');
 const logger = require('./logger');
@@ -133,6 +134,33 @@ function isErrorPage(text) {
 }
 
 /**
+ * Extract text from PDF using pdfjs-dist (better CJK support)
+ * @param {Buffer} pdfBuffer - PDF file buffer
+ * @param {string} url - URL of the PDF (for logging)
+ * @returns {Promise<string>} Extracted text
+ */
+async function extractWithPdfjsDist(pdfBuffer, url) {
+    logger.info(`Trying pdfjs-dist extraction for ${url}`);
+
+    const loadingTask = pdfjsLib.getDocument({ data: pdfBuffer });
+    const doc = await loadingTask.promise;
+
+    const maxPages = Math.min(5, doc.numPages);
+    let fullText = '';
+
+    for (let i = 1; i <= maxPages; i++) {
+        const page = await doc.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+            .map(item => item.str)
+            .join(' ');
+        fullText += pageText + ' ';
+    }
+
+    return fullText.replaceAll(/\s+/g, ' ').trim();
+}
+
+/**
  * Extract text from PDF
  * @param {Buffer} pdfBuffer - PDF file buffer
  * @param {string} url - URL of the PDF (for logging)
@@ -154,23 +182,44 @@ async function extractPDFText(pdfBuffer, url) {
             return `[File is not a valid PDF - may be HTML or error page]`;
         }
 
-        // Parse PDF - limit to first 5 pages
-        const data = await pdfParse(pdfBuffer, {
-            max: 5
-        });
+        // Try pdf-parse first (faster)
+        let fullText = '';
+        try {
+            const data = await pdfParse(pdfBuffer, { max: 5 });
+            fullText = data.text.replaceAll(/\s+/g, ' ').trim();
 
-        const fullText = data.text
-            .replaceAll(/\s+/g, ' ')
-            .trim();
+            if (fullText.length > 0) {
+                logger.info(`✓ pdf-parse extracted ${fullText.length} chars from PDF (${Math.min(5, data.numpages)} pages)`);
+                return fullText;
+            }
 
-        if (fullText.length === 0) {
-            logger.warn(`PDF parsed but extracted 0 characters from ${url}`);
-            return `[PDF contains no extractable text - may be encrypted, password-protected, or image-based. Please review this product manually.]`;
+            logger.warn(`pdf-parse extracted 0 characters from ${url}, trying pdfjs-dist...`);
+        } catch (parseError) {
+            logger.warn(`pdf-parse failed for ${url}: ${parseError.message}, trying pdfjs-dist...`);
         }
 
-        logger.info(`✓ Successfully extracted ${fullText.length} chars from PDF (${Math.min(5, data.numpages)} pages)`);
+        // Fallback to pdfjs-dist (better CJK support)
+        try {
+            fullText = await extractWithPdfjsDist(pdfBuffer, url);
 
-        return fullText;
+            if (fullText.length === 0) {
+                logger.warn(`pdfjs-dist also extracted 0 characters from ${url}`);
+                return `[PDF contains no extractable text - may be encrypted, password-protected, or image-based. Please review this product manually.]`;
+            }
+
+            logger.info(`✓ pdfjs-dist extracted ${fullText.length} chars from PDF`);
+            return fullText;
+
+        } catch (pdfjsError) {
+            logger.error(`pdfjs-dist extraction failed for ${url}:`, pdfjsError.message);
+
+            // If both failed and got 0 chars, it's likely image-based
+            if (fullText.length === 0) {
+                return `[PDF contains no extractable text - may be encrypted, password-protected, or image-based. Please review this product manually.]`;
+            }
+
+            throw pdfjsError;
+        }
 
     } catch (error) {
         logger.error(`PDF extraction error from ${url}:`, error.message);

@@ -3,9 +3,219 @@ const { createJob, saveJobUrls, saveFinalResult, saveUrlResult } = require('./li
 const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { getJson } = require('serpapi');
+const pdfParse = require('pdf-parse');
+const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
 const { errorResponse, validationErrorResponse } = require('./lib/response-builder');
+
+/**
+ * Check if URL is a PDF
+ */
+function isPdfUrl(url) {
+    const urlLower = url.toLowerCase();
+    return urlLower.endsWith('.pdf') || urlLower.includes('/pdf/') || urlLower.includes('data_pdf');
+}
+
+/**
+ * Extract text from PDF using pdfjs-dist (better CJK support)
+ * Matches the fallback extraction logic used by Render service
+ * @param {Buffer} pdfBuffer - PDF file buffer
+ * @param {string} url - URL of the PDF (for logging)
+ * @returns {Promise<string>} Extracted text
+ */
+async function extractWithPdfjsDist(pdfBuffer, url) {
+    logger.info(`[PDF-SCREEN] Trying pdfjs-dist extraction for ${url}`);
+
+    const loadingTask = pdfjsLib.getDocument({ data: pdfBuffer });
+    const doc = await loadingTask.promise;
+
+    const maxPages = Math.min(config.PDF_SCREENING_MAX_PAGES, doc.numPages);
+    let fullText = '';
+
+    for (let i = 1; i <= maxPages; i++) {
+        const page = await doc.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+            .map(item => item.str)
+            .join(' ');
+        fullText += pageText + ' ';
+    }
+
+    return fullText.replaceAll(/\s+/g, ' ').trim();
+}
+
+/**
+ * Quick PDF text extraction check
+ * Uses same library fallback chain as Render: pdf-parse → pdfjs-dist
+ * This ensures screening accurately predicts whether extraction will succeed
+ * @returns {Promise<{success: boolean, charCount: number, error?: string}>}
+ */
+async function quickPdfTextCheck(pdfUrl) {
+    try {
+        const response = await fetch(pdfUrl, {
+            signal: AbortSignal.timeout(config.PDF_SCREENING_TIMEOUT_MS),
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EOLChecker/1.0)' }
+        });
+
+        if (!response.ok) {
+            return { success: false, charCount: 0, error: `HTTP ${response.status}` };
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType?.includes('pdf')) {
+            return { success: false, charCount: 0, error: `Not a PDF (Content-Type: ${contentType})` };
+        }
+
+        const contentLength = response.headers.get('content-length');
+        if (contentLength && parseInt(contentLength) > config.PDF_SCREENING_MAX_SIZE_MB * 1024 * 1024) {
+            return {
+                success: false,
+                charCount: 0,
+                error: `PDF too large (${(parseInt(contentLength) / 1024 / 1024).toFixed(1)}MB, max ${config.PDF_SCREENING_MAX_SIZE_MB}MB)`
+            };
+        }
+
+        const buffer = await response.arrayBuffer();
+        const pdfBuffer = Buffer.from(buffer);
+
+        // Try pdf-parse first (faster)
+        let fullText = '';
+        let usedLibrary = '';
+
+        try {
+            const data = await pdfParse(pdfBuffer, {
+                max: config.PDF_SCREENING_MAX_PAGES
+            });
+            fullText = data.text.replaceAll(/\s+/g, ' ').trim();
+
+            if (fullText.length > 0) {
+                usedLibrary = 'pdf-parse';
+                logger.info(`[PDF-SCREEN] ✓ pdf-parse extracted ${fullText.length} chars`);
+                return { success: true, charCount: fullText.length };
+            }
+
+            logger.info(`[PDF-SCREEN] pdf-parse extracted 0 characters, trying pdfjs-dist fallback...`);
+        } catch (parseError) {
+            logger.info(`[PDF-SCREEN] pdf-parse failed: ${parseError.message}, trying pdfjs-dist fallback...`);
+        }
+
+        // Fallback to pdfjs-dist (better CJK support)
+        try {
+            fullText = await extractWithPdfjsDist(pdfBuffer, pdfUrl);
+
+            if (fullText.length === 0) {
+                logger.warn(`[PDF-SCREEN] pdfjs-dist also extracted 0 characters`);
+                return {
+                    success: false,
+                    charCount: 0,
+                    error: 'No extractable text (both pdf-parse and pdfjs-dist failed)'
+                };
+            }
+
+            usedLibrary = 'pdfjs-dist';
+            logger.info(`[PDF-SCREEN] ✓ pdfjs-dist extracted ${fullText.length} chars`);
+            return { success: true, charCount: fullText.length };
+
+        } catch (pdfjsError) {
+            logger.error(`[PDF-SCREEN] pdfjs-dist extraction failed: ${pdfjsError.message}`);
+
+            // If both failed and got 0 chars, reject the PDF
+            if (fullText.length === 0) {
+                return {
+                    success: false,
+                    charCount: 0,
+                    error: 'No extractable text (both libraries failed)'
+                };
+            }
+
+            throw pdfjsError;
+        }
+
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            return { success: false, charCount: 0, error: 'Timeout during PDF download' };
+        }
+        return { success: false, charCount: 0, error: error.message };
+    }
+}
+
+/**
+ * Screen a single URL to check if it's accessible
+ * @returns {Promise<{valid: boolean, type: string, reason: string, charCount?: number}>}
+ */
+async function screenUrl(urlInfo) {
+    const { link: url, title } = urlInfo;
+
+    if (!isPdfUrl(url)) {
+        return {
+            valid: true,
+            type: 'html',
+            reason: 'Non-PDF URL, will scrape as HTML'
+        };
+    }
+
+    // It's a PDF - attempt to extract text
+    logger.info(`[PDF-SCREEN] Checking PDF: ${title || url}`);
+    const result = await quickPdfTextCheck(url);
+
+    if (result.success && result.charCount >= config.PDF_SCREENING_MIN_CHARS) {
+        return {
+            valid: true,
+            type: 'pdf',
+            charCount: result.charCount,
+            reason: `PDF with ${result.charCount} extractable characters`
+        };
+    } else if (result.success && result.charCount < config.PDF_SCREENING_MIN_CHARS) {
+        return {
+            valid: false,
+            type: 'pdf',
+            reason: `PDF has only ${result.charCount} characters (min ${config.PDF_SCREENING_MIN_CHARS})`
+        };
+    } else {
+        return {
+            valid: false,
+            type: 'pdf',
+            reason: result.error || 'PDF text extraction failed'
+        };
+    }
+}
+
+/**
+ * Screen and select valid URLs with PDF checking
+ * @returns {Promise<Array>} Array of valid URLs
+ */
+async function screenAndSelectUrls(candidateUrls, maxUrls = 2) {
+    logger.info(`[PDF-SCREEN] Starting URL screening: ${candidateUrls.length} candidates, need ${maxUrls} valid URLs`);
+
+    const validUrls = [];
+    let attemptedCount = 0;
+
+    for (const urlInfo of candidateUrls) {
+        if (validUrls.length >= maxUrls) break;
+        attemptedCount++;
+
+        logger.info(`[PDF-SCREEN] URL ${attemptedCount}/${candidateUrls.length}: ${urlInfo.link}`);
+
+        const screenResult = await screenUrl(urlInfo);
+
+        if (screenResult.valid) {
+            validUrls.push(urlInfo);
+            logger.info(`[PDF-SCREEN] → Result: PASS ✓ (${screenResult.reason})`);
+        } else {
+            logger.info(`[PDF-SCREEN] → Result: FAIL ✗ (${screenResult.reason})`);
+            logger.info(`[PDF-SCREEN] Trying next URL from search results...`);
+        }
+    }
+
+    if (validUrls.length < maxUrls) {
+        logger.warn(`[PDF-SCREEN] Only found ${validUrls.length}/${maxUrls} valid URLs after screening ${attemptedCount} candidates`);
+    } else {
+        logger.info(`[PDF-SCREEN] Screening complete: ${validUrls.length}/${maxUrls} valid URLs found after checking ${attemptedCount} candidates`);
+    }
+
+    return validUrls;
+}
 
 /**
  * Get manufacturer-specific direct URL if available
@@ -528,7 +738,16 @@ async function performSerpAPISearch(maker, model, jobId, context) {
 
     // Smart URL selection: prioritize URLs ending with exact product model
     const selectedResults = selectBestUrls(organicResults, model);
-    const urls = selectedResults.map((result, index) =>
+
+    // Screen URLs for PDF accessibility (replace unreadable PDFs with next best URL)
+    const validResults = await screenAndSelectUrls(selectedResults.length >= 2 ? selectedResults : organicResults, 2);
+
+    if (validResults.length === 0) {
+        logger.warn('No valid URLs found after PDF screening');
+        return await handleNoSearchResults(maker, model, jobId, context);
+    }
+
+    const urls = validResults.map((result, index) =>
         createUrlEntry(index, result.link, result.title, result.snippet || '')
     );
 
