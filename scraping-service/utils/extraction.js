@@ -27,6 +27,35 @@ function isTextFileUrl(url) {
 }
 
 /**
+ * Remove JavaScript object literal patterns from extracted text
+ * These patterns commonly appear when i18n/translation data leaks into page content
+ * @param {string} text - Text to clean
+ * @returns {string} Cleaned text
+ */
+function cleanJavaScriptPatterns(text) {
+    if (!text) return text;
+
+    // Pattern: 'key.name': 'value', or 'key.name': `value` (i18n translation entries)
+    text = text.replace(/'[\w.-]+(?:\.[\w.-]+)*'\s*:\s*[`'"][^`'"]*[`'"],?\s*/g, '');
+
+    // Pattern: "key.name": "value", (JSON-style)
+    text = text.replace(/"[\w.-]+(?:\.[\w.-]+)*"\s*:\s*"[^"]*",?\s*/g, '');
+
+    // Pattern: key: 'value', or key: "value" (unquoted keys, common in JS objects)
+    // Limit value length to avoid matching legitimate content
+    text = text.replace(/\b[a-zA-Z_][\w]*\s*:\s*['"`][^'"`]{0,100}['"`],?\s*/g, '');
+
+    // Remove orphaned object braces and brackets that may remain
+    text = text.replace(/[{}\[\]]\s*,?\s*/g, ' ');
+
+    // Clean up resulting excessive whitespace
+    text = text.replace(/\n{3,}/g, '\n\n');
+    text = text.replace(/ {3,}/g, ' ');
+
+    return text.trim();
+}
+
+/**
  * Extract text from HTML with enhanced table preservation
  * @param {string} html - HTML content
  * @returns {string} Extracted text
@@ -50,6 +79,10 @@ function extractHTMLText(html) {
         header: new RE2(String.raw`<header[^>]*>[\s\S]*?</header>`, 'gi'),
         comment: new RE2(String.raw`<!--[\s\S]*?-->`, 'g'),
 
+        // Additional elements that often contain JS/config data
+        template: new RE2(String.raw`<template[^>]*>[\s\S]*?</template>`, 'gi'),
+        noscript: new RE2(String.raw`<noscript[^>]*>[\s\S]*?</noscript>`, 'gi'),
+
         // The problematic one - use string pattern
         tags: new RE2('<[^>]+>', 'g'),
 
@@ -72,7 +105,7 @@ function extractHTMLText(html) {
     };
 
     // First preserve table structure by adding markers
-    const processedHtml = html
+    let processedHtml = html
         .replace(patterns.trOpen, '\n[ROW] ')
         .replace(patterns.trClose, ' [/ROW]\n')
         .replace(patterns.tdOpen, '[CELL] ')
@@ -80,10 +113,12 @@ function extractHTMLText(html) {
         .replace(patterns.thOpen, '[HEADER] ')
         .replace(patterns.thClose, ' [/HEADER] ');
 
-    // Remove unwanted elements
-    const text = processedHtml
+    // Remove unwanted elements (including new template/noscript)
+    let text = processedHtml
         .replace(patterns.script, '')
         .replace(patterns.style, '')
+        .replace(patterns.template, '')
+        .replace(patterns.noscript, '')
         .replace(patterns.nav, '')
         .replace(patterns.footer, '')
         .replace(patterns.header, '')
@@ -103,6 +138,9 @@ function extractHTMLText(html) {
         .replace(patterns.headerOpen, '| ')
         .replace(patterns.headerClose, '')
         .trim();
+
+    // Post-process to remove any JavaScript patterns that leaked through
+    text = cleanJavaScriptPatterns(text);
 
     return text;
 }
