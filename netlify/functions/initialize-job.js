@@ -3,9 +3,139 @@ const { createJob, saveJobUrls, saveFinalResult, saveUrlResult } = require('./li
 const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { getJson } = require('serpapi');
+const pdfParse = require('pdf-parse');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
 const { errorResponse, validationErrorResponse } = require('./lib/response-builder');
+
+/**
+ * Check if URL is a PDF
+ */
+function isPdfUrl(url) {
+    const urlLower = url.toLowerCase();
+    return urlLower.endsWith('.pdf') || urlLower.includes('/pdf/') || urlLower.includes('data_pdf');
+}
+
+/**
+ * Quick PDF text extraction check
+ * @returns {Promise<{success: boolean, charCount: number, error?: string}>}
+ */
+async function quickPdfTextCheck(pdfUrl) {
+    try {
+        const response = await fetch(pdfUrl, {
+            signal: AbortSignal.timeout(config.PDF_SCREENING_TIMEOUT_MS),
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EOLChecker/1.0)' }
+        });
+
+        if (!response.ok) {
+            return { success: false, charCount: 0, error: `HTTP ${response.status}` };
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType?.includes('pdf')) {
+            return { success: false, charCount: 0, error: `Not a PDF (Content-Type: ${contentType})` };
+        }
+
+        const contentLength = response.headers.get('content-length');
+        if (contentLength && parseInt(contentLength) > config.PDF_SCREENING_MAX_SIZE_MB * 1024 * 1024) {
+            return {
+                success: false,
+                charCount: 0,
+                error: `PDF too large (${(parseInt(contentLength) / 1024 / 1024).toFixed(1)}MB, max ${config.PDF_SCREENING_MAX_SIZE_MB}MB)`
+            };
+        }
+
+        const buffer = await response.arrayBuffer();
+        const data = await pdfParse(Buffer.from(buffer), {
+            max: config.PDF_SCREENING_MAX_PAGES
+        });
+
+        return { success: true, charCount: data.text.length };
+
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            return { success: false, charCount: 0, error: 'Timeout during PDF download' };
+        }
+        return { success: false, charCount: 0, error: error.message };
+    }
+}
+
+/**
+ * Screen a single URL to check if it's accessible
+ * @returns {Promise<{valid: boolean, type: string, reason: string, charCount?: number}>}
+ */
+async function screenUrl(urlInfo) {
+    const { link: url, title } = urlInfo;
+
+    if (!isPdfUrl(url)) {
+        return {
+            valid: true,
+            type: 'html',
+            reason: 'Non-PDF URL, will scrape as HTML'
+        };
+    }
+
+    // It's a PDF - attempt to extract text
+    logger.info(`[PDF-SCREEN] Checking PDF: ${title || url}`);
+    const result = await quickPdfTextCheck(url);
+
+    if (result.success && result.charCount >= config.PDF_SCREENING_MIN_CHARS) {
+        return {
+            valid: true,
+            type: 'pdf',
+            charCount: result.charCount,
+            reason: `PDF with ${result.charCount} extractable characters`
+        };
+    } else if (result.success && result.charCount < config.PDF_SCREENING_MIN_CHARS) {
+        return {
+            valid: false,
+            type: 'pdf',
+            reason: `PDF has only ${result.charCount} characters (min ${config.PDF_SCREENING_MIN_CHARS})`
+        };
+    } else {
+        return {
+            valid: false,
+            type: 'pdf',
+            reason: result.error || 'PDF text extraction failed'
+        };
+    }
+}
+
+/**
+ * Screen and select valid URLs with PDF checking
+ * @returns {Promise<Array>} Array of valid URLs
+ */
+async function screenAndSelectUrls(candidateUrls, maxUrls = 2) {
+    logger.info(`[PDF-SCREEN] Starting URL screening: ${candidateUrls.length} candidates, need ${maxUrls} valid URLs`);
+
+    const validUrls = [];
+    let attemptedCount = 0;
+
+    for (const urlInfo of candidateUrls) {
+        if (validUrls.length >= maxUrls) break;
+        attemptedCount++;
+
+        logger.info(`[PDF-SCREEN] URL ${attemptedCount}/${candidateUrls.length}: ${urlInfo.link}`);
+
+        const screenResult = await screenUrl(urlInfo);
+
+        if (screenResult.valid) {
+            validUrls.push(urlInfo);
+            logger.info(`[PDF-SCREEN] → Result: PASS ✓ (${screenResult.reason})`);
+        } else {
+            logger.info(`[PDF-SCREEN] → Result: FAIL ✗ (${screenResult.reason})`);
+            logger.info(`[PDF-SCREEN] Trying next URL from search results...`);
+        }
+    }
+
+    if (validUrls.length < maxUrls) {
+        logger.warn(`[PDF-SCREEN] Only found ${validUrls.length}/${maxUrls} valid URLs after screening ${attemptedCount} candidates`);
+    } else {
+        logger.info(`[PDF-SCREEN] Screening complete: ${validUrls.length}/${maxUrls} valid URLs found after checking ${attemptedCount} candidates`);
+    }
+
+    return validUrls;
+}
 
 /**
  * Get manufacturer-specific direct URL if available
@@ -528,7 +658,16 @@ async function performSerpAPISearch(maker, model, jobId, context) {
 
     // Smart URL selection: prioritize URLs ending with exact product model
     const selectedResults = selectBestUrls(organicResults, model);
-    const urls = selectedResults.map((result, index) =>
+
+    // Screen URLs for PDF accessibility (replace unreadable PDFs with next best URL)
+    const validResults = await screenAndSelectUrls(selectedResults.length >= 2 ? selectedResults : organicResults, 2);
+
+    if (validResults.length === 0) {
+        logger.warn('No valid URLs found after PDF screening');
+        return await handleNoSearchResults(maker, model, jobId, context);
+    }
+
+    const urls = validResults.map((result, index) =>
         createUrlEntry(index, result.link, result.title, result.snippet || '')
     );
 

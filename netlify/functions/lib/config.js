@@ -111,6 +111,12 @@ module.exports = {
     PDF_FETCH_TIMEOUT_MS: 20000,        // 20 seconds for PDF downloads
     MAX_PDF_SIZE_MB: 20,                // Max PDF size to process
 
+    // === PDF SCREENING ===
+    PDF_SCREENING_MIN_CHARS: 100,       // Minimum extractable characters to accept PDF
+    PDF_SCREENING_TIMEOUT_MS: 5000,     // Timeout for PDF screening check
+    PDF_SCREENING_MAX_SIZE_MB: 10,      // Max PDF size to screen (smaller than scraping limit)
+    PDF_SCREENING_MAX_PAGES: 3,         // Only check first N pages during screening
+
     // === AUTO-CHECK LIMITS ===
     MAX_AUTO_CHECKS_PER_DAY: 10,        // Daily auto-check limit (reduced for SerpAPI)
     MIN_SERPAPI_CREDITS_FOR_AUTO: 30,   // Min SerpAPI credits to enable auto-check
