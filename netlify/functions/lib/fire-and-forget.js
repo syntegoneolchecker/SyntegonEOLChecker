@@ -5,6 +5,7 @@
 
 const appConfig = require('./config');
 const logger = require('./logger');
+const { getJob } = require('./job-storage');
 
 /**
  * Fire-and-forget fetch with retry logic
@@ -67,6 +68,37 @@ async function fireAndForgetFetch(url, options = {}, config = {}) {
  */
 async function triggerFetchUrl(baseUrl, payload) {
     const url = `${baseUrl}/.netlify/functions/fetch-url`;
+
+    // Check URL status before triggering to prevent duplicate fetches
+    try {
+        const job = await getJob(payload.jobId);
+        if (!job) {
+            logger.warn(`[DEDUP] Job ${payload.jobId} not found, skipping fetch-url trigger`);
+            return;
+        }
+
+        const urlInfo = job.urls?.[payload.urlIndex];
+        if (!urlInfo) {
+            logger.warn(`[DEDUP] URL ${payload.urlIndex} not found in job ${payload.jobId}`);
+            return;
+        }
+
+        // Skip if URL is already complete or currently being fetched
+        if (urlInfo.status === 'complete') {
+            logger.info(`[DEDUP] URL ${payload.urlIndex} already complete for job ${payload.jobId}, skipping fetch`);
+            return;
+        }
+
+        if (urlInfo.status === 'fetching') {
+            logger.info(`[DEDUP] URL ${payload.urlIndex} already fetching for job ${payload.jobId}, skipping duplicate`);
+            return;
+        }
+
+        logger.debug(`[DEDUP] URL ${payload.urlIndex} status is '${urlInfo.status}', proceeding with fetch`);
+    } catch (error) {
+        // Don't block on status check errors - better to allow potential duplicate than block legitimate fetch
+        logger.warn(`[DEDUP] Status check failed for job ${payload.jobId}, URL ${payload.urlIndex}: ${error.message}. Proceeding with fetch.`);
+    }
 
     await fireAndForgetFetch(url, {
         method: 'POST',
