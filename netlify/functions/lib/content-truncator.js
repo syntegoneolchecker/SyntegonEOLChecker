@@ -108,18 +108,21 @@ function filterIrrelevantTables(content, productModel) {
  * Simple truncation from end at sentence boundary
  */
 function simpleTruncate(content, maxLength) {
-    let truncated = content.substring(0, maxLength);
+    const TRUNCATION_MSG = '\n\n[Content truncated due to length]';
+    const targetLength = maxLength - TRUNCATION_MSG.length;
+
+    let truncated = content.substring(0, targetLength);
 
     // Try to cut at sentence boundary
     const lastPeriod = truncated.lastIndexOf('.');
     const lastNewline = truncated.lastIndexOf('\n');
     const cutPoint = Math.max(lastPeriod, lastNewline);
 
-    if (cutPoint > maxLength * 0.7) {
+    if (cutPoint > targetLength * 0.7) {
         truncated = truncated.substring(0, cutPoint + 1);
     }
 
-    return truncated + '\n\n[Content truncated due to length]';
+    return truncated + TRUNCATION_MSG;
 }
 
 /**
@@ -146,21 +149,44 @@ function smartTruncate(content, maxLength, productModel) {
 
     logger.info(`Product "${productModel}" found in content, using advanced truncation`);
 
-    // Step 1: Process tables (remove non-product tables, truncate product tables)
+    // Progressive removal strategy - Step 1: Truncate tables
     let processedContent = truncateTablesWithProduct(content, productModel);
+    logger.info(`After table truncation: ${processedContent.length} chars (target: ${maxLength})`);
 
-    // Step 2: If still too long, extract product mention sections
-    if (processedContent.length > maxLength) {
-        processedContent = extractProductSections(processedContent, productModel, maxLength);
+    if (processedContent.length <= maxLength) {
+        return processedContent;
     }
 
-    // Step 3: Final check - if STILL too long, hard truncate but preserve first product mention
-    if (processedContent.length > maxLength) {
-        logger.info(`Content still too long after section extraction, applying final truncation`);
-        processedContent = finalTruncate(processedContent, productModel, maxLength);
+    // Step 2: Remove excessive whitespace
+    processedContent = processedContent.replace(/\n{4,}/g, '\n\n');
+    processedContent = processedContent.replace(/ {3,}/g, ' ');
+    logger.info(`After whitespace removal: ${processedContent.length} chars`);
+
+    if (processedContent.length <= maxLength) {
+        return processedContent;
     }
 
-    return processedContent + '\n\n[Content truncated to preserve product mentions]';
+    // Step 3: Remove boilerplate patterns (footers, nav, etc.)
+    processedContent = removeBoilerplate(processedContent);
+    logger.info(`After boilerplate removal: ${processedContent.length} chars`);
+
+    if (processedContent.length <= maxLength) {
+        return processedContent;
+    }
+
+    // Step 4: Remove content far from important areas
+    // Reserve space for truncation message (50 chars)
+    const TRUNCATION_MSG = '\n\n[Content truncated to preserve product mentions]';
+    processedContent = removeDistantContent(processedContent, productModel, maxLength - TRUNCATION_MSG.length);
+    logger.info(`After zone extraction: ${processedContent.length} chars`);
+
+    // Final safety check: ensure we're within the limit (accounting for truncation message)
+    if (processedContent.length + TRUNCATION_MSG.length > maxLength) {
+        logger.warn(`Content still over limit after all stages (${processedContent.length + TRUNCATION_MSG.length} > ${maxLength}), applying hard truncation`);
+        processedContent = processedContent.substring(0, maxLength - TRUNCATION_MSG.length);
+    }
+
+    return processedContent + TRUNCATION_MSG;
 }
 
 /**
@@ -348,6 +374,224 @@ function finalTruncate(content, productModel, maxLength) {
     if (end < content.length) result = result + '...';
 
     return result;
+}
+
+/**
+ * Remove common boilerplate patterns from content
+ * @param {string} content - Content to clean
+ * @returns {string} Content with boilerplate removed
+ */
+function removeBoilerplate(content) {
+    if (!content) return content;
+
+    // Common boilerplate patterns (case-insensitive)
+    const boilerplatePatterns = [
+        // Navigation and menu items
+        /^(Home|About|Contact|Products|Services|Support|FAQ|Login|Register|Cart|Checkout)[\s\|]*$/gim,
+        // Copyright notices
+        /Copyright\s*©?\s*\d{4}.*?(\n|$)/gi,
+        /All rights reserved.*?(\n|$)/gi,
+        // Cookie notices (common phrases)
+        /This (site|website) uses cookies.*?(\n|$)/gi,
+        /By continuing to use.*?cookies.*?(\n|$)/gi,
+        // Social media links
+        /^(Facebook|Twitter|LinkedIn|Instagram|YouTube|Follow us)[\s\|]*$/gim,
+        // Generic footer text
+        /^(Terms|Privacy|Sitemap|Accessibility)[\s\|]*$/gim,
+        // Repeated navigation separators
+        /^[\s\|>-]{3,}$/gm
+    ];
+
+    let cleaned = content;
+    boilerplatePatterns.forEach(pattern => {
+        cleaned = cleaned.replace(pattern, '');
+    });
+
+    // Remove excessive blank lines that might result from removal
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+    return cleaned;
+}
+
+/**
+ * Remove content far from important areas (zones around product and keywords)
+ * @param {string} content - Content to truncate
+ * @param {string} productModel - Product model to preserve
+ * @param {number} maxLength - Maximum length in characters
+ * @returns {string} Content with distant areas removed
+ */
+function removeDistantContent(content, productModel, maxLength) {
+    if (!content || !productModel) return content;
+
+    // Comprehensive list of important keywords
+    const IMPORTANT_KEYWORDS = [
+        // Japanese - Discontinuation/End of Life
+        '受注終了', '生産終了', '販売終了', '生産中止', '製造中止',
+        '取り扱い終了', '供給終了', '出荷終了', '廃番', '廃止',
+
+        // Japanese - Replacement/Successor
+        '代替品', '代替製品', '後継品', '後継機種', '後継モデル',
+        '推奨代替', '代替機種', '切替', '新製品', '新型',
+
+        // Japanese - Status/Availability
+        '在庫', '在庫あり', '在庫なし', '納期', '納入', '出荷',
+        '受注可能', '販売中', '発売中', '標準価格', '価格',
+        'お届け', '配送', '入荷', '欠品', '品薄',
+
+        // Japanese - Lifecycle
+        'ライフサイクル', '製品寿命', 'サポート終了', '保守終了',
+
+        // English - Discontinuation/End of Life
+        'discontinued', 'discontinuation', 'end of life', 'EOL',
+        'end of sales', 'end of production', 'obsolete', 'obsoleted',
+        'no longer available', 'no longer manufactured', 'no longer produced',
+        'phased out', 'phase out', 'withdrawn', 'ceased production',
+
+        // English - Replacement/Successor
+        'replacement', 'successor', 'alternative', 'substitute',
+        'recommended replacement', 'replaced by', 'superseded by',
+        'new model', 'upgraded to', 'migration', 'transition',
+
+        // English - Status/Availability
+        'stock', 'in stock', 'out of stock', 'availability', 'available',
+        'not available', 'delivery', 'lead time', 'shipping',
+        'price', 'pricing', 'cost', 'order', 'purchase',
+        'backorder', 'back order', 'pre-order', 'reserve',
+
+        // English - Lifecycle
+        'lifecycle', 'life cycle', 'product lifecycle', 'support end',
+        'maintenance end', 'last time buy', 'last order date',
+
+        // Common date patterns that might indicate EOL dates
+        '2019/03', '2020/', '2021/', '2022/', '2023/', '2024/', '2025/',
+
+        // Product series indicators (for OMRON example)
+        'S8VM', 'specifications', 'spec', 'datasheet', 'catalog',
+        'lineup', 'series', 'family', 'model', 'type',
+
+        // Document section headers
+        'notice', 'announcement', 'update', 'information',
+        'お知らせ', '告知', '案内', 'ニュース', '情報'
+    ];
+
+    // Find all important positions (product mentions + keywords)
+    const importantPositions = [];
+    const contentLower = content.toLowerCase();
+    const productLower = productModel.toLowerCase();
+
+    // Find product mentions
+    let idx = contentLower.indexOf(productLower);
+    while (idx !== -1) {
+        importantPositions.push({ pos: idx, type: 'product' });
+        idx = contentLower.indexOf(productLower, idx + 1);
+    }
+
+    // Find keyword mentions
+    IMPORTANT_KEYWORDS.forEach(keyword => {
+        let idx = contentLower.indexOf(keyword.toLowerCase());
+        while (idx !== -1) {
+            importantPositions.push({ pos: idx, type: 'keyword', keyword: keyword });
+            idx = contentLower.indexOf(keyword.toLowerCase(), idx + 1);
+        }
+    });
+
+    if (importantPositions.length === 0) {
+        // No important positions found (no product mentions, no keywords), just truncate from end
+        logger.info('No important positions found, truncating from end');
+        if (content.length <= maxLength) return content;
+        return content.substring(0, maxLength - 50) + '\n\n[Content truncated]';
+    }
+
+    // Count keywords vs product mentions
+    const keywordCount = importantPositions.filter(p => p.type === 'keyword').length;
+    const productCount = importantPositions.filter(p => p.type === 'product').length;
+    logger.info(`Found ${importantPositions.length} important positions (${productCount} product mentions, ${keywordCount} keywords)`);
+
+    // Calculate adaptive zone radius based on number of positions
+    // Estimate merged zones (rough estimate: importantPositions / 3 due to overlapping)
+    const estimatedMergedZones = Math.max(1, Math.floor(importantPositions.length / 3));
+
+    // Calculate ideal zone size to fit all zones within maxLength
+    // Reserve space for separators between zones (~15 chars each)
+    const separatorOverhead = estimatedMergedZones * 15;
+    const availableSpace = maxLength - separatorOverhead - 100; // 100 char safety margin
+    const idealZoneSize = availableSpace / estimatedMergedZones;
+
+    // Zone radius is half the zone size (radius on each side)
+    // Minimum 400 chars, maximum 2000 chars
+    const ZONE_RADIUS = Math.max(400, Math.min(2000, Math.floor(idealZoneSize / 2)));
+
+    logger.info(`Using adaptive zone radius: ${ZONE_RADIUS} chars (estimated ${estimatedMergedZones} zones after merging)`);
+
+    // Create zones around important positions
+    const zones = importantPositions.map(item => ({
+        start: Math.max(0, item.pos - ZONE_RADIUS),
+        end: Math.min(content.length, item.pos + ZONE_RADIUS),
+        type: item.type
+    }));
+
+    // Merge overlapping zones while maintaining order
+    const mergedZones = mergeOverlappingSections(zones);
+    logger.info(`Merged into ${mergedZones.length} zones`);
+
+    // Extract zones in order, respecting the maxLength limit
+    let result = '';
+    let firstZone = true;
+
+    for (const zone of mergedZones) {
+        const zoneText = content.substring(zone.start, zone.end);
+        const separator = firstZone ? '' : '\n\n[...]\n\n';
+        const ellipsisBefore = zone.start > 0 ? '...' : '';
+        const ellipsisAfter = zone.end < content.length ? '...' : '';
+
+        const fullZoneText = separator + ellipsisBefore + zoneText + ellipsisAfter;
+
+        // Check if adding this zone would exceed limit
+        if (result.length + fullZoneText.length > maxLength) {
+            // Try to fit partial zone if it's the first zone or we have room
+            const remaining = maxLength - result.length;
+            if (remaining > 500) { // Only if we can fit meaningful content
+                const partialZone = zoneText.substring(0, remaining - separator.length - 50);
+                result += separator + ellipsisBefore + partialZone + '...';
+            }
+            break;
+        }
+
+        result += fullZoneText;
+        firstZone = false;
+    }
+
+    return result;
+}
+
+/**
+ * Merge overlapping sections while maintaining order
+ * @param {Array} sections - Array of {start, end} objects
+ * @returns {Array} Merged sections in original order
+ */
+function mergeOverlappingSections(sections) {
+    if (!sections || sections.length === 0) return [];
+
+    // Sort by start position (maintains left-to-right order)
+    const sorted = [...sections].sort((a, b) => a.start - b.start);
+
+    const merged = [sorted[0]];
+
+    for (let i = 1; i < sorted.length; i++) {
+        const current = sorted[i];
+        const last = merged[merged.length - 1];
+
+        // Check if current overlaps with last merged section
+        if (current.start <= last.end) {
+            // Merge: extend the end if current goes further
+            last.end = Math.max(last.end, current.end);
+        } else {
+            // No overlap: add as new section
+            merged.push(current);
+        }
+    }
+
+    return merged;
 }
 
 module.exports = {
