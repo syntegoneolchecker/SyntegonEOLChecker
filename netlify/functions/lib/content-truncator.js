@@ -108,18 +108,21 @@ function filterIrrelevantTables(content, productModel) {
  * Simple truncation from end at sentence boundary
  */
 function simpleTruncate(content, maxLength) {
-    let truncated = content.substring(0, maxLength);
+    const TRUNCATION_MSG = '\n\n[Content truncated due to length]';
+    const targetLength = maxLength - TRUNCATION_MSG.length;
+
+    let truncated = content.substring(0, targetLength);
 
     // Try to cut at sentence boundary
     const lastPeriod = truncated.lastIndexOf('.');
     const lastNewline = truncated.lastIndexOf('\n');
     const cutPoint = Math.max(lastPeriod, lastNewline);
 
-    if (cutPoint > maxLength * 0.7) {
+    if (cutPoint > targetLength * 0.7) {
         truncated = truncated.substring(0, cutPoint + 1);
     }
 
-    return truncated + '\n\n[Content truncated due to length]';
+    return truncated + TRUNCATION_MSG;
 }
 
 /**
@@ -172,10 +175,18 @@ function smartTruncate(content, maxLength, productModel) {
     }
 
     // Step 4: Remove content far from important areas
-    processedContent = removeDistantContent(processedContent, productModel, maxLength);
+    // Reserve space for truncation message (50 chars)
+    const TRUNCATION_MSG = '\n\n[Content truncated to preserve product mentions]';
+    processedContent = removeDistantContent(processedContent, productModel, maxLength - TRUNCATION_MSG.length);
     logger.info(`After zone extraction: ${processedContent.length} chars`);
 
-    return processedContent + '\n\n[Content truncated to preserve product mentions]';
+    // Final safety check: ensure we're within the limit (accounting for truncation message)
+    if (processedContent.length + TRUNCATION_MSG.length > maxLength) {
+        logger.warn(`Content still over limit after all stages (${processedContent.length + TRUNCATION_MSG.length} > ${maxLength}), applying hard truncation`);
+        processedContent = processedContent.substring(0, maxLength - TRUNCATION_MSG.length);
+    }
+
+    return processedContent + TRUNCATION_MSG;
 }
 
 /**
@@ -485,14 +496,34 @@ function removeDistantContent(content, productModel, maxLength) {
     });
 
     if (importantPositions.length === 0) {
-        // No important positions found, fall back to simple truncation
-        return content.length <= maxLength ? content : content.substring(0, maxLength - 3) + '...';
+        // No important positions found (no product mentions, no keywords), just truncate from end
+        logger.info('No important positions found, truncating from end');
+        if (content.length <= maxLength) return content;
+        return content.substring(0, maxLength - 50) + '\n\n[Content truncated]';
     }
 
-    logger.info(`Found ${importantPositions.length} important positions (product mentions and keywords)`);
+    // Count keywords vs product mentions
+    const keywordCount = importantPositions.filter(p => p.type === 'keyword').length;
+    const productCount = importantPositions.filter(p => p.type === 'product').length;
+    logger.info(`Found ${importantPositions.length} important positions (${productCount} product mentions, ${keywordCount} keywords)`);
+
+    // Calculate adaptive zone radius based on number of positions
+    // Estimate merged zones (rough estimate: importantPositions / 3 due to overlapping)
+    const estimatedMergedZones = Math.max(1, Math.floor(importantPositions.length / 3));
+
+    // Calculate ideal zone size to fit all zones within maxLength
+    // Reserve space for separators between zones (~15 chars each)
+    const separatorOverhead = estimatedMergedZones * 15;
+    const availableSpace = maxLength - separatorOverhead - 100; // 100 char safety margin
+    const idealZoneSize = availableSpace / estimatedMergedZones;
+
+    // Zone radius is half the zone size (radius on each side)
+    // Minimum 400 chars, maximum 2000 chars
+    const ZONE_RADIUS = Math.max(400, Math.min(2000, Math.floor(idealZoneSize / 2)));
+
+    logger.info(`Using adaptive zone radius: ${ZONE_RADIUS} chars (estimated ${estimatedMergedZones} zones after merging)`);
 
     // Create zones around important positions
-    const ZONE_RADIUS = 1500; // 1.5k chars around each important point
     const zones = importantPositions.map(item => ({
         start: Math.max(0, item.pos - ZONE_RADIUS),
         end: Math.min(content.length, item.pos + ZONE_RADIUS),
