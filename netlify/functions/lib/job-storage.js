@@ -202,6 +202,8 @@ async function saveJobUrls(jobId, urls, _context) {
         throw new Error(`Job ${jobId} not found`);
     }
 
+    const previousStatus = job.status;
+
     // Initialize URL tracking
     job.urls = urls.map(urlInfo => ({
         ...urlInfo,
@@ -212,7 +214,7 @@ async function saveJobUrls(jobId, urls, _context) {
     job.status = 'urls_ready';
 
     await store.setJSON(jobId, job);
-    logger.info(`Saved ${urls.length} URLs to job ${jobId}`);
+    logger.info(`Updated job ${jobId} status: ${previousStatus} → urls_ready (${urls.length} URLs added)`);
 }
 
 // Get job

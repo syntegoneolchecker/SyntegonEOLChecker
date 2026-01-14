@@ -11,13 +11,24 @@ const logger = require('./lib/logger');
  * Check if Render scraping service is healthy
  */
 async function checkRenderHealth(scrapingServiceUrl) {
+    const startTime = Date.now();
     try {
         const response = await fetch(`${scrapingServiceUrl}/health`, {
             signal: AbortSignal.timeout(5000)
         });
-        return response.ok;
+
+        const elapsed = Date.now() - startTime;
+
+        if (response.ok) {
+            logger.info(`✓ Render service healthy (${elapsed}ms)`);
+            return true;
+        } else {
+            logger.warn(`Render health check returned HTTP ${response.status} (${elapsed}ms)`);
+            return false;
+        }
     } catch (error) {
-        logger.error('Render health check failed:', error.message);
+        const elapsed = Date.now() - startTime;
+        logger.error(`Render health check failed after ${elapsed}ms:`, error.message);
         return false;
     }
 }
