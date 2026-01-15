@@ -26,7 +26,6 @@ exports.handler = async function(event, _context) {
 
         // Get state from blob storage
         let state = await store.get('state', { type: 'json' });
-        logger.info('GET auto-check-state: raw state from blob:', state);
 
         // Initialize default state if not exists
         if (!state) {
