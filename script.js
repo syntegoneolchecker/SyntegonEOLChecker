@@ -23,6 +23,8 @@ let groqResetTimestamp = null;
 
 // Auto-check monitoring interval
 let _autoCheckMonitoringInterval = null;
+// Flag to prevent sync from overwriting user-initiated toggle changes
+let _isTogglingAutoCheck = false;
 
 // ============================================================================
 // AUTHENTICATION CHECK
@@ -1464,6 +1466,9 @@ async function toggleAutoCheck() {
     const toggle = document.getElementById('auto-check-toggle');
     const enabled = toggle.checked;
 
+    // Prevent sync from overwriting this user-initiated change
+    _isTogglingAutoCheck = true;
+
     try {
         const response = await fetch('/.netlify/functions/set-auto-check-state', {
             method: 'POST',
@@ -1485,6 +1490,9 @@ async function toggleAutoCheck() {
         showStatus('Error updating auto-check state: ' + error.message, 'error');
         // Revert toggle on error
         toggle.checked = !enabled;
+    } finally {
+        // Allow sync again after toggle operation completes
+        _isTogglingAutoCheck = false;
     }
 }
 
@@ -1585,6 +1593,12 @@ function enableAllCheckEOLButtons() {
 
 // Sync auto-check toggle with server state
 function syncAutoCheckToggle(serverEnabled) {
+    // Skip sync if user is currently toggling to prevent race condition
+    if (_isTogglingAutoCheck) {
+        console.log('Skipping sync: user toggle in progress');
+        return;
+    }
+
     const toggle = document.getElementById('auto-check-toggle');
     if (toggle && toggle.checked !== serverEnabled) {
         console.log(`Syncing toggle with server state: ${serverEnabled}`);
