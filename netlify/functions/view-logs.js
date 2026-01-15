@@ -47,21 +47,26 @@ const fetchLogsFromSupabase = async (filters) => {
 
     // Date filter
     if (date) {
-        // Specific date
+        // Specific date - SINGLE parameter with comma-separated conditions
         const startOfDay = `${date}T00:00:00.000Z`;
         const endOfDay = `${date}T23:59:59.999Z`;
-        params.set('timestamp', `gte.${startOfDay}`);
-        params.set('timestamp', `lte.${endOfDay}`);
+        params.set('timestamp', `gte.${startOfDay},lte.${endOfDay}`);
     } else if (days) {
-        // Last N days
+        // Last N days - include BOTH lower AND upper bounds
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
-        params.set('timestamp', `gte.${startDate.toISOString()}`);
+        const now = new Date().toISOString();
+        params.set('timestamp', `gte.${startDate.toISOString()},lte.${now}`);
     }
 
-    // Level filter
+    // Level filter - INCLUSIVE hierarchy
     if (level) {
-        params.set('level', `eq.${level.toUpperCase()}`);
+        const levelUpper = level.toUpperCase();
+        const levelConditions = getLevelHierarchyConditions(levelUpper);
+        if (levelConditions.length > 0) {
+            // Use OR operator for multiple levels
+            params.set('or', `(level.in.${levelConditions.join(',')})`);
+        }
     }
 
     // Source filter (case-insensitive partial match)
@@ -111,6 +116,21 @@ const fetchLogsFromSupabase = async (filters) => {
 
     return { logs, totalCount };
 };
+
+/**
+ * Helper function to get log level hierarchy
+ * Returns an array of levels to include based on selected level
+ */
+function getLevelHierarchyConditions(selectedLevel) {
+    const levelHierarchy = {
+        'DEBUG': ['DEBUG', 'INFO', 'WARN', 'ERROR'],
+        'INFO': ['INFO', 'WARN', 'ERROR'],
+        'WARN': ['WARN', 'ERROR'],
+        'ERROR': ['ERROR']
+    };
+    
+    return levelHierarchy[selectedLevel] || [selectedLevel];
+}
 
 // Response formatting - separate concern
 const formatResponse = (paginatedData, filters, format) => {
