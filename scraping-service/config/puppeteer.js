@@ -175,7 +175,8 @@ async function setupResourceBlocking(page, options = {}) {
 }
 
 /**
- * Extract content from a page
+ * Extract content from a page, preserving table structure
+ * Tables are converted to pipe-delimited format with markers for downstream processing
  * @param {Page} page - Puppeteer page instance
  * @param {number} timeout - Extraction timeout in milliseconds (default: 10000)
  * @returns {Promise<Object>} Object with content and title
@@ -183,8 +184,41 @@ async function setupResourceBlocking(page, options = {}) {
 async function extractPageContent(page, timeout = 10000) {
     const extractionPromise = (async () => {
         const extractedContent = await page.evaluate(() => {
+            // Remove scripts, styles, and noscript elements
             const scripts = document.querySelectorAll('script, style, noscript');
             scripts.forEach(script => script.remove());
+
+            // Convert tables to pipe-delimited format before extracting text
+            const tables = document.querySelectorAll('table');
+            tables.forEach(table => {
+                const rows = table.querySelectorAll('tr');
+                if (rows.length === 0) return;
+
+                let tableText = '\n=== TABLE START ===\n';
+
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('th, td');
+                    if (cells.length === 0) return;
+
+                    const cellTexts = Array.from(cells).map(cell => {
+                        // Get text content, normalize whitespace
+                        let text = cell.innerText || cell.textContent || '';
+                        text = text.replace(/\s+/g, ' ').trim();
+                        // Escape pipe characters in cell content
+                        text = text.replace(/\|/g, '\\|');
+                        return text;
+                    });
+
+                    tableText += '| ' + cellTexts.join(' | ') + ' |\n';
+                });
+
+                tableText += '=== TABLE END ===\n';
+
+                // Replace table with a text node containing the formatted table
+                const textNode = document.createTextNode(tableText);
+                table.parentNode.replaceChild(textNode, table);
+            });
+
             return document.body.innerText;
         });
         const extractedTitle = await page.title();

@@ -47,6 +47,32 @@ async function checkGroqTokenAvailability() {
     }
 }
 
+// Estimate token count with CJK-aware calculation
+// CJK characters (kanji, hiragana, katakana) typically use 2-3 tokens each
+// ASCII/Latin characters average ~0.25 tokens (4 chars = 1 token)
+function estimateTokenCount(text) {
+    if (!text) return 0;
+
+    // Unicode ranges for CJK characters
+    // Hiragana: U+3040-U+309F
+    // Katakana: U+30A0-U+30FF
+    // CJK Unified Ideographs (Kanji): U+4E00-U+9FFF
+    // CJK Extension A: U+3400-U+4DBF
+    // Full-width ASCII: U+FF00-U+FFEF
+    const cjkRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3400-\u4DBF\uFF00-\uFFEF]/g;
+
+    const cjkMatches = text.match(cjkRegex) || [];
+    const cjkCount = cjkMatches.length;
+    const nonCjkCount = text.length - cjkCount;
+
+    // CJK characters: ~2.5 tokens per character (conservative average)
+    // Non-CJK characters: ~0.25 tokens per character (4 chars = 1 token)
+    const cjkTokens = cjkCount * 2.5;
+    const nonCjkTokens = nonCjkCount * 0.25;
+
+    return Math.round(cjkTokens + nonCjkTokens);
+}
+
 // Parse time string (e.g., "7m54.336s", "2h30m15s") to seconds
 function parseTimeToSeconds(timeStr) {
     let totalSeconds = 0;
@@ -108,11 +134,39 @@ exports.handler = async function(event, context) {
             logger.info(`✓ Wait complete, proceeding with analysis`);
         }
 
-        // Format results for LLM
-        const searchContext = formatResults(job);
+        // Progressive truncation retry loop
+        // If prompt is too large, retry with more aggressive truncation (up to 3 levels)
+        const MAX_TRUNCATION_LEVELS = 3;
+        let analysis = null;
+        let lastError = null;
 
-        // Call Groq with retry logic
-        const analysis = await analyzeWithGroq(job.maker, job.model, searchContext);
+        for (let truncationLevel = 0; truncationLevel < MAX_TRUNCATION_LEVELS; truncationLevel++) {
+            try {
+                // Format results for LLM with current truncation level
+                const searchContext = formatResults(job, truncationLevel);
+
+                // Call Groq with retry logic
+                analysis = await analyzeWithGroq(job.maker, job.model, searchContext);
+                break; // Success - exit the loop
+
+            } catch (error) {
+                lastError = error;
+
+                // If prompt too large, try again with more aggressive truncation
+                if (error.isPromptTooLarge && truncationLevel < MAX_TRUNCATION_LEVELS - 1) {
+                    logger.info(`Prompt too large at truncation level ${truncationLevel}, trying level ${truncationLevel + 1}`);
+                    continue;
+                }
+
+                // For other errors or max truncation reached, re-throw
+                throw error;
+            }
+        }
+
+        // If we exited the loop without analysis, throw the last error
+        if (!analysis) {
+            throw lastError || new Error('Analysis failed after all truncation attempts');
+        }
 
         // Save final result
         await saveFinalResult(jobId, analysis, context);
@@ -162,9 +216,24 @@ exports.handler = async function(event, context) {
 };
 
 // Format job results for LLM with token limiting
-function formatResults(job) {
-    const MAX_CONTENT_LENGTH = 6000; // Maximum characters per result (leaves ~500 chars for headers/overhead)
-    const MAX_TOTAL_CHARS = 13000; // 2 URLs × ~6500 chars (content + overhead) = 13,000 chars
+// truncationLevel: 0 = normal, 1 = aggressive (-1500 chars), 2 = very aggressive (-3000 chars)
+function formatResults(job, truncationLevel = 0) {
+    const BASE_CONTENT_LENGTH = 6000;
+    const TRUNCATION_REDUCTION = 1500; // Reduce by 1500 chars per level
+    const MIN_CONTENT_LENGTH = 1500; // Minimum content per URL
+
+    // Calculate effective max length based on truncation level
+    const MAX_CONTENT_LENGTH = Math.max(
+        MIN_CONTENT_LENGTH,
+        BASE_CONTENT_LENGTH - (truncationLevel * TRUNCATION_REDUCTION)
+    );
+
+    // Total chars scales with content length
+    const MAX_TOTAL_CHARS = MAX_CONTENT_LENGTH * 2 + 1000; // 2 URLs + overhead
+
+    if (truncationLevel > 0) {
+        logger.info(`Progressive truncation level ${truncationLevel}: max ${MAX_CONTENT_LENGTH} chars/URL, ${MAX_TOTAL_CHARS} total`);
+    }
 
     let formatted = '';
     let totalChars = 0;
@@ -211,7 +280,8 @@ function formatResults(job) {
         totalChars += resultSection.length;
     }
 
-    logger.info(`Final formatted content: ${totalChars} characters (~${Math.round(totalChars / 4)} tokens)`);
+    const estimatedTokens = estimateTokenCount(formatted);
+    logger.info(`Final formatted content: ${totalChars} characters (~${estimatedTokens} tokens estimated, CJK-aware)`);
     return formatted.trim();
 }
 
@@ -348,6 +418,11 @@ class GroqAnalyzer {
         const errorText = await response.text();
         logger.error(`Groq API error (attempt ${attempt}):`, errorText);
 
+        // Check for prompt too large (413 status or "Request too large" message)
+        if (response.status === 413 || errorText.includes('Request too large')) {
+            throw this.createPromptTooLargeError(errorText);
+        }
+
         if (response.status === 429) {
             if (errorText.includes('tokens per day (TPD)')) {
                 throw this.createDailyLimitError(errorText);
@@ -356,6 +431,14 @@ class GroqAnalyzer {
         }
 
         throw new Error(`Groq API failed: ${response.status} - ${errorText}`);
+    }
+
+    createPromptTooLargeError(errorText) {
+        logger.warn('Prompt too large for Groq API - will retry with more aggressive truncation');
+        const error = new Error('Prompt too large - requires more aggressive truncation');
+        error.isPromptTooLarge = true;
+        error.originalError = errorText;
+        return error;
     }
 
     async handleRateLimit(response, attempt) {
@@ -414,7 +497,8 @@ EOL check cancelled - no database changes will be made.
     }
 
     async handleRetry(error, attempt) {
-        if (error.isDailyLimit) throw error;
+        // Don't retry daily limit or prompt-too-large errors - let them bubble up
+        if (error.isDailyLimit || error.isPromptTooLarge) throw error;
 
         logger.error(`Groq API attempt ${attempt} failed:`, error.message);
 

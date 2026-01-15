@@ -423,77 +423,59 @@ function removeBoilerplate(content) {
 function removeDistantContent(content, productModel, maxLength) {
     if (!content || !productModel) return content;
 
-    // Comprehensive list of important keywords
+    // HIGH-CONFIDENCE EOL keywords only - removed generic terms that appear everywhere
+    // These are specific indicators of discontinuation or replacement status
     const IMPORTANT_KEYWORDS = [
-        // Japanese - Discontinuation/End of Life
+        // Japanese - Discontinuation/End of Life (high confidence)
         '受注終了', '生産終了', '販売終了', '生産中止', '製造中止',
-        '取り扱い終了', '供給終了', '出荷終了', '廃番', '廃止',
+        '供給終了', '出荷終了', '廃番', '廃止',
 
-        // Japanese - Replacement/Successor
-        '代替品', '代替製品', '後継品', '後継機種', '後継モデル',
-        '推奨代替', '代替機種', '切替', '新製品', '新型',
+        // Japanese - Replacement/Successor (high confidence)
+        '代替品', '後継品', '後継機種', '推奨代替',
 
-        // Japanese - Status/Availability
-        '在庫', '在庫あり', '在庫なし', '納期', '納入', '出荷',
-        '受注可能', '販売中', '発売中', '標準価格', '価格',
-        'お届け', '配送', '入荷', '欠品', '品薄',
+        // English - Discontinuation/End of Life (high confidence)
+        'discontinued', 'end of life', 'EOL',
+        'end of sales', 'obsolete',
+        'no longer available', 'phased out',
 
-        // Japanese - Lifecycle
-        'ライフサイクル', '製品寿命', 'サポート終了', '保守終了',
+        // English - Replacement/Successor (high confidence)
+        'replacement', 'successor', 'replaced by', 'superseded by',
 
-        // English - Discontinuation/End of Life
-        'discontinued', 'discontinuation', 'end of life', 'EOL',
-        'end of sales', 'end of production', 'obsolete', 'obsoleted',
-        'no longer available', 'no longer manufactured', 'no longer produced',
-        'phased out', 'phase out', 'withdrawn', 'ceased production',
-
-        // English - Replacement/Successor
-        'replacement', 'successor', 'alternative', 'substitute',
-        'recommended replacement', 'replaced by', 'superseded by',
-        'new model', 'upgraded to', 'migration', 'transition',
-
-        // English - Status/Availability
-        'stock', 'in stock', 'out of stock', 'availability', 'available',
-        'not available', 'delivery', 'lead time', 'shipping',
-        'price', 'pricing', 'cost', 'order', 'purchase',
-        'backorder', 'back order', 'pre-order', 'reserve',
-
-        // English - Lifecycle
-        'lifecycle', 'life cycle', 'product lifecycle', 'support end',
-        'maintenance end', 'last time buy', 'last order date',
-
-        // Common date patterns that might indicate EOL dates
-        '2019/03', '2020/', '2021/', '2022/', '2023/', '2024/', '2025/',
-
-        // Product series indicators (for OMRON example)
-        'S8VM', 'specifications', 'spec', 'datasheet', 'catalog',
-        'lineup', 'series', 'family', 'model', 'type',
-
-        // Document section headers
-        'notice', 'announcement', 'update', 'information',
-        'お知らせ', '告知', '案内', 'ニュース', '情報'
+        // Lifecycle indicators
+        'last time buy', 'last order date'
     ];
+
+    // Maximum occurrences per keyword to prevent dilution
+    const MAX_KEYWORD_OCCURRENCES = 3;
+    // Maximum total keyword positions (product mentions are unlimited)
+    const MAX_KEYWORD_POSITIONS = 20;
 
     // Find all important positions (product mentions + keywords)
     const importantPositions = [];
     const contentLower = content.toLowerCase();
     const productLower = productModel.toLowerCase();
 
-    // Find product mentions
+    // Find product mentions (no limit - product mentions are always important)
     let idx = contentLower.indexOf(productLower);
     while (idx !== -1) {
-        importantPositions.push({ pos: idx, type: 'product' });
+        importantPositions.push({ pos: idx, type: 'product', priority: 1 });
         idx = contentLower.indexOf(productLower, idx + 1);
     }
 
-    // Find keyword mentions
-    IMPORTANT_KEYWORDS.forEach(keyword => {
+    // Find keyword mentions with frequency limiting
+    let totalKeywordPositions = 0;
+    for (const keyword of IMPORTANT_KEYWORDS) {
+        if (totalKeywordPositions >= MAX_KEYWORD_POSITIONS) break;
+
+        let occurrences = 0;
         let idx = contentLower.indexOf(keyword.toLowerCase());
-        while (idx !== -1) {
-            importantPositions.push({ pos: idx, type: 'keyword', keyword: keyword });
+        while (idx !== -1 && occurrences < MAX_KEYWORD_OCCURRENCES && totalKeywordPositions < MAX_KEYWORD_POSITIONS) {
+            importantPositions.push({ pos: idx, type: 'keyword', keyword: keyword, priority: 2 });
+            occurrences++;
+            totalKeywordPositions++;
             idx = contentLower.indexOf(keyword.toLowerCase(), idx + 1);
         }
-    });
+    }
 
     if (importantPositions.length === 0) {
         // No important positions found (no product mentions, no keywords), just truncate from end
