@@ -31,15 +31,19 @@ exports.handler = async function(event, _context) {
         const store = getStore({
             name: 'auto-check-state',
             siteID: process.env.SITE_ID,
-            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+            token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN,
+            consistency: 'strong'
         });
         const updates = JSON.parse(event.body);
 
         // Get current state
         let state = await store.get('state', { type: 'json' });
+        logger.info('SET auto-check-state: raw state from blob:', state);
+        logger.info('SET auto-check-state: updates requested:', updates);
 
         // Initialize if not exists
         if (!state) {
+            logger.info('SET auto-check-state: state is null, initializing fresh state');
             state = {
                 enabled: false,
                 dailyCounter: 0,

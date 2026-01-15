@@ -1470,6 +1470,7 @@ async function toggleAutoCheck() {
 
     // Record toggle time to prevent sync from overwriting during grace period
     _lastToggleTime = Date.now();
+    console.log(`[TOGGLE DEBUG] Setting _lastToggleTime=${_lastToggleTime}, enabled=${enabled}`);
 
     try {
         const response = await fetch('/.netlify/functions/set-auto-check-state', {
@@ -1595,7 +1596,10 @@ function enableAllCheckEOLButtons() {
 // Sync auto-check toggle with server state
 function syncAutoCheckToggle(serverEnabled) {
     // Skip sync if user recently toggled (grace period for in-flight requests)
-    const timeSinceToggle = Date.now() - _lastToggleTime;
+    const now = Date.now();
+    const timeSinceToggle = now - _lastToggleTime;
+    console.log(`[SYNC DEBUG] now=${now}, _lastToggleTime=${_lastToggleTime}, timeSince=${timeSinceToggle}ms, gracePeriod=${_toggleSyncGracePeriod}ms`);
+
     if (timeSinceToggle < _toggleSyncGracePeriod) {
         console.log(`Skipping sync: within grace period (${timeSinceToggle}ms since toggle)`);
         return;
