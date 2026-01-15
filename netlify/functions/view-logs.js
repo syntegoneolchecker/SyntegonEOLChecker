@@ -47,13 +47,12 @@ const fetchLogsFromSupabase = async (filters) => {
 
     // Date filter
     if (date) {
-        // Specific date
+        // Specific date - use 'and' for range query
         const startOfDay = `${date}T00:00:00.000Z`;
         const endOfDay = `${date}T23:59:59.999Z`;
-        params.set('timestamp', `gte.${startOfDay}`);
-        params.set('timestamp', `lte.${endOfDay}`);
+        params.set('and', `(timestamp.gte.${startOfDay},timestamp.lte.${endOfDay})`);
     } else if (days) {
-        // Last N days
+        // Last N days - only need lower bound
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
         params.set('timestamp', `gte.${startDate.toISOString()}`);
