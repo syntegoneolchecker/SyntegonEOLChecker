@@ -93,7 +93,6 @@ const fetchLogsFromSupabase = async (filters) => {
     const response = await fetch(url, {
         headers: {
             'apikey': process.env.SUPABASE_API_KEY,
-            'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
             'Content-Type': 'application/json'
         }
     });
@@ -115,7 +114,6 @@ const fetchLogsFromSupabase = async (filters) => {
         method: 'HEAD',
         headers: {
             'apikey': process.env.SUPABASE_API_KEY,
-            'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
             'Prefer': 'count=exact'
         }
     });

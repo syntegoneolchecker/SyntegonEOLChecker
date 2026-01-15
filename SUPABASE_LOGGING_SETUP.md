@@ -87,6 +87,19 @@ SELECT * FROM logs LIMIT 1;
 
 You should see an empty result (no rows yet) with the correct column structure.
 
+### 2.4 Enable Row Level Security (RLS)
+
+Enable RLS on the logs table for security compliance:
+
+```sql
+-- Enable RLS (required by Supabase security advisor)
+ALTER TABLE logs ENABLE ROW LEVEL SECURITY;
+```
+
+> **Note**: No RLS policies are needed because we use a secret key (`sb_secret_...`) or
+> `service_role` key, which bypasses RLS. This satisfies security requirements while
+> allowing full server-side access.
+
 ---
 
 ## Step 3: Set Up Automatic Log Cleanup (Optional but Recommended)
@@ -96,19 +109,23 @@ You should see an empty result (no rows yet) with the correct column structure.
 Run this SQL to create a function that deletes logs older than 7 days:
 
 ```sql
--- Function to delete old logs
+-- Function to delete old logs (with fixed search_path for security)
 CREATE OR REPLACE FUNCTION cleanup_old_logs()
 RETURNS void
 LANGUAGE plpgsql
+SET search_path = ''
 AS $$
 BEGIN
-  DELETE FROM logs WHERE timestamp < NOW() - INTERVAL '7 days';
+  DELETE FROM public.logs WHERE timestamp < NOW() - INTERVAL '7 days';
 END;
 $$;
 
 -- Add comment
 COMMENT ON FUNCTION cleanup_old_logs() IS 'Deletes logs older than 7 days to save storage';
 ```
+
+> **Note**: The `SET search_path = ''` prevents search path manipulation attacks.
+> With an empty search_path, you must use fully qualified table names (`public.logs`).
 
 ### 3.2 Schedule Automatic Cleanup (Using pg_cron)
 
@@ -155,20 +172,23 @@ You should see your `daily-log-cleanup` job listed.
 3. Find **Project URL** section
 4. Copy the URL (format: `https://xxxxx.supabase.co`)
 
-### 4.2 Get Publishable API Key
+### 4.2 Get Secret API Key
 
-1. Still in **Settings** → **API**
-2. Find **Project API keys** section
-3. Copy the **`anon` `public`** key (this is the publishable API key)
-   - ⚠️ **Important**: Use the `anon` key, NOT the `service_role` key
-   - The `anon` key is safe to use in your application
-   - The `service_role` key has admin privileges and should never be used
+1. Still in **Settings** → **API Keys**
+2. Click **Create new API Keys** if you haven't already
+3. Copy the **Secret key** (starts with `sb_secret_...`)
+   - ⚠️ **Important**: This is a server-side only key - never expose it in client-side code
+   - The secret key bypasses Row Level Security (RLS) and is intended for backend use
+   - If you don't have the new key format yet, you can use the legacy `service_role` key instead
 
 **Example keys:**
 ```
 Project URL: https://abcdefghij.supabase.co
-Publishable API Key (anon): eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiY2RlZmdoaWoiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTYxMjMyMzIzMiwiZXhwIjoxOTI3ODk5MjMyfQ.abc123...
+Secret API Key: sb_secret_abc123...
 ```
+
+> **Note**: The legacy `anon` and `service_role` JWT-based keys still work but are being phased out.
+> The new `sb_secret_...` keys offer better security (browser detection, independent rotation).
 
 ---
 
@@ -184,7 +204,7 @@ Publishable API Key (anon): eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXB
 | Key | Value | Scopes |
 |-----|-------|--------|
 | `SUPABASE_URL` | `https://xxxxx.supabase.co` | All scopes |
-| `SUPABASE_API_KEY` | `eyJhbGciOiJ...` (your anon key) | All scopes |
+| `SUPABASE_API_KEY` | `sb_secret_...` (your secret key) | All scopes |
 
 5. Click **Save**
 
@@ -198,7 +218,7 @@ Publishable API Key (anon): eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXB
 | Key | Value |
 |-----|-------|
 | `SUPABASE_URL` | `https://xxxxx.supabase.co` |
-| `SUPABASE_API_KEY` | `eyJhbGciOiJ...` (your anon key) |
+| `SUPABASE_API_KEY` | `sb_secret_...` (your secret key) |
 
 5. Click **Save Changes**
 6. Render will automatically redeploy your service
@@ -392,11 +412,14 @@ CREATE TABLE logs (
 
 **Solutions**:
 1. Verify you created the table while logged in to your Supabase project
-2. Check Row Level Security (RLS) is not blocking access:
+2. Verify you're using a secret key (`sb_secret_...`) or `service_role` key, not the `anon` key
+   - The secret key bypasses RLS and has full access
+   - Check your `SUPABASE_API_KEY` environment variable in Netlify and Render
+3. RLS should be enabled on the `logs` table (for security compliance):
    ```sql
-   ALTER TABLE logs DISABLE ROW LEVEL SECURITY;
+   ALTER TABLE logs ENABLE ROW LEVEL SECURITY;
    ```
-   (The `anon` key should have full access when RLS is disabled)
+   The secret key bypasses RLS, so no policies are needed
 
 ### Storage Limit Reached
 

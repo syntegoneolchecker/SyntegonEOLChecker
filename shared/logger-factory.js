@@ -213,11 +213,12 @@ function createLogger(getFunctionSource, skipSources = []) {
             };
 
             // Send to Supabase via REST API - fire and forget (don't await)
+            // Note: Only 'apikey' header is needed. The API Gateway handles auth for both
+            // legacy keys (anon/service_role) and new keys (sb_secret_/sb_publishable_)
             fetch(`${process.env.SUPABASE_URL}/rest/v1/logs`, {
                 method: 'POST',
                 headers: {
                     'apikey': process.env.SUPABASE_API_KEY,
-                    'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
                     'Content-Type': 'application/json',
                     'Prefer': 'return=minimal' // Don't return inserted data (faster)
                 },
