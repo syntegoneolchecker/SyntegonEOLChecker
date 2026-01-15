@@ -59,7 +59,10 @@ exports.handler = async function(event, context) {
             statusCode: 200,
             headers: {
                 'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             },
             body: JSON.stringify(state)
         };
@@ -70,7 +73,8 @@ exports.handler = async function(event, context) {
             statusCode: 500,
             headers: {
                 'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
             },
             body: JSON.stringify({
                 error: 'Failed to get auto-check state',
