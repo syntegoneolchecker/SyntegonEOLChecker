@@ -189,12 +189,13 @@ async function extractPageContent(page, timeout = 10000) {
             scripts.forEach(script => script.remove());
 
             // Convert tables to pipe-delimited format before extracting text
+            // We use <pre> elements to preserve newlines when innerText is called
             const tables = document.querySelectorAll('table');
             tables.forEach(table => {
                 const rows = table.querySelectorAll('tr');
                 if (rows.length === 0) return;
 
-                let tableText = '\n=== TABLE START ===\n';
+                let tableText = '=== TABLE START ===\n';
 
                 rows.forEach(row => {
                     const cells = row.querySelectorAll('th, td');
@@ -212,11 +213,13 @@ async function extractPageContent(page, timeout = 10000) {
                     tableText += '| ' + cellTexts.join(' | ') + ' |\n';
                 });
 
-                tableText += '=== TABLE END ===\n';
+                tableText += '=== TABLE END ===';
 
-                // Replace table with a text node containing the formatted table
-                const textNode = document.createTextNode(tableText);
-                table.parentNode.replaceChild(textNode, table);
+                // Use <pre> element to preserve newlines when innerText extracts content
+                const preElement = document.createElement('pre');
+                preElement.textContent = tableText;
+                preElement.style.whiteSpace = 'pre-wrap';
+                table.parentNode.replaceChild(preElement, table);
             });
 
             return document.body.innerText;
