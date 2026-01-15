@@ -23,8 +23,10 @@ let groqResetTimestamp = null;
 
 // Auto-check monitoring interval
 let _autoCheckMonitoringInterval = null;
-// Flag to prevent sync from overwriting user-initiated toggle changes
-let _isTogglingAutoCheck = false;
+// Timestamp of last user toggle action - used to skip syncs during grace period
+let _lastToggleTime = 0;
+// Grace period in ms to skip syncs after user toggle (allows in-flight GETs to complete)
+const _toggleSyncGracePeriod = 5000;
 
 // ============================================================================
 // AUTHENTICATION CHECK
@@ -1466,8 +1468,8 @@ async function toggleAutoCheck() {
     const toggle = document.getElementById('auto-check-toggle');
     const enabled = toggle.checked;
 
-    // Prevent sync from overwriting this user-initiated change
-    _isTogglingAutoCheck = true;
+    // Record toggle time to prevent sync from overwriting during grace period
+    _lastToggleTime = Date.now();
 
     try {
         const response = await fetch('/.netlify/functions/set-auto-check-state', {
@@ -1490,9 +1492,8 @@ async function toggleAutoCheck() {
         showStatus('Error updating auto-check state: ' + error.message, 'error');
         // Revert toggle on error
         toggle.checked = !enabled;
-    } finally {
-        // Allow sync again after toggle operation completes
-        _isTogglingAutoCheck = false;
+        // Clear grace period on error so sync can correct the state
+        _lastToggleTime = 0;
     }
 }
 
@@ -1593,9 +1594,10 @@ function enableAllCheckEOLButtons() {
 
 // Sync auto-check toggle with server state
 function syncAutoCheckToggle(serverEnabled) {
-    // Skip sync if user is currently toggling to prevent race condition
-    if (_isTogglingAutoCheck) {
-        console.log('Skipping sync: user toggle in progress');
+    // Skip sync if user recently toggled (grace period for in-flight requests)
+    const timeSinceToggle = Date.now() - _lastToggleTime;
+    if (timeSinceToggle < _toggleSyncGracePeriod) {
+        console.log(`Skipping sync: within grace period (${timeSinceToggle}ms since toggle)`);
         return;
     }
 
