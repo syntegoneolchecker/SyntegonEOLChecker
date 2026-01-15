@@ -35,22 +35,29 @@ function isTextFileUrl(url) {
 function cleanJavaScriptPatterns(text) {
     if (!text) return text;
 
-    // Pattern: 'key.name': 'value', or 'key.name': `value` (i18n translation entries)
-    text = text.replace(/'[\w.-]+(?:\.[\w.-]+)*'\s*:\s*[`'"][^`'"]*[`'"],?\s*/g, '');
+    // Use RE2 for safe regex execution (prevents ReDoS attacks from nested quantifiers)
+    const patterns = {
+        // Pattern: 'key.name': 'value', or 'key.name': `value` (i18n translation entries)
+        // \x60 represents backtick character
+        i18nEntry: new RE2(String.raw`'[\w.-]+(?:\.[\w.-]+)*'\s*:\s*[\x60'"][^\x60'"]*[\x60'"],?\s*`, 'g'),
+        // Pattern: "key.name": "value", (JSON-style)
+        jsonEntry: new RE2(String.raw`"[\w.-]+(?:\.[\w.-]+)*"\s*:\s*"[^"]*",?\s*`, 'g'),
+        // Pattern: key: 'value', or key: "value" (unquoted keys, common in JS objects)
+        // Limit value length to avoid matching legitimate content
+        jsEntry: new RE2(String.raw`\b[a-zA-Z_][\w]*\s*:\s*['"` + '`' + String.raw`][^'"` + '`' + String.raw`]{0,100}['"` + '`' + String.raw`],?\s*`, 'g'),
+        // Remove orphaned object braces and brackets that may remain
+        braces: new RE2(String.raw`[{}\[\]]\s*,?\s*`, 'g'),
+        // Clean up resulting excessive whitespace
+        excessiveNewlines: new RE2(String.raw`\n{3,}`, 'g'),
+        excessiveSpaces: new RE2(String.raw` {3,}`, 'g')
+    };
 
-    // Pattern: "key.name": "value", (JSON-style)
-    text = text.replace(/"[\w.-]+(?:\.[\w.-]+)*"\s*:\s*"[^"]*",?\s*/g, '');
-
-    // Pattern: key: 'value', or key: "value" (unquoted keys, common in JS objects)
-    // Limit value length to avoid matching legitimate content
-    text = text.replace(/\b[a-zA-Z_][\w]*\s*:\s*['"`][^'"`]{0,100}['"`],?\s*/g, '');
-
-    // Remove orphaned object braces and brackets that may remain
-    text = text.replace(/[{}\[\]]\s*,?\s*/g, ' ');
-
-    // Clean up resulting excessive whitespace
-    text = text.replace(/\n{3,}/g, '\n\n');
-    text = text.replace(/ {3,}/g, ' ');
+    text = text.replace(patterns.i18nEntry, '');
+    text = text.replace(patterns.jsonEntry, '');
+    text = text.replace(patterns.jsEntry, '');
+    text = text.replace(patterns.braces, ' ');
+    text = text.replace(patterns.excessiveNewlines, '\n\n');
+    text = text.replace(patterns.excessiveSpaces, ' ');
 
     return text.trim();
 }
