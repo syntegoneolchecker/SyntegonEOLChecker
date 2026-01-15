@@ -67,7 +67,7 @@ async function handlePuppeteerScraping(url, callbackUrl, callbackData, _res) {
       } else {
         await setupResourceBlocking(page, {
           blockImages: true,
-          blockStylesheets: true,
+          blockStylesheets: false,
           blockFonts: true,
           blockMedia: true,
           blockTracking: true,
