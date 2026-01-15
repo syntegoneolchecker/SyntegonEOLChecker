@@ -112,7 +112,7 @@ function extractHTMLText(html) {
     };
 
     // First preserve table structure by adding markers
-    let processedHtml = html
+    const processedHtml = html
         .replace(patterns.trOpen, '\n[ROW] ')
         .replace(patterns.trClose, ' [/ROW]\n')
         .replace(patterns.tdOpen, '[CELL] ')

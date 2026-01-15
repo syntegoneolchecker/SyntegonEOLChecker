@@ -46,7 +46,7 @@ async function validateAuthRequest(event, action) {
         const body = JSON.parse(event.body);
         email = body.email;
         password = body.password;
-    } catch (parseError) {
+    } catch {
         return {
             error: {
                 statusCode: 400,

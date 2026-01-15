@@ -356,7 +356,7 @@ async function extractContentSafely(page, navigationTimedOut, url) {
     }
 
     logger.debug(`Extracted content: ${result.content}`);
-    
+
     return { content: result.content, pageTitle: result.title };
   } catch (extractError) {
     logger.error(`Content extraction failed: ${extractError.message}`);

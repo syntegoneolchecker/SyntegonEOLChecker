@@ -81,7 +81,6 @@ async function quickPdfTextCheck(pdfUrl) {
 
         // Try pdf-parse first (faster)
         let fullText = '';
-        let usedLibrary = '';
 
         try {
             const data = await pdfParse(pdfBuffer, {
@@ -90,7 +89,6 @@ async function quickPdfTextCheck(pdfUrl) {
             fullText = data.text.replaceAll(/\s+/g, ' ').trim();
 
             if (fullText.length > 0) {
-                usedLibrary = 'pdf-parse';
                 logger.info(`[PDF-SCREEN] ✓ pdf-parse extracted ${fullText.length} chars`);
                 return { success: true, charCount: fullText.length };
             }
@@ -113,7 +111,6 @@ async function quickPdfTextCheck(pdfUrl) {
                 };
             }
 
-            usedLibrary = 'pdfjs-dist';
             logger.info(`[PDF-SCREEN] ✓ pdfjs-dist extracted ${fullText.length} chars`);
             return { success: true, charCount: fullText.length };
 
