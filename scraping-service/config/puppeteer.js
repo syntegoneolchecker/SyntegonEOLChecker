@@ -205,7 +205,8 @@ async function extractPageContent(page, timeout = 10000) {
                         // Get text content, normalize whitespace
                         let text = cell.innerText || cell.textContent || '';
                         text = text.replace(/\s+/g, ' ').trim();
-                        // Escape pipe characters in cell content
+                        // Escape backslashes and pipe characters in cell content
+                        text = text.replace(/\\/g, '\\\\');
                         text = text.replace(/\|/g, '\\|');
                         return text;
                     });
