@@ -26,7 +26,6 @@ exports.handler = async (event) => {
       method: 'HEAD',
       headers: {
         'apikey': process.env.SUPABASE_API_KEY,
-        'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
         'Prefer': 'count=exact'
       }
     });
@@ -41,7 +40,6 @@ exports.handler = async (event) => {
       method: 'DELETE',
       headers: {
         'apikey': process.env.SUPABASE_API_KEY,
-        'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
         'Prefer': 'return=minimal'
       }
     });
