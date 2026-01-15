@@ -2,7 +2,7 @@
 const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
 
-exports.handler = async function(event, _context) {
+exports.handler = async function(event, context) {
     // Handle CORS
     if (event.httpMethod === 'OPTIONS') {
         return {
@@ -17,15 +17,30 @@ exports.handler = async function(event, _context) {
     }
 
     try {
+        // Diagnostic logging for blob store configuration
+        const siteID = process.env.SITE_ID;
+        const hasToken = !!(process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN);
+        const deployContext = process.env.CONTEXT; // 'production', 'deploy-preview', 'branch-deploy'
+        const branch = process.env.BRANCH;
+
+        logger.info('GET blob store config:', {
+            siteID: siteID || 'NOT SET',
+            hasToken,
+            deployContext,
+            branch,
+            deployId: context?.deployId || 'NOT AVAILABLE'
+        });
+
         const store = getStore({
             name: 'auto-check-state',
-            siteID: process.env.SITE_ID,
+            siteID: siteID,
             token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN,
             consistency: 'strong'
         });
 
         // Get state from blob storage
         let state = await store.get('state', { type: 'json' });
+        logger.info('GET state from blob:', state);
 
         // Initialize default state if not exists
         if (!state) {
