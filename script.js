@@ -86,8 +86,8 @@ async function init() {
     await loadFromServer();
     await loadSerpAPICredits();
     await loadGroqUsage();
-    await loadAutoCheckState();
     await checkRenderHealth();
+    await loadAutoCheckState();
     startAutoCheckMonitoring(); // Start periodic monitoring
 
     // Ensure delete toggle is unchecked on load
