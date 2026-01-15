@@ -47,29 +47,34 @@ const fetchLogsFromSupabase = async (filters) => {
 
     // Date filter
     if (date) {
-        // Specific date - SINGLE parameter with comma-separated conditions
+        // Specific date
         const startOfDay = `${date}T00:00:00.000Z`;
         const endOfDay = `${date}T23:59:59.999Z`;
-        params.set('timestamp', `gte.${startOfDay},lte.${endOfDay}`);
+        params.set('timestamp', `gte.${startOfDay}`);
+        params.set('timestamp', `lte.${endOfDay}`);
     } else if (days) {
-        // Last N days - include BOTH lower AND upper bounds
+        // Last N days
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
-        const now = new Date().toISOString();
-        params.set('timestamp', `gte.${startDate.toISOString()},lte.${now}`);
+        params.set('timestamp', `gte.${startDate.toISOString()}`);
     }
 
-    // Level filter - INCLUSIVE hierarchy
+    // Level filter - INCLUSIVE hierarchy (shows selected level and higher)
     if (level) {
         const levelUpper = level.toUpperCase();
-        const levelConditions = getLevelHierarchyConditions(levelUpper);
-        if (levelConditions.length === 1) {
-            // Single level - use simple eq
-            params.set('level', `eq.${levelConditions[0]}`);
-        } else if (levelConditions.length > 1) {
-            // Multiple levels - use OR with explicit eq conditions
-            const orConditions = levelConditions.map(l => `level.eq.${l}`).join(',');
-            params.set('or', `(${orConditions})`);
+        const levelHierarchy = {
+            'DEBUG': ['DEBUG', 'INFO', 'WARN', 'ERROR'],
+            'INFO': ['INFO', 'WARN', 'ERROR'],
+            'WARN': ['WARN', 'ERROR'],
+            'ERROR': ['ERROR']
+        };
+        const levels = levelHierarchy[levelUpper] || [levelUpper];
+
+        if (levels.length === 1) {
+            params.set('level', `eq.${levels[0]}`);
+        } else {
+            // Use 'or' with individual conditions for multiple levels
+            params.set('or', `(${levels.map(l => `level.eq.${l}`).join(',')})`);
         }
     }
 
@@ -120,21 +125,6 @@ const fetchLogsFromSupabase = async (filters) => {
 
     return { logs, totalCount };
 };
-
-/**
- * Helper function to get log level hierarchy
- * Returns an array of levels to include based on selected level
- */
-function getLevelHierarchyConditions(selectedLevel) {
-    const levelHierarchy = {
-        'DEBUG': ['DEBUG', 'INFO', 'WARN', 'ERROR'],
-        'INFO': ['INFO', 'WARN', 'ERROR'],
-        'WARN': ['WARN', 'ERROR'],
-        'ERROR': ['ERROR']
-    };
-    
-    return levelHierarchy[selectedLevel] || [selectedLevel];
-}
 
 // Response formatting - separate concern
 const formatResponse = (paginatedData, filters, format) => {
