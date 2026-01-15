@@ -38,12 +38,9 @@ exports.handler = async function(event, _context) {
 
         // Get current state
         let state = await store.get('state', { type: 'json' });
-        logger.info('SET auto-check-state: raw state from blob:', state);
-        logger.info('SET auto-check-state: updates requested:', updates);
 
         // Initialize if not exists
         if (!state) {
-            logger.info('SET auto-check-state: state is null, initializing fresh state');
             state = {
                 enabled: false,
                 dailyCounter: 0,
