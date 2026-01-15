@@ -112,7 +112,7 @@ async function configureStandardPage(page, options = {}) {
 async function setupResourceBlocking(page, options = {}) {
     const {
         blockImages = true,
-        blockStylesheets = true,
+        blockStylesheets = false,
         blockFonts = true,
         blockMedia = true,
         blockTracking = true,

@@ -1,7 +1,8 @@
 const { registerUser } = require('./lib/auth-manager');
 const nodemailer = require('nodemailer');
 const logger = require('./lib/logger');
-const { checkRateLimit, recordAttempt, getClientIP } = require('./lib/rate-limiter');
+const { recordAttempt } = require('./lib/rate-limiter');
+const { validateAuthRequest } = require('./lib/auth-helpers');
 
 /**
  * User Registration Endpoint
@@ -22,70 +23,15 @@ const { checkRateLimit, recordAttempt, getClientIP } = require('./lib/rate-limit
  */
 
 exports.handler = async (event) => {
-    // Handle CORS preflight
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 204,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS'
-            },
-            body: ''
-        };
+    // Validate request and handle common errors
+    const validation = await validateAuthRequest(event, 'register');
+    if (validation.error) {
+        return validation.error;
     }
 
-    // Only allow POST requests
-    if (event.httpMethod !== 'POST') {
-        return {
-            statusCode: 405,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            body: JSON.stringify({ error: 'Method not allowed' })
-        };
-    }
+    const { email, password, clientIP } = validation;
 
     try {
-        const { email, password } = JSON.parse(event.body);
-
-        // Validate input
-        if (!email || !password) {
-            return {
-                statusCode: 400,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                body: JSON.stringify({
-                    success: false,
-                    message: 'Email and password are required'
-                })
-            };
-        }
-
-        // Check rate limit
-        const clientIP = getClientIP(event);
-        const rateLimit = await checkRateLimit('register', clientIP);
-
-        if (!rateLimit.allowed) {
-            logger.warn(`Rate limit exceeded for registration from IP: ${clientIP}`);
-            return {
-                statusCode: 429,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Retry-After': rateLimit.retryAfter.toString()
-                },
-                body: JSON.stringify({
-                    success: false,
-                    message: rateLimit.message,
-                    retryAfter: rateLimit.retryAfter
-                })
-            };
-        }
-
         // Register user
         const result = await registerUser(email, password);
 

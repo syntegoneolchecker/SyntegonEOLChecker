@@ -1,10 +1,9 @@
 /**
  * Clear all logs endpoint
- * Deletes all logs currently stored in Netlify Blobs
+ * Deletes all logs currently stored in Supabase PostgreSQL
  * This is a destructive operation and should be used with caution
  */
 
-const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
 
 exports.handler = async (event) => {
@@ -18,35 +17,48 @@ exports.handler = async (event) => {
       };
     }
 
-    // Get the logs store
-    const store = getStore({
-      name: 'logs',
-      siteID: process.env.SITE_ID,
-      token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_API_KEY) {
+      throw new Error('Supabase not configured. Set SUPABASE_URL and SUPABASE_API_KEY environment variables.');
+    }
+
+    // First, get the count of logs to delete
+    const countResponse = await fetch(`${process.env.SUPABASE_URL}/rest/v1/logs`, {
+      method: 'HEAD',
+      headers: {
+        'apikey': process.env.SUPABASE_API_KEY,
+        'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
+        'Prefer': 'count=exact'
+      }
     });
 
-    // List all log blobs
-    const { blobs } = await store.list({ prefix: 'logs-' });
+    const totalCount = Number.parseInt(countResponse.headers.get('content-range')?.split('/')[1] || '0');
 
-    logger.info(`Clearing ${blobs.length} log blob(s)`);
+    logger.info(`Clearing ${totalCount} log(s) from Supabase`);
 
-    // Delete all log blobs in parallel
-    // Use allSettled to continue even if some deletions fail
-    const results = await Promise.allSettled(
-      blobs.map(blob => store.delete(blob.key))
-    );
+    // Delete all logs using Supabase REST API
+    // Use a filter that matches all records (timestamp >= minimum date)
+    const deleteResponse = await fetch(`${process.env.SUPABASE_URL}/rest/v1/logs?timestamp=gte.1970-01-01T00:00:00.000Z`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': process.env.SUPABASE_API_KEY,
+        'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
+        'Prefer': 'return=minimal'
+      }
+    });
 
-    const deletedCount = results.filter(r => r.status === 'fulfilled').length;
+    if (!deleteResponse.ok) {
+      throw new Error(`Failed to delete logs: ${deleteResponse.status} ${deleteResponse.statusText}`);
+    }
 
-    logger.info(`✓ Cleared ${deletedCount} of ${blobs.length} log blob(s)`);
+    logger.info(`✓ Cleared ${totalCount} log(s) from Supabase`);
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         success: true,
-        deletedCount,
-        message: `Successfully cleared ${deletedCount} log blob(s)`
+        deletedCount: totalCount,
+        message: `Successfully cleared ${totalCount} log(s)`
       }, null, 2)
     };
   } catch (error) {

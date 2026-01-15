@@ -1,0 +1,19 @@
+services:
+  # EOL Scraping Service - Puppeteer-based web scraping
+  - type: web
+    name: eol-scraping-service
+    runtime: docker
+    # CRITICAL: Docker context must be project root to access shared/ directory
+    # The Dockerfile references both scraping-service/ and shared/ directories
+    dockerfilePath: ./scraping-service/Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      # SUPABASE_URL and SUPABASE_API_KEY should be set in Render dashboard
+      # for central logging to work (optional - gracefully degrades if not set)

@@ -355,6 +355,8 @@ async function extractContentSafely(page, navigationTimedOut, url) {
       logger.info(`Content length: ${result.content.length} characters`);
     }
 
+    logger.debug(`Extracted content: ${result.content}`);
+    
     return { content: result.content, pageTitle: result.title };
   } catch (extractError) {
     logger.error(`Content extraction failed: ${extractError.message}`);
@@ -483,24 +485,24 @@ async function handleScrapeRequest(req, res) {
   logger.info(`[${new Date().toISOString()}] Scraping URL: ${url}`);
   logger.info(`Callback URL provided: ${callbackUrl}`);
 
-
   try {
-    // Try fast fetch first
-    logger.info(`Attempting fast fetch for ${url}...`);
-    const fastResult = await tryFastFetch(url);
-
-    if (fastResult) {
-      return await handleFastFetchSuccess(
-        fastResult,
-        url,
-        callbackUrl,
-        { jobId, urlIndex, snippet },
-        res
-      );
-    }
-
-    // Check if it's a PDF or text file - don't use Puppeteer
+    // Only use fast-fetch for PDFs and text files (not HTML)
+    // HTML pages always use Puppeteer for reliable rendered content extraction
     if (isPDFUrl(url) || isTextFileUrl(url)) {
+      logger.info(`Attempting fast fetch for PDF/text file: ${url}...`);
+      const fastResult = await tryFastFetch(url);
+
+      if (fastResult) {
+        return await handleFastFetchSuccess(
+          fastResult,
+          url,
+          callbackUrl,
+          { jobId, urlIndex, snippet },
+          res
+        );
+      }
+
+      // Fast fetch failed for PDF/text file
       return await handlePDFOrTextFileFailed(
         url,
         callbackUrl,
@@ -509,8 +511,8 @@ async function handleScrapeRequest(req, res) {
       );
     }
 
-    // Use Puppeteer for dynamic HTML pages (fire-and-forget)
-    logger.info(`Fast fetch failed, using Puppeteer for ${url}...`);
+    // Use Puppeteer for all HTML pages (more reliable than fast-fetch for SPAs)
+    logger.info(`Using Puppeteer for HTML page: ${url}...`);
 
     // Respond immediately with 202 Accepted - scraping will happen in background
     res.status(202).json({

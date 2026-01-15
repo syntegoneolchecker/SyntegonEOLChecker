@@ -1,6 +1,7 @@
 // Content extraction utilities
 const RE2 = require('re2');
 const pdfParse = require('pdf-parse');
+const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 const { decodeWithProperEncoding } = require('./encoding');
 const { isSafePublicUrl } = require('./validation');
 const logger = require('./logger');
@@ -23,6 +24,35 @@ function isTextFileUrl(url) {
     const textExtensions = ['.txt', '.log', '.md', '.csv'];
     const urlLower = url.toLowerCase();
     return textExtensions.some(ext => urlLower.endsWith(ext));
+}
+
+/**
+ * Remove JavaScript object literal patterns from extracted text
+ * These patterns commonly appear when i18n/translation data leaks into page content
+ * @param {string} text - Text to clean
+ * @returns {string} Cleaned text
+ */
+function cleanJavaScriptPatterns(text) {
+    if (!text) return text;
+
+    // Pattern: 'key.name': 'value', or 'key.name': `value` (i18n translation entries)
+    text = text.replace(/'[\w.-]+(?:\.[\w.-]+)*'\s*:\s*[`'"][^`'"]*[`'"],?\s*/g, '');
+
+    // Pattern: "key.name": "value", (JSON-style)
+    text = text.replace(/"[\w.-]+(?:\.[\w.-]+)*"\s*:\s*"[^"]*",?\s*/g, '');
+
+    // Pattern: key: 'value', or key: "value" (unquoted keys, common in JS objects)
+    // Limit value length to avoid matching legitimate content
+    text = text.replace(/\b[a-zA-Z_][\w]*\s*:\s*['"`][^'"`]{0,100}['"`],?\s*/g, '');
+
+    // Remove orphaned object braces and brackets that may remain
+    text = text.replace(/[{}\[\]]\s*,?\s*/g, ' ');
+
+    // Clean up resulting excessive whitespace
+    text = text.replace(/\n{3,}/g, '\n\n');
+    text = text.replace(/ {3,}/g, ' ');
+
+    return text.trim();
 }
 
 /**
@@ -49,6 +79,10 @@ function extractHTMLText(html) {
         header: new RE2(String.raw`<header[^>]*>[\s\S]*?</header>`, 'gi'),
         comment: new RE2(String.raw`<!--[\s\S]*?-->`, 'g'),
 
+        // Additional elements that often contain JS/config data
+        template: new RE2(String.raw`<template[^>]*>[\s\S]*?</template>`, 'gi'),
+        noscript: new RE2(String.raw`<noscript[^>]*>[\s\S]*?</noscript>`, 'gi'),
+
         // The problematic one - use string pattern
         tags: new RE2('<[^>]+>', 'g'),
 
@@ -71,7 +105,7 @@ function extractHTMLText(html) {
     };
 
     // First preserve table structure by adding markers
-    const processedHtml = html
+    let processedHtml = html
         .replace(patterns.trOpen, '\n[ROW] ')
         .replace(patterns.trClose, ' [/ROW]\n')
         .replace(patterns.tdOpen, '[CELL] ')
@@ -79,10 +113,12 @@ function extractHTMLText(html) {
         .replace(patterns.thOpen, '[HEADER] ')
         .replace(patterns.thClose, ' [/HEADER] ');
 
-    // Remove unwanted elements
-    const text = processedHtml
+    // Remove unwanted elements (including new template/noscript)
+    let text = processedHtml
         .replace(patterns.script, '')
         .replace(patterns.style, '')
+        .replace(patterns.template, '')
+        .replace(patterns.noscript, '')
         .replace(patterns.nav, '')
         .replace(patterns.footer, '')
         .replace(patterns.header, '')
@@ -102,6 +138,9 @@ function extractHTMLText(html) {
         .replace(patterns.headerOpen, '| ')
         .replace(patterns.headerClose, '')
         .trim();
+
+    // Post-process to remove any JavaScript patterns that leaked through
+    text = cleanJavaScriptPatterns(text);
 
     return text;
 }
@@ -133,6 +172,33 @@ function isErrorPage(text) {
 }
 
 /**
+ * Extract text from PDF using pdfjs-dist (better CJK support)
+ * @param {Buffer} pdfBuffer - PDF file buffer
+ * @param {string} url - URL of the PDF (for logging)
+ * @returns {Promise<string>} Extracted text
+ */
+async function extractWithPdfjsDist(pdfBuffer, url) {
+    logger.info(`Trying pdfjs-dist extraction for ${url}`);
+
+    const loadingTask = pdfjsLib.getDocument({ data: pdfBuffer });
+    const doc = await loadingTask.promise;
+
+    const maxPages = Math.min(5, doc.numPages);
+    let fullText = '';
+
+    for (let i = 1; i <= maxPages; i++) {
+        const page = await doc.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+            .map(item => item.str)
+            .join(' ');
+        fullText += pageText + ' ';
+    }
+
+    return fullText.replaceAll(/\s+/g, ' ').trim();
+}
+
+/**
  * Extract text from PDF
  * @param {Buffer} pdfBuffer - PDF file buffer
  * @param {string} url - URL of the PDF (for logging)
@@ -154,23 +220,44 @@ async function extractPDFText(pdfBuffer, url) {
             return `[File is not a valid PDF - may be HTML or error page]`;
         }
 
-        // Parse PDF - limit to first 5 pages
-        const data = await pdfParse(pdfBuffer, {
-            max: 5
-        });
+        // Try pdf-parse first (faster)
+        let fullText = '';
+        try {
+            const data = await pdfParse(pdfBuffer, { max: 5 });
+            fullText = data.text.replaceAll(/\s+/g, ' ').trim();
 
-        const fullText = data.text
-            .replaceAll(/\s+/g, ' ')
-            .trim();
+            if (fullText.length > 0) {
+                logger.info(`✓ pdf-parse extracted ${fullText.length} chars from PDF (${Math.min(5, data.numpages)} pages)`);
+                return fullText;
+            }
 
-        if (fullText.length === 0) {
-            logger.warn(`PDF parsed but extracted 0 characters from ${url}`);
-            return `[PDF contains no extractable text - may be encrypted, password-protected, or image-based. Please review this product manually.]`;
+            logger.warn(`pdf-parse extracted 0 characters from ${url}, trying pdfjs-dist...`);
+        } catch (parseError) {
+            logger.warn(`pdf-parse failed for ${url}: ${parseError.message}, trying pdfjs-dist...`);
         }
 
-        logger.info(`✓ Successfully extracted ${fullText.length} chars from PDF (${Math.min(5, data.numpages)} pages)`);
+        // Fallback to pdfjs-dist (better CJK support)
+        try {
+            fullText = await extractWithPdfjsDist(pdfBuffer, url);
 
-        return fullText;
+            if (fullText.length === 0) {
+                logger.warn(`pdfjs-dist also extracted 0 characters from ${url}`);
+                return `[PDF contains no extractable text - may be encrypted, password-protected, or image-based. Please review this product manually.]`;
+            }
+
+            logger.info(`✓ pdfjs-dist extracted ${fullText.length} chars from PDF`);
+            return fullText;
+
+        } catch (pdfjsError) {
+            logger.error(`pdfjs-dist extraction failed for ${url}:`, pdfjsError.message);
+
+            // If both failed and got 0 chars, it's likely image-based
+            if (fullText.length === 0) {
+                return `[PDF contains no extractable text - may be encrypted, password-protected, or image-based. Please review this product manually.]`;
+            }
+
+            throw pdfjsError;
+        }
 
     } catch (error) {
         logger.error(`PDF extraction error from ${url}:`, error.message);

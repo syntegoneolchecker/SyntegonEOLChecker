@@ -223,6 +223,7 @@ button {
 
 button:hover {
     background: #28323c;
+    transition: background-color 0.2s;
 }
 
 button:disabled {

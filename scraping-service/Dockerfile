@@ -54,7 +54,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+# NOTE: Build context must be project root (parent directory) to access shared/
+COPY scraping-service/package*.json ./
 
 # Install dependencies (re2 requires build tools for native compilation)
 # Security: Use --ignore-scripts to prevent execution of package lifecycle scripts
@@ -76,10 +77,12 @@ RUN npx puppeteer browsers install chrome
 # Copy application files (changing these won't invalidate Chrome installation cache)
 # Security: Files owned by root with read-execute permissions for all users
 # The node user can read and execute but cannot modify (container immutability)
-COPY --chown=root:root --chmod=755 index.js .
-COPY --chown=root:root --chmod=755 routes/ ./routes/
-COPY --chown=root:root --chmod=755 utils/ ./utils/
-COPY --chown=root:root --chmod=755 config/ ./config/
+# NOTE: Build context must be project root (parent directory) to access shared/
+COPY --chown=root:root --chmod=755 scraping-service/index.js .
+COPY --chown=root:root --chmod=755 scraping-service/routes/ ./routes/
+COPY --chown=root:root --chmod=755 scraping-service/utils/ ./utils/
+COPY --chown=root:root --chmod=755 scraping-service/config/ ./config/
+COPY --chown=root:root --chmod=755 shared/ ./shared/
 
 # Expose port
 EXPOSE 3000

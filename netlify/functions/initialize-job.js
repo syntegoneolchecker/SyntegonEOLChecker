@@ -1,15 +1,225 @@
-// Initialize EOL check job - Search with Tavily and save URLs
+// Initialize EOL check job - Search with SerpAPI and save URLs
 const { createJob, saveJobUrls, saveFinalResult, saveUrlResult } = require('./lib/job-storage');
 const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
-const { tavily } = require('@tavily/core');
+const { getJson } = require('serpapi');
+const pdfParse = require('pdf-parse');
+const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
 const { errorResponse, validationErrorResponse } = require('./lib/response-builder');
 
 /**
+ * Check if URL is a PDF
+ */
+function isPdfUrl(url) {
+    const urlLower = url.toLowerCase();
+    return urlLower.endsWith('.pdf') || urlLower.includes('/pdf/') || urlLower.includes('data_pdf');
+}
+
+/**
+ * Extract text from PDF using pdfjs-dist (better CJK support)
+ * Matches the fallback extraction logic used by Render service
+ * @param {Buffer} pdfBuffer - PDF file buffer
+ * @param {string} url - URL of the PDF (for logging)
+ * @returns {Promise<string>} Extracted text
+ */
+async function extractWithPdfjsDist(pdfBuffer, url) {
+    logger.info(`[PDF-SCREEN] Trying pdfjs-dist extraction for ${url}`);
+
+    const loadingTask = pdfjsLib.getDocument({ data: pdfBuffer });
+    const doc = await loadingTask.promise;
+
+    const maxPages = Math.min(config.PDF_SCREENING_MAX_PAGES, doc.numPages);
+    let fullText = '';
+
+    for (let i = 1; i <= maxPages; i++) {
+        const page = await doc.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+            .map(item => item.str)
+            .join(' ');
+        fullText += pageText + ' ';
+    }
+
+    return fullText.replaceAll(/\s+/g, ' ').trim();
+}
+
+/**
+ * Quick PDF text extraction check
+ * Uses same library fallback chain as Render: pdf-parse → pdfjs-dist
+ * This ensures screening accurately predicts whether extraction will succeed
+ * @returns {Promise<{success: boolean, charCount: number, error?: string}>}
+ */
+async function quickPdfTextCheck(pdfUrl) {
+    try {
+        const response = await fetch(pdfUrl, {
+            signal: AbortSignal.timeout(config.PDF_SCREENING_TIMEOUT_MS),
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EOLChecker/1.0)' }
+        });
+
+        if (!response.ok) {
+            return { success: false, charCount: 0, error: `HTTP ${response.status}` };
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType?.includes('pdf')) {
+            return { success: false, charCount: 0, error: `Not a PDF (Content-Type: ${contentType})` };
+        }
+
+        const contentLength = response.headers.get('content-length');
+        if (contentLength && parseInt(contentLength) > config.PDF_SCREENING_MAX_SIZE_MB * 1024 * 1024) {
+            return {
+                success: false,
+                charCount: 0,
+                error: `PDF too large (${(parseInt(contentLength) / 1024 / 1024).toFixed(1)}MB, max ${config.PDF_SCREENING_MAX_SIZE_MB}MB)`
+            };
+        }
+
+        const buffer = await response.arrayBuffer();
+        const pdfBuffer = Buffer.from(buffer);
+
+        // Try pdf-parse first (faster)
+        let fullText = '';
+        let usedLibrary = '';
+
+        try {
+            const data = await pdfParse(pdfBuffer, {
+                max: config.PDF_SCREENING_MAX_PAGES
+            });
+            fullText = data.text.replaceAll(/\s+/g, ' ').trim();
+
+            if (fullText.length > 0) {
+                usedLibrary = 'pdf-parse';
+                logger.info(`[PDF-SCREEN] ✓ pdf-parse extracted ${fullText.length} chars`);
+                return { success: true, charCount: fullText.length };
+            }
+
+            logger.info(`[PDF-SCREEN] pdf-parse extracted 0 characters, trying pdfjs-dist fallback...`);
+        } catch (parseError) {
+            logger.info(`[PDF-SCREEN] pdf-parse failed: ${parseError.message}, trying pdfjs-dist fallback...`);
+        }
+
+        // Fallback to pdfjs-dist (better CJK support)
+        try {
+            fullText = await extractWithPdfjsDist(pdfBuffer, pdfUrl);
+
+            if (fullText.length === 0) {
+                logger.warn(`[PDF-SCREEN] pdfjs-dist also extracted 0 characters`);
+                return {
+                    success: false,
+                    charCount: 0,
+                    error: 'No extractable text (both pdf-parse and pdfjs-dist failed)'
+                };
+            }
+
+            usedLibrary = 'pdfjs-dist';
+            logger.info(`[PDF-SCREEN] ✓ pdfjs-dist extracted ${fullText.length} chars`);
+            return { success: true, charCount: fullText.length };
+
+        } catch (pdfjsError) {
+            logger.error(`[PDF-SCREEN] pdfjs-dist extraction failed: ${pdfjsError.message}`);
+
+            // If both failed and got 0 chars, reject the PDF
+            if (fullText.length === 0) {
+                return {
+                    success: false,
+                    charCount: 0,
+                    error: 'No extractable text (both libraries failed)'
+                };
+            }
+
+            throw pdfjsError;
+        }
+
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            return { success: false, charCount: 0, error: 'Timeout during PDF download' };
+        }
+        return { success: false, charCount: 0, error: error.message };
+    }
+}
+
+/**
+ * Screen a single URL to check if it's accessible
+ * @returns {Promise<{valid: boolean, type: string, reason: string, charCount?: number}>}
+ */
+async function screenUrl(urlInfo) {
+    const { link: url, title } = urlInfo;
+
+    if (!isPdfUrl(url)) {
+        return {
+            valid: true,
+            type: 'html',
+            reason: 'Non-PDF URL, will scrape as HTML'
+        };
+    }
+
+    // It's a PDF - attempt to extract text
+    logger.info(`[PDF-SCREEN] Checking PDF: ${title || url}`);
+    const result = await quickPdfTextCheck(url);
+
+    if (result.success && result.charCount >= config.PDF_SCREENING_MIN_CHARS) {
+        return {
+            valid: true,
+            type: 'pdf',
+            charCount: result.charCount,
+            reason: `PDF with ${result.charCount} extractable characters`
+        };
+    } else if (result.success && result.charCount < config.PDF_SCREENING_MIN_CHARS) {
+        return {
+            valid: false,
+            type: 'pdf',
+            reason: `PDF has only ${result.charCount} characters (min ${config.PDF_SCREENING_MIN_CHARS})`
+        };
+    } else {
+        return {
+            valid: false,
+            type: 'pdf',
+            reason: result.error || 'PDF text extraction failed'
+        };
+    }
+}
+
+/**
+ * Screen and select valid URLs with PDF checking
+ * @returns {Promise<Array>} Array of valid URLs
+ */
+async function screenAndSelectUrls(candidateUrls, maxUrls = 2) {
+    logger.info(`[PDF-SCREEN] Starting URL screening: ${candidateUrls.length} candidates, need ${maxUrls} valid URLs`);
+
+    const validUrls = [];
+    let attemptedCount = 0;
+
+    for (const urlInfo of candidateUrls) {
+        if (validUrls.length >= maxUrls) break;
+        attemptedCount++;
+
+        logger.info(`[PDF-SCREEN] URL ${attemptedCount}/${candidateUrls.length}: ${urlInfo.link}`);
+
+        const screenResult = await screenUrl(urlInfo);
+
+        if (screenResult.valid) {
+            validUrls.push(urlInfo);
+            logger.info(`[PDF-SCREEN] → Result: PASS ✓ (${screenResult.reason})`);
+        } else {
+            logger.info(`[PDF-SCREEN] → Result: FAIL ✗ (${screenResult.reason})`);
+            logger.info(`[PDF-SCREEN] Trying next URL from search results...`);
+        }
+    }
+
+    if (validUrls.length < maxUrls) {
+        logger.warn(`[PDF-SCREEN] Only found ${validUrls.length}/${maxUrls} valid URLs after screening ${attemptedCount} candidates`);
+    } else {
+        logger.info(`[PDF-SCREEN] Screening complete: ${validUrls.length}/${maxUrls} valid URLs found after checking ${attemptedCount} candidates`);
+    }
+
+    return validUrls;
+}
+
+/**
  * Get manufacturer-specific direct URL if available
- * Returns null if manufacturer requires Tavily search
+ * Returns null if manufacturer requires SerpAPI search
  * Returns object with { url, scrapingMethod } if direct URL available
  * scrapingMethod: 'render' (default Puppeteer) or 'browserql' (for Cloudflare-protected sites)
  */
@@ -80,7 +290,7 @@ function getManufacturerUrl(maker, model) {
             };
 
         default:
-            return null; // No direct URL strategy - use Tavily search
+            return null; // No direct URL strategy - use SerpAPI search
     }
 }
 
@@ -228,8 +438,8 @@ exports.handler = async function(event, context) {
             return strategyResult;
         }
 
-        // Perform Tavily search as fallback
-        return await performTavilySearch(maker, model, jobId, context);
+        // Perform SerpAPI search as fallback
+        return await performSerpAPISearch(maker, model, jobId, context);
 
     } catch (error) {
         logger.error('Initialize job error:', error);
@@ -284,8 +494,8 @@ async function handleValidationRequiredStrategy(maker, model, jobId, strategy, c
             return await handleStandardValidationStrategy(maker, model, jobId, strategy, context);
         }
     } catch (error) {
-        logger.error(`Validation scraping failed for ${maker}: ${error.message}, falling back to Tavily search`);
-        return null; // Fall through to Tavily search
+        logger.error(`Validation scraping failed for ${maker}: ${error.message}, falling back to SerpAPI search`);
+        return null; // Fall through to SerpAPI search
     }
 }
 
@@ -296,7 +506,7 @@ async function handleExtractionStrategy(maker, model, jobId, strategy, context) 
     const productPath = extractTakigenProductUrl(searchHtml);
 
     if (!productPath) {
-        logger.info(`No product found in ${maker} search results, falling back to Tavily search`);
+        logger.info(`No product found in ${maker} search results, falling back to SerpAPI search`);
         return null;
     }
 
@@ -319,7 +529,7 @@ async function handle404CheckStrategy(maker, model, jobId, strategy, context) {
     const html = await fetchHtml(strategy.url);
 
     if (is404Page(html)) {
-        logger.info(`404 page detected for ${strategy.url}, falling back to Tavily search`);
+        logger.info(`404 page detected for ${strategy.url}, falling back to SerpAPI search`);
         return null;
     }
 
@@ -339,7 +549,7 @@ async function handleStandardValidationStrategy(maker, model, jobId, strategy, c
     const scrapeResult = await scrapeWithBrowserQL(strategy.url);
 
     if (hasNoSearchResults(scrapeResult.content)) {
-        logger.info(`No search results found on ${strategy.url}, falling back to Tavily search`);
+        logger.info(`No search results found on ${strategy.url}, falling back to SerpAPI search`);
         return null;
     }
 
@@ -385,49 +595,37 @@ async function handleDirectUrlStrategy(maker, model, jobId, strategy, context) {
 }
 
 /**
- * Check if a URL path ends with the product model name
+ * Check if a URL string ends with the product model name (exact match only)
  * @param {string} url - URL to check
  * @param {string} normalizedModel - Normalized (uppercase) product model
- * @returns {boolean} True if URL ends with model name
+ * @returns {boolean} True if URL string ends with exact model name
  */
 function urlEndsWithModel(url, normalizedModel) {
     try {
-        const urlObj = new URL(url);
-        const pathSegments = urlObj.pathname.split('/').filter(Boolean);
-
-        if (pathSegments.length === 0) return false;
-
-        const lastSegment = pathSegments.at(-1);
-
-        // Decode URL encoding and normalize
-        const decodedSegment = decodeURIComponent(lastSegment).toUpperCase();
-
-        // Check exact match or common variations
-        return decodedSegment === normalizedModel ||
-               decodedSegment === normalizedModel.replaceAll('-', '') ||
-               decodedSegment === normalizedModel.replaceAll('-', '_');
+        // Simple case-insensitive string check: does the URL end with the model name?
+        return url.toUpperCase().endsWith(normalizedModel);
     } catch (e) {
-        logger.warn(`Failed to parse URL for model matching: ${url}`, e.message);
+        logger.warn(`Failed to check URL for model matching: ${url}`, e.message);
         return false;
     }
 }
 
 /**
- * Select best 2 URLs from Tavily results using smart prioritization
+ * Select best 2 URLs from SerpAPI results using smart prioritization
  * Prioritizes URLs ending with exact product model name
- * @param {Array} tavilyResults - Array of Tavily search results
+ * @param {Array} serpResults - Array of SerpAPI organic search results
  * @param {string} model - Product model to match
  * @returns {Array} Best 2 URLs selected
  */
-function selectBestUrls(tavilyResults, model) {
+function selectBestUrls(serpResults, model) {
     const normalizedModel = model.trim().toUpperCase();
 
     // Categorize URLs
     const exactMatchUrls = [];
     const regularUrls = [];
 
-    for (const result of tavilyResults) {
-        if (urlEndsWithModel(result.url, normalizedModel)) {
+    for (const result of serpResults) {
+        if (urlEndsWithModel(result.link, normalizedModel)) {
             exactMatchUrls.push(result);
         } else {
             regularUrls.push(result);
@@ -435,11 +633,11 @@ function selectBestUrls(tavilyResults, model) {
     }
 
         // Log selected URLs for debugging
-    tavilyResults.forEach((result, index) => {
-        logger.info(`Found URL Number ${index + 1}: ${result.url}`);
+    serpResults.forEach((result, index) => {
+        logger.info(`Found URL Number ${index + 1}: ${result.link}`);
     });
 
-    logger.info(`Smart URL selection: ${exactMatchUrls.length} exact matches, ${regularUrls.length} regular URLs from ${tavilyResults.length} total`);
+    logger.info(`Smart URL selection: ${exactMatchUrls.length} exact matches, ${regularUrls.length} regular URLs from ${serpResults.length} total`);
 
     // Select best 2 URLs based on priority
     let selectedResults = [];
@@ -460,7 +658,7 @@ function selectBestUrls(tavilyResults, model) {
 
     // Log selected URLs for debugging
     selectedResults.forEach((result, index) => {
-        logger.info(`Selected URL ${index + 1}: ${result.url}`);
+        logger.info(`Selected URL ${index + 1}: ${result.link}`);
     });
 
     return selectedResults;
@@ -500,30 +698,57 @@ function createSuccessResponse(jobId, status, urlCount, strategy, additionalData
     return response;
 }
 
-async function performTavilySearch(maker, model, jobId, context) {
-    const searchQuery = `${maker} ${model}`;
+async function performSerpAPISearch(maker, model, jobId, context) {
+    let searchQuery = `${maker} ${model}`;
 
-    // Initialize Tavily client
-    const tavilyClient = tavily({ apiKey: process.env.TAVILY_API_KEY });
+    logger.info(`Performing SerpAPI search for ${searchQuery} with sites to search`);
 
-    let tavilyData;
+    // Constructing query with sites to search from config
+    config.SERPAPI_SITES_TO_SEARCH.forEach(site => searchQuery += ' site:' + site + ' OR');
+    searchQuery = searchQuery.slice(0, -3);
+
+    let serpData;
     try {
-        tavilyData = await tavilyClient.search(searchQuery, getTavilySearchOptions());
+        // Perform synchronous SerpAPI search
+        serpData = await new Promise((resolve, reject) => {
+            getJson({
+                api_key: process.env.SERPAPI_API_KEY,
+                engine: config.SERPAPI_ENGINE,
+                q: searchQuery,
+                google_domain: config.SERPAPI_GOOGLE_DOMAIN
+            }, (json) => {
+                if (json.error) {
+                    reject(new Error(json.error));
+                } else {
+                    resolve(json);
+                }
+            });
+        });
     } catch (error) {
-        logger.error('Tavily API error:', error);
-        return errorResponse('Tavily API failed', error.message, 500);
+        logger.error('SerpAPI error:', error);
+        return errorResponse('SerpAPI failed', error.message, 500);
     }
 
-    logger.info(`Tavily returned ${tavilyData.results?.length || 0} results`);
+    const organicResults = serpData.organic_results || [];
+    logger.info(`SerpAPI returned ${organicResults.length} organic results`);
 
-    if (!tavilyData.results || tavilyData.results.length === 0) {
+    if (organicResults.length === 0) {
         return await handleNoSearchResults(maker, model, jobId, context);
     }
 
     // Smart URL selection: prioritize URLs ending with exact product model
-    const selectedResults = selectBestUrls(tavilyData.results, model);
-    const urls = selectedResults.map((result, index) =>
-        createUrlEntry(index, result.url, result.title, result.content || '')
+    const selectedResults = selectBestUrls(organicResults, model);
+
+    // Screen URLs for PDF accessibility (replace unreadable PDFs with next best URL)
+    const validResults = await screenAndSelectUrls(selectedResults.length >= 2 ? selectedResults : organicResults, 2);
+
+    if (validResults.length === 0) {
+        logger.warn('No valid URLs found after PDF screening');
+        return await handleNoSearchResults(maker, model, jobId, context);
+    }
+
+    const urls = validResults.map((result, index) =>
+        createUrlEntry(index, result.link, result.title, result.snippet || '')
     );
 
     await saveJobUrls(jobId, urls, context);
@@ -532,77 +757,6 @@ async function performTavilySearch(maker, model, jobId, context) {
     return createSuccessResponse(jobId, 'urls_ready', urls.length);
 }
 
-function getTavilySearchOptions() {
-    return {
-        searchDepth: config.TAVILY_SEARCH_DEPTH,
-        maxResults: config.TAVILY_MAX_RESULTS,
-        auto_parameters: false,
-        includeDomains: [
-            'fa.omron.co.jp',
-            'jp.idec.com',
-            'us.idec.com',
-            'ccs-grp.com',
-            'automationdirect.com',
-            'takigen.co.jp',
-            'mitsubishielectric.co.jp',
-            'sentei.nissei-gtr.co.jp',
-            'tamron.com',
-            'search.sugatsune.co.jp',
-            'sanwa.co.jp',
-            'jp.misumi-ec.com',
-            'mitsubishielectric.com',
-            'kvm-switches-online.com',
-            'daitron.co.jp',
-            'kdwan.co.jp',
-            'hewtech.co.jp',
-            'directindustry.com',
-            'printerland.co.uk',
-            'orimvexta.co.jp',
-            'sankyo-seisakusho.co.jp',
-            'tsubakimoto.co.jp',
-            'nbk1560.com',
-            'habasit.com',
-            'nagoya.sc',
-            'amazon.co.jp',
-            'tps.co.jp/eol',
-            'ccs-inc.co.jp',
-            'shinkoh-faulhaber.jp',
-            'anelva.canon',
-            'takabel.com',
-            'ysol.co.jp',
-            'digikey.jp',
-            'rs-components.com',
-            'fa-ubon.jp',
-            'monotaro.com',
-            'fujitsu.com',
-            'hubbell.com',
-            'adlinktech.com',
-            'touchsystems.com',
-            'elotouch.com',
-            'aten.com',
-            'canon.com',
-            'axiomtek.com',
-            'apc.com',
-            'hp.com',
-            'fujielectric.co.jp',
-            'panasonic.jp',
-            'wago.com',
-            'schmersal.com',
-            'apiste.co.jp',
-            'tdklamda.com',
-            'phoenixcontact.com',
-            'patlite.co.jp',
-            'smcworld.com',
-            'sanyodenki.co.jp',
-            'nissin-ele.co.jp',
-            'sony.co.jp',
-            'orientalmotor.co.jp',
-            'keyence.co.jp',
-            'tme.com/jp',
-            'ntn.co.jp'
-        ]
-    };
-}
 
 async function handleNoSearchResults(maker, model, jobId, context) {
     logger.info(`No search results found for ${maker} ${model}`);

@@ -23,6 +23,10 @@ let groqResetTimestamp = null;
 
 // Auto-check monitoring interval
 let _autoCheckMonitoringInterval = null;
+// Timestamp of last user toggle action - used to skip syncs during grace period
+let _lastToggleTime = 0;
+// Grace period in ms to skip syncs after user toggle (allows in-flight GETs to complete)
+const _toggleSyncGracePeriod = 5000;
 
 // ============================================================================
 // AUTHENTICATION CHECK
@@ -80,7 +84,7 @@ async function logout() {
 // Initialize the app
 async function init() {
     await loadFromServer();
-    await loadTavilyCredits();
+    await loadSerpAPICredits();
     await loadGroqUsage();
     await checkRenderHealth();
     await loadAutoCheckState();
@@ -485,7 +489,7 @@ async function updateRowWithEOLResults(rowIndex, result) {
     await saveToServer();
 
     // Refresh credits and rate limits
-    await loadTavilyCredits();
+    await loadSerpAPICredits();
     if (result.rateLimits) {
         updateGroqRateLimits(result.rateLimits);
     }
@@ -1106,12 +1110,12 @@ async function waitForRetry(retry) {
 // CREDITS AND USAGE MONITORING
 // ============================================================================
 
-async function loadTavilyCredits() {
+async function loadSerpAPICredits() {
     try {
-        const response = await fetch('/.netlify/functions/get-tavily-usage');
+        const response = await fetch('/.netlify/functions/get-serpapi-usage');
 
         if (!response.ok) {
-            throw new Error(`Failed to fetch Tavily credits: ${response.status}`);
+            throw new Error(`Failed to fetch SerpAPI usage: ${response.status}`);
         }
 
         const result = await response.json();
@@ -1123,21 +1127,24 @@ async function loadTavilyCredits() {
 
         creditsElement.textContent = `${remaining}/${limit} remaining`;
 
-        // Apply color coding based on remaining credits
+        // Apply color coding based on remaining searches
         creditsElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
 
-        if (remaining > 500) {
+        // Adjust thresholds based on typical SerpAPI limits
+        const percentRemaining = (remaining / limit) * 100;
+
+        if (percentRemaining > 50) {
             creditsElement.classList.add('credits-high');
-        } else if (remaining > 100) {
+        } else if (percentRemaining > 20) {
             creditsElement.classList.add('credits-medium');
         } else {
             creditsElement.classList.add('credits-low');
         }
 
     } catch (error) {
-        console.error('Failed to load Tavily credits:', error);
+        console.error('Failed to load SerpAPI usage:', error);
         const creditsElement = document.getElementById('credits-remaining');
-        creditsElement.textContent = 'Error loading credits';
+        creditsElement.textContent = 'Error loading usage';
         creditsElement.classList.remove('credits-high', 'credits-medium', 'credits-low');
     }
 }
@@ -1461,6 +1468,10 @@ async function toggleAutoCheck() {
     const toggle = document.getElementById('auto-check-toggle');
     const enabled = toggle.checked;
 
+    // Record toggle time to prevent sync from overwriting during grace period
+    _lastToggleTime = Date.now();
+    console.log(`[TOGGLE DEBUG] Setting _lastToggleTime=${_lastToggleTime}, enabled=${enabled}`);
+
     try {
         const response = await fetch('/.netlify/functions/set-auto-check-state', {
             method: 'POST',
@@ -1482,6 +1493,8 @@ async function toggleAutoCheck() {
         showStatus('Error updating auto-check state: ' + error.message, 'error');
         // Revert toggle on error
         toggle.checked = !enabled;
+        // Clear grace period on error so sync can correct the state
+        _lastToggleTime = 0;
     }
 }
 
@@ -1582,6 +1595,16 @@ function enableAllCheckEOLButtons() {
 
 // Sync auto-check toggle with server state
 function syncAutoCheckToggle(serverEnabled) {
+    // Skip sync if user recently toggled (grace period for in-flight requests)
+    const now = Date.now();
+    const timeSinceToggle = now - _lastToggleTime;
+    console.log(`[SYNC DEBUG] now=${now}, _lastToggleTime=${_lastToggleTime}, timeSince=${timeSinceToggle}ms, gracePeriod=${_toggleSyncGracePeriod}ms`);
+
+    if (timeSinceToggle < _toggleSyncGracePeriod) {
+        console.log(`Skipping sync: within grace period (${timeSinceToggle}ms since toggle)`);
+        return;
+    }
+
     const toggle = document.getElementById('auto-check-toggle');
     if (toggle && toggle.checked !== serverEnabled) {
         console.log(`Syncing toggle with server state: ${serverEnabled}`);
@@ -1628,7 +1651,7 @@ async function autoDisableOnLowCredits(state) {
     const remaining = parseCreditsRemaining(creditsElement.textContent);
     if (remaining === null || remaining > 50) return;
 
-    console.log('Auto-disabling auto-check due to low credits:', remaining);
+    console.log('Auto-disabling auto-check due to low searches:', remaining);
 
     // Disable auto-check
     await setAutoCheckState({ enabled: false });
@@ -1637,7 +1660,7 @@ async function autoDisableOnLowCredits(state) {
     const toggle = document.getElementById('auto-check-toggle');
     if (toggle) toggle.checked = false;
 
-    showStatus('Auto EOL Check disabled - Tavily credits too low (≤50)', 'info');
+    showStatus('Auto EOL Check disabled - SerpAPI searches too low (≤50)', 'info');
 }
 
 // Monitor auto-check state periodically

@@ -135,21 +135,21 @@ const handler = async (event, context) => {
             state = await store.get('state', { type: 'json' });
         }
 
-        // Check if we've already done 20 checks today
-        if (state.dailyCounter >= 20) {
-            logger.info('Daily limit reached (20 checks), skipping');
+        // Check if we've already done 10 checks today
+        if (state.dailyCounter >= 10) {
+            logger.info('Daily limit reached (10 checks), skipping');
             return {
                 statusCode: 200,
                 body: JSON.stringify({ message: 'Daily limit reached' })
             };
         }
 
-        // Check Tavily credits
-        const tavilyResponse = await fetch(`${siteUrl}/.netlify/functions/get-tavily-usage`);
-        if (tavilyResponse.ok) {
-            const tavilyData = await tavilyResponse.json();
-            if (tavilyData.remaining <= 50) {
-                logger.info(`Tavily credits too low (${tavilyData.remaining}), disabling auto-check`);
+        // Check SerpAPI credits
+        const serpapiResponse = await fetch(`${siteUrl}/.netlify/functions/get-serpapi-usage`);
+        if (serpapiResponse.ok) {
+            const serpapiData = await serpapiResponse.json();
+            if (serpapiData.remaining <= 50) {
+                logger.info(`SerpAPI credits too low (${serpapiData.remaining}), disabling auto-check`);
                 // Use set-auto-check-state to avoid race condition
                 await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
                     method: 'POST',

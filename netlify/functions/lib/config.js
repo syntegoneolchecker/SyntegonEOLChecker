@@ -5,7 +5,7 @@
  * FREE TIER LIMITS (as of 2025):
  * - Netlify Functions: 30s timeout (regular), 15min timeout (background)
  * - Groq: 200,000 tokens/day, 8,000 tokens/minute (rolling window)
- * - Tavily: 1,000 tokens/month (2 tokens per search/EOL check)
+ * - SerpAPI: 100 searches/month (reduced daily checks to 10 to accommodate)
  * - BrowserQL: 1,000 tokens/month (1 token = 30 seconds)
  * - Render: 512MB RAM, 750 hours/month
  * - Webshare Proxies: 1GB bandwidth/month
@@ -33,9 +33,73 @@ module.exports = {
     TABLE_CONTEXT_ROWS_BEFORE: 3,       // Rows to keep before product mention in tables
     TABLE_CONTEXT_ROWS_AFTER: 3,        // Rows to keep after product mention in tables
 
-    // === TAVILY SEARCH ===
-    TAVILY_MAX_RESULTS: 20,             // Search results to fetch (we only scrape top 2 to stay within groq token limits)
-    TAVILY_SEARCH_DEPTH: 'advanced',    // Search depth level (this is why token cost is 2 per search)
+    // === SERPAPI SEARCH ===
+    SERPAPI_MAX_RESULTS: 10,            // Search results to fetch from SerpAPI (organic_results limit)
+    SERPAPI_ENGINE: 'google',           // Search engine to use with SerpAPI
+    SERPAPI_GOOGLE_DOMAIN: 'google.com', // Google domain for searches
+    SERPAPI_SITES_TO_SEARCH: [
+            'fa.omron.co.jp',
+            'jp.idec.com',
+            'us.idec.com',
+            'ccs-grp.com',
+            'automationdirect.com',
+            'takigen.co.jp',
+            'mitsubishielectric.co.jp',
+            'sentei.nissei-gtr.co.jp',
+            'tamron.com',
+            'search.sugatsune.co.jp',
+            'sanwa.co.jp',
+            'jp.misumi-ec.com',
+            'mitsubishielectric.com',
+            'kvm-switches-online.com',
+            'daitron.co.jp',
+            'kdwan.co.jp',
+            'hewtech.co.jp',
+            'directindustry.com',
+            'printerland.co.uk',
+            'orimvexta.co.jp',
+            'sankyo-seisakusho.co.jp',
+            'tsubakimoto.co.jp',
+            'nbk1560.com',
+            'habasit.com',
+            'nagoya.sc',
+            'amazon.co.jp',
+            'tps.co.jp/eol',
+            'ccs-inc.co.jp',
+            'shinkoh-faulhaber.jp',
+            'anelva.canon',
+            'takabel.com',
+            'ysol.co.jp',
+            'rs-components.com',
+            'fa-ubon.jp',
+            'monotaro.com',
+            'fujitsu.com',
+            'hubbell.com',
+            'adlinktech.com',
+            'touchsystems.com',
+            'elotouch.com',
+            'aten.com',
+            'canon.com',
+            'axiomtek.com',
+            'apc.com',
+            'hp.com',
+            'fujielectric.co.jp',
+            'panasonic.jp',
+            'wago.com',
+            'schmersal.com',
+            'apiste.co.jp',
+            'tdklamda.com',
+            'phoenixcontact.com',
+            'patlite.co.jp',
+            'smcworld.com',
+            'sanyodenki.co.jp',
+            'nissin-ele.co.jp',
+            'sony.co.jp',
+            'orientalmotor.co.jp',
+            'keyence.co.jp',
+            'tme.com/jp',
+            'ntn.co.jp'
+        ],                             // List of sites to search
 
     // === BROWSERQL / SCRAPING ===
     BROWSERQL_MONTHLY_TOKENS: 1000,     // BrowserQL token limit
@@ -47,9 +111,15 @@ module.exports = {
     PDF_FETCH_TIMEOUT_MS: 20000,        // 20 seconds for PDF downloads
     MAX_PDF_SIZE_MB: 20,                // Max PDF size to process
 
+    // === PDF SCREENING ===
+    PDF_SCREENING_MIN_CHARS: 100,       // Minimum extractable characters to accept PDF
+    PDF_SCREENING_TIMEOUT_MS: 5000,     // Timeout for PDF screening check
+    PDF_SCREENING_MAX_SIZE_MB: 10,      // Max PDF size to screen (smaller than scraping limit)
+    PDF_SCREENING_MAX_PAGES: 3,         // Only check first N pages during screening
+
     // === AUTO-CHECK LIMITS ===
-    MAX_AUTO_CHECKS_PER_DAY: 20,        // Daily auto-check limit
-    MIN_TAVILY_CREDITS_FOR_AUTO: 50,    // Min Tavily credits to enable auto-check
+    MAX_AUTO_CHECKS_PER_DAY: 10,        // Daily auto-check limit (reduced for SerpAPI)
+    MIN_SERPAPI_CREDITS_FOR_AUTO: 30,   // Min SerpAPI credits to enable auto-check
     AUTO_CHECK_SCHEDULE_CRON: '0 12 * * *', // Daily at 21:00 GMT+9 (12:00 UTC)
 
     // === RETRY LOGIC ===
@@ -87,7 +157,7 @@ module.exports = {
     NETLIFY_FUNCTION_TIMEOUT_MS: 30000, // Netlify function timeout (30s)
     NETLIFY_BACKGROUND_TIMEOUT_MS: 900000, // Background function timeout (15min)
     FIRE_AND_FORGET_TIMEOUT_MS: 10000,  // Timeout for fire-and-forget operations
-    RENDER_SERVICE_CALL_TIMEOUT_MS: 15000, // Timeout for Render service calls (should respond with 202 within seconds)
+    RENDER_SERVICE_CALL_TIMEOUT_MS: 30000, // Timeout for Render service calls (increased for PDF processing and cold starts)
 
     // === SERVICE URLs ===
     // Default URLs (can be overridden by environment variables)
