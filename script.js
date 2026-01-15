@@ -82,19 +82,32 @@ async function logout() {
 // INITIALIZATION
 // ============================================================================
 
+// Disable/enable all controls except logout during init
+function setControlsDisabled(disabled) {
+    document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
+        if (el.onclick?.toString().includes('logout')) return;
+        el.disabled = disabled;
+    });
+}
+
 // Initialize the app
 async function init() {
-    await loadFromServer();
-    await loadSerpAPICredits();
-    await loadGroqUsage();
-    await checkRenderHealth();
-    await loadAutoCheckState();
-    startAutoCheckMonitoring(); // Start periodic monitoring
+    setControlsDisabled(true);
+    try {
+        await loadFromServer();
+        await loadSerpAPICredits();
+        await loadGroqUsage();
+        await checkRenderHealth();
+        await loadAutoCheckState();
+        startAutoCheckMonitoring(); // Start periodic monitoring
 
-    // Ensure delete toggle is unchecked on load
-    const deleteToggle = document.getElementById('delete-toggle');
-    deleteToggle.checked = false;
-    toggleDeleteButtons(); // Apply the state
+        // Ensure delete toggle is unchecked on load
+        const deleteToggle = document.getElementById('delete-toggle');
+        deleteToggle.checked = false;
+        toggleDeleteButtons(); // Apply the state
+    } finally {
+        setControlsDisabled(false);
+    }
 }
 
 // ============================================================================
