@@ -64,8 +64,8 @@ const fetchLogsFromSupabase = async (filters) => {
         const levelUpper = level.toUpperCase();
         const levelConditions = getLevelHierarchyConditions(levelUpper);
         if (levelConditions.length > 0) {
-            // Use OR operator for multiple levels
-            params.set('or', `(level.in.${levelConditions.join(',')})`);
+            // Use Supabase 'in' operator with parentheses around values
+            params.set('level', `in.(${levelConditions.join(',')})`);
         }
     }
 
