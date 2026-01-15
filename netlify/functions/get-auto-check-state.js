@@ -23,14 +23,6 @@ exports.handler = async function(event, context) {
         const deployContext = process.env.CONTEXT; // 'production', 'deploy-preview', 'branch-deploy'
         const branch = process.env.BRANCH;
 
-        logger.info('GET blob store config:', {
-            siteID: siteID || 'NOT SET',
-            hasToken,
-            deployContext,
-            branch,
-            deployId: context?.deployId || 'NOT AVAILABLE'
-        });
-
         const store = getStore({
             name: 'auto-check-state',
             siteID: siteID,
@@ -40,7 +32,6 @@ exports.handler = async function(event, context) {
 
         // Get state from blob storage
         let state = await store.get('state', { type: 'json' });
-        logger.info('GET state from blob:', state);
 
         // Initialize default state if not exists
         if (!state) {
