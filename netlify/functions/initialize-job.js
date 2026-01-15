@@ -68,11 +68,11 @@ async function quickPdfTextCheck(pdfUrl) {
         }
 
         const contentLength = response.headers.get('content-length');
-        if (contentLength && parseInt(contentLength) > config.PDF_SCREENING_MAX_SIZE_MB * 1024 * 1024) {
+        if (contentLength && Number.parseInt(contentLength) > config.PDF_SCREENING_MAX_SIZE_MB * 1024 * 1024) {
             return {
                 success: false,
                 charCount: 0,
-                error: `PDF too large (${(parseInt(contentLength) / 1024 / 1024).toFixed(1)}MB, max ${config.PDF_SCREENING_MAX_SIZE_MB}MB)`
+                error: `PDF too large (${(Number.parseInt(contentLength) / 1024 / 1024).toFixed(1)}MB, max ${config.PDF_SCREENING_MAX_SIZE_MB}MB)`
             };
         }
 

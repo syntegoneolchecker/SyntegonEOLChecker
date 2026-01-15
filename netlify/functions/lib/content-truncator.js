@@ -158,8 +158,8 @@ function smartTruncate(content, maxLength, productModel) {
     }
 
     // Step 2: Remove excessive whitespace
-    processedContent = processedContent.replace(/\n{4,}/g, '\n\n');
-    processedContent = processedContent.replace(/ {3,}/g, ' ');
+    processedContent = processedContent.replaceAll(/\n{4,}/g, '\n\n');
+    processedContent = processedContent.replaceAll(/ {3,}/g, ' ');
     logger.info(`After whitespace removal: ${processedContent.length} chars`);
 
     if (processedContent.length <= maxLength) {
@@ -306,7 +306,7 @@ function removeBoilerplate(content) {
     // Common boilerplate patterns (case-insensitive)
     const boilerplatePatterns = [
         // Navigation and menu items
-        /^(Home|About|Contact|Products|Services|Support|FAQ|Login|Register|Cart|Checkout)[\s\|]*$/gim,
+        /^(Home|About|Contact|Products|Services|Support|FAQ|Login|Register|Cart|Checkout)[\s|]*$/gim,
         // Copyright notices
         /Copyright\s*©?\s*\d{4}.*?(\n|$)/gi,
         /All rights reserved.*?(\n|$)/gi,
@@ -314,11 +314,11 @@ function removeBoilerplate(content) {
         /This (site|website) uses cookies.*?(\n|$)/gi,
         /By continuing to use.*?cookies.*?(\n|$)/gi,
         // Social media links
-        /^(Facebook|Twitter|LinkedIn|Instagram|YouTube|Follow us)[\s\|]*$/gim,
+        /^(Facebook|Twitter|LinkedIn|Instagram|YouTube|Follow us)[\s|]*$/gim,
         // Generic footer text
-        /^(Terms|Privacy|Sitemap|Accessibility)[\s\|]*$/gim,
+        /^(Terms|Privacy|Sitemap|Accessibility)[\s|]*$/gim,
         // Repeated navigation separators
-        /^[\s\|>-]{3,}$/gm
+        /^[\s|>-]{3,}$/gm
     ];
 
     let cleaned = content;
@@ -327,7 +327,7 @@ function removeBoilerplate(content) {
     });
 
     // Remove excessive blank lines that might result from removal
-    cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+    cleaned = cleaned.replaceAll(/\n{3,}/g, '\n\n');
 
     return cleaned;
 }
@@ -480,7 +480,7 @@ function mergeOverlappingSections(sections) {
 
     for (let i = 1; i < sorted.length; i++) {
         const current = sorted[i];
-        const last = merged[merged.length - 1];
+        const last = merged.at(-1);
 
         // Check if current overlaps with last merged section
         if (current.start <= last.end) {

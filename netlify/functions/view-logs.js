@@ -73,7 +73,8 @@ const fetchLogsFromSupabase = async (filters) => {
             params.set('level', `eq.${levels[0]}`);
         } else {
             // Use 'or' with individual conditions for multiple levels
-            params.set('or', `(${levels.map(l => `level.eq.${l}`).join(',')})`);
+            const levelsInHierarchy = (l) => `level.eq.${l}`;
+            params.set('or', `(${levels.map(levelsInHierarchy).join(',')})`);
         }
     }
 

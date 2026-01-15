@@ -204,10 +204,10 @@ async function extractPageContent(page, timeout = 10000) {
                     const cellTexts = Array.from(cells).map(cell => {
                         // Get text content, normalize whitespace
                         let text = cell.innerText || cell.textContent || '';
-                        text = text.replace(/\s+/g, ' ').trim();
+                        text = text.replaceAll(/\s+/g, ' ').trim();
                         // Escape backslashes and pipe characters in cell content
-                        text = text.replace(/\\/g, '\\\\');
-                        text = text.replace(/\|/g, '\\|');
+                        text = text.replaceAll('\\', '\\\\');
+                        text = text.replaceAll('|', String.raw`\|`);
                         return text;
                     });
 

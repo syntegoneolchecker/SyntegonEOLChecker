@@ -221,7 +221,7 @@ async function extractPDFText(pdfBuffer, url) {
         }
 
         // Check PDF magic number
-        const pdfHeader = pdfBuffer.slice(0, 5).toString('utf-8');
+        const pdfHeader = pdfBuffer.subarray(0, 5).toString('utf-8');
         if (!pdfHeader.startsWith('%PDF')) {
             logger.error(`Invalid PDF header for ${url}: ${pdfHeader}`);
             return `[File is not a valid PDF - may be HTML or error page]`;
