@@ -259,12 +259,23 @@ function formatResults(job, truncationLevel = 0) {
         }
 
         if (result?.fullContent) {
-            let processedContent = processTablesInContent(result.fullContent);
-            processedContent = filterIrrelevantTables(processedContent, job.model);
+            // Check if content already has TABLE markers from scraping service
+            // If so, skip processTablesInContent to avoid double-marking corruption
+            let processedContent = result.fullContent;
+            if (!processedContent.includes('=== TABLE START ===')) {
+                processedContent = processTablesInContent(processedContent);
+            }
 
-            if (processedContent.length > MAX_CONTENT_LENGTH) {
-                logger.info(`Truncating URL #${index + 1} content from ${processedContent.length} to ${MAX_CONTENT_LENGTH} chars`);
-                processedContent = smartTruncate(processedContent, MAX_CONTENT_LENGTH, job.model);
+            // Only filter/truncate when there's token pressure (content exceeds half the limit)
+            // Small content keeps all tables to preserve important info like prices
+            const FILTERING_THRESHOLD = MAX_CONTENT_LENGTH / 2;
+            if (processedContent.length > FILTERING_THRESHOLD) {
+                processedContent = filterIrrelevantTables(processedContent, job.model);
+
+                if (processedContent.length > MAX_CONTENT_LENGTH) {
+                    logger.info(`Truncating URL #${index + 1} content from ${processedContent.length} to ${MAX_CONTENT_LENGTH} chars`);
+                    processedContent = smartTruncate(processedContent, MAX_CONTENT_LENGTH, job.model);
+                }
             }
 
             resultSection += `\nFULL PAGE CONTENT:\n`;
