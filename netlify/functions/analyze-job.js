@@ -222,22 +222,86 @@ exports.handler = async function(event, context) {
 
 // Format job results for LLM with token limiting
 // truncationLevel: 0 = normal, 1 = aggressive (-1500 chars), 2 = very aggressive (-3000 chars)
-function formatResults(job, truncationLevel = 0) {
-    const BASE_CONTENT_LENGTH = 6000;
-    const TRUNCATION_REDUCTION = 1500; // Reduce by 1500 chars per level
-    const MIN_CONTENT_LENGTH = 1500; // Minimum content per URL
 
-    // Calculate effective max length based on truncation level
-    const MAX_CONTENT_LENGTH = Math.max(
+/**
+ * Calculate content length limits based on truncation level
+ */
+function calculateContentLimits(truncationLevel) {
+    const BASE_CONTENT_LENGTH = 6000;
+    const TRUNCATION_REDUCTION = 1500;
+    const MIN_CONTENT_LENGTH = 1500;
+
+    const maxContentLength = Math.max(
         MIN_CONTENT_LENGTH,
         BASE_CONTENT_LENGTH - (truncationLevel * TRUNCATION_REDUCTION)
     );
+    const maxTotalChars = maxContentLength * 2 + 1000;
 
-    // Total chars scales with content length
-    const MAX_TOTAL_CHARS = MAX_CONTENT_LENGTH * 2 + 1000; // 2 URLs + overhead
+    return { maxContentLength, maxTotalChars };
+}
+
+/**
+ * Process and truncate URL content if needed
+ */
+function processUrlContent(content, maxContentLength, model, urlIndex) {
+    if (!content) {
+        return null;
+    }
+
+    let processedContent = content;
+
+    // Skip table processing if already marked
+    if (!processedContent.includes('=== TABLE START ===')) {
+        processedContent = processTablesInContent(processedContent);
+    }
+
+    const filteringThreshold = maxContentLength / 2;
+    if (processedContent.length <= filteringThreshold) {
+        return processedContent;
+    }
+
+    processedContent = filterIrrelevantTables(processedContent, model);
+
+    if (processedContent.length > maxContentLength) {
+        logger.info(`Truncating URL #${urlIndex + 1} content from ${processedContent.length} to ${maxContentLength} chars`);
+        processedContent = smartTruncate(processedContent, maxContentLength, model);
+    }
+
+    return processedContent;
+}
+
+/**
+ * Build result section for a single URL
+ */
+function buildResultSection(urlInfo, result, processedContent, index) {
+    const lines = [
+        '\n========================================',
+        `RESULT #${index + 1}:`,
+        '========================================',
+        `Title: ${urlInfo.title}`,
+        `URL: ${result?.url || urlInfo.url}`
+    ];
+
+    if (!result?.fullContent) {
+        lines.push(`Snippet: ${urlInfo.snippet}`);
+    }
+
+    if (processedContent) {
+        lines.push('', 'FULL PAGE CONTENT:', processedContent);
+    } else {
+        lines.push('', '[Note: Could not fetch full content - using snippet only]');
+    }
+
+    lines.push('', '========================================', '');
+
+    return lines.join('\n');
+}
+
+function formatResults(job, truncationLevel = 0) {
+    const { maxContentLength, maxTotalChars } = calculateContentLimits(truncationLevel);
 
     if (truncationLevel > 0) {
-        logger.info(`Progressive truncation level ${truncationLevel}: max ${MAX_CONTENT_LENGTH} chars/URL, ${MAX_TOTAL_CHARS} total`);
+        logger.info(`Progressive truncation level ${truncationLevel}: max ${maxContentLength} chars/URL, ${maxTotalChars} total`);
     }
 
     let formatted = '';
@@ -246,48 +310,11 @@ function formatResults(job, truncationLevel = 0) {
     for (let index = 0; index < job.urls.length; index++) {
         const urlInfo = job.urls[index];
         const result = job.urlResults[urlInfo.index];
+        const processedContent = processUrlContent(result?.fullContent, maxContentLength, job.model, index);
+        const resultSection = buildResultSection(urlInfo, result, processedContent, index);
 
-        let resultSection = `\n========================================\n`;
-        resultSection += `RESULT #${index + 1}:\n`;
-        resultSection += `========================================\n`;
-        resultSection += `Title: ${urlInfo.title}\n`;
-        resultSection += `URL: ${result?.url || urlInfo.url}\n`;
-
-        // Only include snippet if we don't have full content (saves tokens)
-        if (!result?.fullContent) {
-            resultSection += `Snippet: ${urlInfo.snippet}\n`;
-        }
-
-        if (result?.fullContent) {
-            // Check if content already has TABLE markers from scraping service
-            // If so, skip processTablesInContent to avoid double-marking corruption
-            let processedContent = result.fullContent;
-            if (!processedContent.includes('=== TABLE START ===')) {
-                processedContent = processTablesInContent(processedContent);
-            }
-
-            // Only filter/truncate when there's token pressure (content exceeds half the limit)
-            // Small content keeps all tables to preserve important info like prices
-            const FILTERING_THRESHOLD = MAX_CONTENT_LENGTH / 2;
-            if (processedContent.length > FILTERING_THRESHOLD) {
-                processedContent = filterIrrelevantTables(processedContent, job.model);
-
-                if (processedContent.length > MAX_CONTENT_LENGTH) {
-                    logger.info(`Truncating URL #${index + 1} content from ${processedContent.length} to ${MAX_CONTENT_LENGTH} chars`);
-                    processedContent = smartTruncate(processedContent, MAX_CONTENT_LENGTH, job.model);
-                }
-            }
-
-            resultSection += `\nFULL PAGE CONTENT:\n`;
-            resultSection += `${processedContent}\n`;
-        } else {
-            resultSection += `\n[Note: Could not fetch full content - using snippet only]\n`;
-        }
-
-        resultSection += '\n========================================\n';
-
-        if (totalChars + resultSection.length > MAX_TOTAL_CHARS) {
-            logger.info(`Stopping at URL #${index + 1} - total char limit (${MAX_TOTAL_CHARS}) would be exceeded`);
+        if (totalChars + resultSection.length > maxTotalChars) {
+            logger.info(`Stopping at URL #${index + 1} - total char limit (${maxTotalChars}) would be exceeded`);
             formatted += `\n[Note: Remaining URLs omitted to stay within token limits]\n`;
             break;
         }
