@@ -192,7 +192,7 @@ async function performExtraction(page) {
 
         // Helper function to convert a row to pipe-delimited format
         function convertRowToText(row) {
-            const cells = row.querySelectorAll('th, td');
+            const cells = row.querySelectorAll(':scope > th, :scope > td');
             if (cells.length === 0) return null;
             const cellTexts = Array.from(cells).map(getCellText);
             return '| ' + cellTexts.join(' | ') + ' |';
@@ -200,7 +200,7 @@ async function performExtraction(page) {
 
         // Helper function to convert a table to text format
         function convertTableToText(table) {
-            const rows = table.querySelectorAll('tr');
+            const rows = table.querySelectorAll(':scope > tr, :scope > tbody > tr, :scope > thead > tr');
             if (rows.length === 0) return null;
 
             const rowTexts = Array.from(rows)
