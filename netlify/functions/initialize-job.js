@@ -710,6 +710,15 @@ async function performSerpAPISearch(maker, model, jobId, context) {
             });
         });
     } catch (error) {
+        // Check if this is a "no results" response from Google (not a real API error)
+        const errorMessage = error.message || '';
+        if (errorMessage.includes("hasn't returned any results") ||
+            errorMessage.includes("no results")) {
+            logger.info(`SerpAPI returned no results: ${errorMessage}`);
+            return await handleNoSearchResults(maker, model, jobId, context);
+        }
+
+        // Actual API error - return error response
         logger.error('SerpAPI error:', error);
         return errorResponse('SerpAPI failed', error.message, 500);
     }
