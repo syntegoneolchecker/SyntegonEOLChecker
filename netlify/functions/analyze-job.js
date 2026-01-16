@@ -114,7 +114,7 @@ async function waitForTokenReset(tokenCheck) {
 /**
  * Run analysis with progressive truncation
  * @param {Object} job - Job object
- * @returns {Object} Analysis result
+ * @returns {Promise<Object>} Analysis result
  */
 async function runAnalysisWithTruncation(job) {
     const MAX_TRUNCATION_LEVELS = 3;

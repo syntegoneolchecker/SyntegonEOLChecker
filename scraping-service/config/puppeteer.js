@@ -187,9 +187,9 @@ async function extractPageContent(page, timeout = 10000) {
             // Helper function to extract and escape cell text
             function getCellText(cell) {
                 let text = cell.innerText || cell.textContent || '';
-                text = text.replace(/\s+/g, ' ').trim();
-                text = text.replace(/\\/g, '\\\\');
-                text = text.replace(/\|/g, '\\|');
+                text = text.replaceAll(/\s+/g, ' ').trim();
+                text = text.replaceAll('\\', '\\\\');
+                text = text.replaceAll('|', String.raw`\|`);
                 return text;
             }
 
