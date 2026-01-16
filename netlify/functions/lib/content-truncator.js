@@ -68,7 +68,9 @@ function isTableSeparator(line) {
 }
 
 /**
- * Remove tables that don't contain the product model
+ * Remove tables that don't contain the product model and aren't adjacent to product tables
+ * Adjacent tables (within ADJACENT_TABLE_THRESHOLD chars) are kept as they often contain
+ * related product info like pricing, delivery dates, or specifications
  * @param {string} content - Content with table delimiters
  * @param {string} productModel - Product model to search for
  * @returns {string} Filtered content
@@ -76,22 +78,54 @@ function isTableSeparator(line) {
 function filterIrrelevantTables(content, productModel) {
     if (!content || !productModel) return content;
 
+    const ADJACENT_TABLE_THRESHOLD = 200; // Characters between tables to consider them "adjacent"
     const tableRegex = /=== TABLE START ===[\s\S]*?=== TABLE END ===/g;
-    const tablesToRemove = [];
+    const allTables = [];
     let match;
 
+    // First pass: find all tables and mark which contain the product model
     while ((match = tableRegex.exec(content)) !== null) {
         const tableContent = match[0];
+        allTables.push({
+            content: tableContent,
+            start: match.index,
+            end: match.index + tableContent.length,
+            containsProduct: tableContent.toLowerCase().includes(productModel.toLowerCase())
+        });
+    }
 
-        if (!tableContent.toLowerCase().includes(productModel.toLowerCase())) {
-            tablesToRemove.push({
-                content: tableContent,
-                start: match.index,
-                end: match.index + tableContent.length
-            });
+    // Second pass: mark tables adjacent to product-containing tables as "keep"
+    const tablesToKeep = new Set();
+    for (let i = 0; i < allTables.length; i++) {
+        if (allTables[i].containsProduct) {
+            tablesToKeep.add(i);
+            // Keep adjacent tables (before and after)
+            if (i > 0) {
+                const gap = allTables[i].start - allTables[i - 1].end;
+                if (gap <= ADJACENT_TABLE_THRESHOLD) {
+                    tablesToKeep.add(i - 1);
+                    logger.debug(`Keeping table ${i - 1} as adjacent (before) to product table ${i} (gap: ${gap} chars)`);
+                }
+            }
+            if (i < allTables.length - 1) {
+                const gap = allTables[i + 1].start - allTables[i].end;
+                if (gap <= ADJACENT_TABLE_THRESHOLD) {
+                    tablesToKeep.add(i + 1);
+                    logger.debug(`Keeping table ${i + 1} as adjacent (after) to product table ${i} (gap: ${gap} chars)`);
+                }
+            }
         }
     }
 
+    // Third pass: collect tables to remove (not in keep set)
+    const tablesToRemove = [];
+    for (let i = 0; i < allTables.length; i++) {
+        if (!tablesToKeep.has(i)) {
+            tablesToRemove.push(allTables[i]);
+        }
+    }
+
+    // Remove tables in reverse order to preserve indices
     let filteredContent = content;
     for (let i = tablesToRemove.length - 1; i >= 0; i--) {
         const table = tablesToRemove[i];
@@ -100,6 +134,10 @@ function filterIrrelevantTables(content, productModel) {
     }
 
     filteredContent = filteredContent.replaceAll(/\n{3,}/g, '\n\n');
+
+    if (tablesToRemove.length > 0) {
+        logger.debug(`filterIrrelevantTables: kept ${tablesToKeep.size}/${allTables.length} tables, removed ${tablesToRemove.length}`);
+    }
 
     return filteredContent;
 }

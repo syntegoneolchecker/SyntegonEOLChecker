@@ -259,7 +259,12 @@ function formatResults(job, truncationLevel = 0) {
         }
 
         if (result?.fullContent) {
-            let processedContent = processTablesInContent(result.fullContent);
+            // Check if content already has TABLE markers from scraping service
+            // If so, skip processTablesInContent to avoid double-marking corruption
+            let processedContent = result.fullContent;
+            if (!processedContent.includes('=== TABLE START ===')) {
+                processedContent = processTablesInContent(processedContent);
+            }
             processedContent = filterIrrelevantTables(processedContent, job.model);
 
             if (processedContent.length > MAX_CONTENT_LENGTH) {
