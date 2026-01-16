@@ -385,7 +385,7 @@ function generateHTMLTemplate(data) {
       background: #f5f5f5;
     }
     .container {
-      max-width: 90%;
+      max-width: 100%;
       margin: 0 auto;
       background: white;
       border-radius: 8px;
