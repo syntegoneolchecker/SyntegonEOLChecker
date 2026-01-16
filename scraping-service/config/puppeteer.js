@@ -175,6 +175,63 @@ async function setupResourceBlocking(page, options = {}) {
 }
 
 /**
+ * Perform the actual content extraction from a page
+ * @param {Page} page - Puppeteer page instance
+ * @returns {Promise<Object>} Object with content and title
+ */
+async function performExtraction(page) {
+    const extractedContent = await page.evaluate(() => {
+        // Helper function to extract and escape cell text
+        function getCellText(cell) {
+            let text = cell.innerText || cell.textContent || '';
+            text = text.replaceAll(/\s+/g, ' ').trim();
+            text = text.replaceAll('\\', '\\\\');
+            text = text.replaceAll('|', String.raw`\|`);
+            return text;
+        }
+
+        // Helper function to convert a row to pipe-delimited format
+        function convertRowToText(row) {
+            const cells = row.querySelectorAll('th, td');
+            if (cells.length === 0) return null;
+            const cellTexts = Array.from(cells).map(getCellText);
+            return '| ' + cellTexts.join(' | ') + ' |';
+        }
+
+        // Helper function to convert a table to text format
+        function convertTableToText(table) {
+            const rows = table.querySelectorAll('tr');
+            if (rows.length === 0) return null;
+
+            const rowTexts = Array.from(rows)
+                .map(convertRowToText)
+                .filter(text => text !== null);
+
+            if (rowTexts.length === 0) return null;
+            return '=== TABLE START ===\n' + rowTexts.join('\n') + '\n=== TABLE END ===';
+        }
+
+        // Remove scripts, styles, and noscript elements
+        document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+
+        // Convert tables to pipe-delimited format
+        document.querySelectorAll('table').forEach(table => {
+            const tableText = convertTableToText(table);
+            if (tableText) {
+                const preElement = document.createElement('pre');
+                preElement.textContent = tableText;
+                preElement.style.whiteSpace = 'pre-wrap';
+                table.parentNode.replaceChild(preElement, table);
+            }
+        });
+
+        return document.body.innerText;
+    });
+    const extractedTitle = await page.title();
+    return { content: extractedContent, title: extractedTitle };
+}
+
+/**
  * Extract content from a page, preserving table structure
  * Tables are converted to pipe-delimited format with markers for downstream processing
  * @param {Page} page - Puppeteer page instance
@@ -182,57 +239,7 @@ async function setupResourceBlocking(page, options = {}) {
  * @returns {Promise<Object>} Object with content and title
  */
 async function extractPageContent(page, timeout = 10000) {
-    const extractionPromise = (async () => {
-        const extractedContent = await page.evaluate(() => {
-            // Helper function to extract and escape cell text
-            function getCellText(cell) {
-                let text = cell.innerText || cell.textContent || '';
-                text = text.replaceAll(/\s+/g, ' ').trim();
-                text = text.replaceAll('\\', '\\\\');
-                text = text.replaceAll('|', String.raw`\|`);
-                return text;
-            }
-
-            // Helper function to convert a row to pipe-delimited format
-            function convertRowToText(row) {
-                const cells = row.querySelectorAll('th, td');
-                if (cells.length === 0) return null;
-                const cellTexts = Array.from(cells).map(getCellText);
-                return '| ' + cellTexts.join(' | ') + ' |';
-            }
-
-            // Helper function to convert a table to text format
-            function convertTableToText(table) {
-                const rows = table.querySelectorAll('tr');
-                if (rows.length === 0) return null;
-
-                const rowTexts = Array.from(rows)
-                    .map(convertRowToText)
-                    .filter(text => text !== null);
-
-                if (rowTexts.length === 0) return null;
-                return '=== TABLE START ===\n' + rowTexts.join('\n') + '\n=== TABLE END ===';
-            }
-
-            // Remove scripts, styles, and noscript elements
-            document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
-
-            // Convert tables to pipe-delimited format
-            document.querySelectorAll('table').forEach(table => {
-                const tableText = convertTableToText(table);
-                if (tableText) {
-                    const preElement = document.createElement('pre');
-                    preElement.textContent = tableText;
-                    preElement.style.whiteSpace = 'pre-wrap';
-                    table.parentNode.replaceChild(preElement, table);
-                }
-            });
-
-            return document.body.innerText;
-        });
-        const extractedTitle = await page.title();
-        return { content: extractedContent, title: extractedTitle };
-    })();
+    const extractionPromise = performExtraction(page);
 
     const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Content extraction timeout')), timeout)
