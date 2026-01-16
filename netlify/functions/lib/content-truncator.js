@@ -304,22 +304,25 @@ function removeBoilerplate(content) {
     if (!content) return content;
 
     // Common boilerplate patterns (case-insensitive)
+    const RE2 = require('re2');
+
     const boilerplatePatterns = [
         // Navigation and menu items
-        /^(Home|About|Contact|Products|Services|Support|FAQ|Login|Register|Cart|Checkout)[\s|]*$/gim,
+        new RE2(String.raw`^(Home|About|Contact|Products|Services|Support|FAQ|Login|Register|Cart|Checkout)[\s|]*$`, 'gim'),
         // Copyright notices
-        /Copyright\s*©?\s*\d{4}.*?(\n|$)/gi,
-        /All rights reserved.*?(\n|$)/gi,
+        new RE2(String.raw`Copyright\s*©?\s*\d{4}.*?(\n|$)`, 'gi'),
+        new RE2(String.raw`All rights reserved.*?(\n|$)`, 'gi'),
         // Cookie notices (common phrases)
-        /This (site|website) uses cookies.*?(\n|$)/gi,
-        /By continuing to use.*?cookies.*?(\n|$)/gi,
+        new RE2(String.raw`This (site|website) uses cookies.*?(\n|$)`, 'gi'),
+        new RE2(String.raw`By continuing to use.*?cookies.*?(\n|$)`, 'gi'),
         // Social media links
-        /^(Facebook|Twitter|LinkedIn|Instagram|YouTube|Follow us)[\s|]*$/gim,
+        new RE2(String.raw`^(Facebook|Twitter|LinkedIn|Instagram|YouTube|Follow us)[\s|]*$`, 'gim'),
         // Generic footer text
-        /^(Terms|Privacy|Sitemap|Accessibility)[\s|]*$/gim,
+        new RE2(String.raw`^(Terms|Privacy|Sitemap|Accessibility)[\s|]*$`, 'gim'),
         // Repeated navigation separators
-        /^[\s|>-]{3,}$/gm
+        new RE2(String.raw`^[\s|>-]{3,}$`, 'gm')
     ];
+
 
     let cleaned = content;
     boilerplatePatterns.forEach(pattern => {
