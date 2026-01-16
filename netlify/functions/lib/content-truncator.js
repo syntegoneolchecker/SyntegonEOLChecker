@@ -335,110 +335,76 @@ function removeBoilerplate(content) {
     return cleaned;
 }
 
+// HIGH-CONFIDENCE EOL keywords only - removed generic terms that appear everywhere
+const IMPORTANT_KEYWORDS = [
+    // Japanese - Discontinuation/End of Life (high confidence)
+    '受注終了', '生産終了', '販売終了', '生産中止', '製造中止',
+    '供給終了', '出荷終了', '廃番', '廃止',
+    // Japanese - Replacement/Successor (high confidence)
+    '代替品', '後継品', '後継機種', '推奨代替',
+    // English - Discontinuation/End of Life (high confidence)
+    'discontinued', 'end of life', 'EOL',
+    'end of sales', 'obsolete',
+    'no longer available', 'phased out',
+    // English - Replacement/Successor (high confidence)
+    'replacement', 'successor', 'replaced by', 'superseded by',
+    // Lifecycle indicators
+    'last time buy', 'last order date'
+];
+
 /**
- * Remove content far from important areas (zones around product and keywords)
- * @param {string} content - Content to truncate
- * @param {string} productModel - Product model to preserve
- * @param {number} maxLength - Maximum length in characters
- * @returns {string} Content with distant areas removed
+ * Find all product mention positions in content
  */
-function removeDistantContent(content, productModel, maxLength) {
-    if (!content || !productModel) return content;
-
-    // HIGH-CONFIDENCE EOL keywords only - removed generic terms that appear everywhere
-    // These are specific indicators of discontinuation or replacement status
-    const IMPORTANT_KEYWORDS = [
-        // Japanese - Discontinuation/End of Life (high confidence)
-        '受注終了', '生産終了', '販売終了', '生産中止', '製造中止',
-        '供給終了', '出荷終了', '廃番', '廃止',
-
-        // Japanese - Replacement/Successor (high confidence)
-        '代替品', '後継品', '後継機種', '推奨代替',
-
-        // English - Discontinuation/End of Life (high confidence)
-        'discontinued', 'end of life', 'EOL',
-        'end of sales', 'obsolete',
-        'no longer available', 'phased out',
-
-        // English - Replacement/Successor (high confidence)
-        'replacement', 'successor', 'replaced by', 'superseded by',
-
-        // Lifecycle indicators
-        'last time buy', 'last order date'
-    ];
-
-    // Maximum occurrences per keyword to prevent dilution
-    const MAX_KEYWORD_OCCURRENCES = 3;
-    // Maximum total keyword positions (product mentions are unlimited)
-    const MAX_KEYWORD_POSITIONS = 20;
-
-    // Find all important positions (product mentions + keywords)
-    const importantPositions = [];
-    const contentLower = content.toLowerCase();
-    const productLower = productModel.toLowerCase();
-
-    // Find product mentions (no limit - product mentions are always important)
+function findProductPositions(contentLower, productLower) {
+    const positions = [];
     let idx = contentLower.indexOf(productLower);
     while (idx !== -1) {
-        importantPositions.push({ pos: idx, type: 'product', priority: 1 });
+        positions.push({ pos: idx, type: 'product', priority: 1 });
         idx = contentLower.indexOf(productLower, idx + 1);
     }
+    return positions;
+}
 
-    // Find keyword mentions with frequency limiting
-    let totalKeywordPositions = 0;
+/**
+ * Find keyword positions with frequency limiting
+ */
+function findKeywordPositions(contentLower, maxOccurrences = 3, maxTotal = 20) {
+    const positions = [];
+    let totalCount = 0;
+
     for (const keyword of IMPORTANT_KEYWORDS) {
-        if (totalKeywordPositions >= MAX_KEYWORD_POSITIONS) break;
+        if (totalCount >= maxTotal) break;
 
         let occurrences = 0;
         let idx = contentLower.indexOf(keyword.toLowerCase());
-        while (idx !== -1 && occurrences < MAX_KEYWORD_OCCURRENCES && totalKeywordPositions < MAX_KEYWORD_POSITIONS) {
-            importantPositions.push({ pos: idx, type: 'keyword', keyword: keyword, priority: 2 });
+        while (idx !== -1 && occurrences < maxOccurrences && totalCount < maxTotal) {
+            positions.push({ pos: idx, type: 'keyword', keyword: keyword, priority: 2 });
             occurrences++;
-            totalKeywordPositions++;
+            totalCount++;
             idx = contentLower.indexOf(keyword.toLowerCase(), idx + 1);
         }
     }
+    return positions;
+}
 
-    if (importantPositions.length === 0) {
-        // No important positions found (no product mentions, no keywords), just truncate from end
-        logger.info('No important positions found, truncating from end');
-        if (content.length <= maxLength) return content;
-        return content.substring(0, maxLength - 50) + '\n\n[Content truncated]';
-    }
-
-    // Count keywords vs product mentions
-    const keywordCount = importantPositions.filter(p => p.type === 'keyword').length;
-    const productCount = importantPositions.filter(p => p.type === 'product').length;
-    logger.info(`Found ${importantPositions.length} important positions (${productCount} product mentions, ${keywordCount} keywords)`);
-
-    // Calculate adaptive zone radius based on number of positions
-    // Estimate merged zones (rough estimate: importantPositions / 3 due to overlapping)
-    const estimatedMergedZones = Math.max(1, Math.floor(importantPositions.length / 3));
-
-    // Calculate ideal zone size to fit all zones within maxLength
-    // Reserve space for separators between zones (~15 chars each)
+/**
+ * Calculate adaptive zone radius based on number of positions
+ */
+function calculateZoneRadius(positionCount, maxLength) {
+    const estimatedMergedZones = Math.max(1, Math.floor(positionCount / 3));
     const separatorOverhead = estimatedMergedZones * 15;
-    const availableSpace = maxLength - separatorOverhead - 100; // 100 char safety margin
+    const availableSpace = maxLength - separatorOverhead - 100;
     const idealZoneSize = availableSpace / estimatedMergedZones;
+    return {
+        radius: Math.max(400, Math.min(2000, Math.floor(idealZoneSize / 2))),
+        estimatedZones: estimatedMergedZones
+    };
+}
 
-    // Zone radius is half the zone size (radius on each side)
-    // Minimum 400 chars, maximum 2000 chars
-    const ZONE_RADIUS = Math.max(400, Math.min(2000, Math.floor(idealZoneSize / 2)));
-
-    logger.info(`Using adaptive zone radius: ${ZONE_RADIUS} chars (estimated ${estimatedMergedZones} zones after merging)`);
-
-    // Create zones around important positions
-    const zones = importantPositions.map(item => ({
-        start: Math.max(0, item.pos - ZONE_RADIUS),
-        end: Math.min(content.length, item.pos + ZONE_RADIUS),
-        type: item.type
-    }));
-
-    // Merge overlapping zones while maintaining order
-    const mergedZones = mergeOverlappingSections(zones);
-    logger.info(`Merged into ${mergedZones.length} zones`);
-
-    // Extract zones in order, respecting the maxLength limit
+/**
+ * Extract zone content with proper ellipses and separators
+ */
+function extractZoneContent(content, mergedZones, maxLength) {
     let result = '';
     let firstZone = true;
 
@@ -450,11 +416,9 @@ function removeDistantContent(content, productModel, maxLength) {
 
         const fullZoneText = separator + ellipsisBefore + zoneText + ellipsisAfter;
 
-        // Check if adding this zone would exceed limit
         if (result.length + fullZoneText.length > maxLength) {
-            // Try to fit partial zone if it's the first zone or we have room
             const remaining = maxLength - result.length;
-            if (remaining > 500) { // Only if we can fit meaningful content
+            if (remaining > 500) {
                 const partialZone = zoneText.substring(0, remaining - separator.length - 50);
                 result += separator + ellipsisBefore + partialZone + '...';
             }
@@ -466,6 +430,48 @@ function removeDistantContent(content, productModel, maxLength) {
     }
 
     return result;
+}
+
+/**
+ * Remove content far from important areas (zones around product and keywords)
+ * @param {string} content - Content to truncate
+ * @param {string} productModel - Product model to preserve
+ * @param {number} maxLength - Maximum length in characters
+ * @returns {string} Content with distant areas removed
+ */
+function removeDistantContent(content, productModel, maxLength) {
+    if (!content || !productModel) return content;
+
+    const contentLower = content.toLowerCase();
+    const productLower = productModel.toLowerCase();
+
+    // Find all important positions
+    const productPositions = findProductPositions(contentLower, productLower);
+    const keywordPositions = findKeywordPositions(contentLower);
+    const importantPositions = [...productPositions, ...keywordPositions];
+
+    if (importantPositions.length === 0) {
+        logger.info('No important positions found, truncating from end');
+        if (content.length <= maxLength) return content;
+        return content.substring(0, maxLength - 50) + '\n\n[Content truncated]';
+    }
+
+    logger.info(`Found ${importantPositions.length} important positions (${productPositions.length} product mentions, ${keywordPositions.length} keywords)`);
+
+    // Calculate adaptive zone radius
+    const { radius: ZONE_RADIUS, estimatedZones } = calculateZoneRadius(importantPositions.length, maxLength);
+    logger.info(`Using adaptive zone radius: ${ZONE_RADIUS} chars (estimated ${estimatedZones} zones after merging)`);
+
+    // Create and merge zones
+    const zones = importantPositions.map(item => ({
+        start: Math.max(0, item.pos - ZONE_RADIUS),
+        end: Math.min(content.length, item.pos + ZONE_RADIUS),
+        type: item.type
+    }));
+    const mergedZones = mergeOverlappingSections(zones);
+    logger.info(`Merged into ${mergedZones.length} zones`);
+
+    return extractZoneContent(content, mergedZones, maxLength);
 }
 
 /**

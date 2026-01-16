@@ -98,6 +98,84 @@ function parseTimeToSeconds(timeStr) {
     return totalSeconds;
 }
 
+/**
+ * Wait for Groq token rate limit reset if needed
+ * @param {Object} tokenCheck - Token availability check result
+ */
+async function waitForTokenReset(tokenCheck) {
+    if (!tokenCheck.available && tokenCheck.resetSeconds > 0) {
+        const waitMs = Math.ceil(tokenCheck.resetSeconds * 1000) + 1000; // Add 1s buffer
+        logger.info(`⏳ Groq tokens low (${tokenCheck.remainingTokens}), waiting ${waitMs}ms for rate limit reset...`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        logger.info(`✓ Wait complete, proceeding with analysis`);
+    }
+}
+
+/**
+ * Run analysis with progressive truncation
+ * @param {Object} job - Job object
+ * @returns {Object} Analysis result
+ */
+async function runAnalysisWithTruncation(job) {
+    const MAX_TRUNCATION_LEVELS = 3;
+    let lastError = null;
+
+    for (let truncationLevel = 0; truncationLevel < MAX_TRUNCATION_LEVELS; truncationLevel++) {
+        try {
+            const searchContext = formatResults(job, truncationLevel);
+            return await analyzeWithGroq(job.maker, job.model, searchContext);
+        } catch (error) {
+            lastError = error;
+            const canRetryWithMoreTruncation = error.isPromptTooLarge && truncationLevel < MAX_TRUNCATION_LEVELS - 1;
+            if (canRetryWithMoreTruncation) {
+                logger.info(`Prompt too large at truncation level ${truncationLevel}, trying level ${truncationLevel + 1}`);
+                continue;
+            }
+            throw error;
+        }
+    }
+
+    throw lastError || new Error('Analysis failed after all truncation attempts');
+}
+
+/**
+ * Handle analysis errors and update job status
+ * @param {Error} error - The error that occurred
+ * @param {string} eventBody - Request body string
+ * @param {Object} context - Netlify context
+ * @returns {Object} HTTP response
+ */
+async function handleAnalysisError(error, eventBody, context) {
+    logger.error('Analysis error:', error);
+
+    try {
+        const { jobId } = JSON.parse(eventBody);
+
+        if (error.isDailyLimit) {
+            await updateJobStatus(jobId, 'error', error.message, context, {
+                isDailyLimit: true,
+                retrySeconds: error.retrySeconds || null
+            });
+
+            return {
+                statusCode: 429,
+                body: JSON.stringify({
+                    error: error.message,
+                    isDailyLimit: true,
+                    retrySeconds: error.retrySeconds || null,
+                    message: 'Daily Groq token limit reached (rolling 24h window). Analysis cancelled. Tokens gradually recover as they age out of the 24-hour window.'
+                })
+            };
+        }
+
+        await updateJobStatus(jobId, 'error', error.message, context);
+    } catch (e) {
+        logger.info(`Exception thrown: ${e}`);
+    }
+
+    return errorResponse(error.message);
+}
+
 exports.handler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
         return methodNotAllowedResponse();
@@ -120,57 +198,16 @@ exports.handler = async function(event, context) {
 
         logger.debug(`[ANALYZE] Job retrieved. Current status: ${job.status}, URLs: ${job.urls?.length}, Completed: ${job.urls?.filter(u => u.status === 'complete').length}`);
 
-        // Update status to analyzing
         logger.debug(`[ANALYZE] Updating job status to 'analyzing'`);
         await updateJobStatus(jobId, 'analyzing', null, context);
         logger.debug(`[ANALYZE] Job status updated to 'analyzing'`);
 
-        // FIX: Check Groq token availability BEFORE analysis
         const tokenCheck = await checkGroqTokenAvailability();
-        if (!tokenCheck.available && tokenCheck.resetSeconds > 0) {
-            const waitMs = Math.ceil(tokenCheck.resetSeconds * 1000) + 1000; // Add 1s buffer
-            logger.info(`⏳ Groq tokens low (${tokenCheck.remainingTokens}), waiting ${waitMs}ms for rate limit reset...`);
-            await new Promise(resolve => setTimeout(resolve, waitMs));
-            logger.info(`✓ Wait complete, proceeding with analysis`);
-        }
+        await waitForTokenReset(tokenCheck);
 
-        // Progressive truncation retry loop
-        // If prompt is too large, retry with more aggressive truncation (up to 3 levels)
-        const MAX_TRUNCATION_LEVELS = 3;
-        let analysis = null;
-        let lastError = null;
+        const analysis = await runAnalysisWithTruncation(job);
 
-        for (let truncationLevel = 0; truncationLevel < MAX_TRUNCATION_LEVELS; truncationLevel++) {
-            try {
-                // Format results for LLM with current truncation level
-                const searchContext = formatResults(job, truncationLevel);
-
-                // Call Groq with retry logic
-                analysis = await analyzeWithGroq(job.maker, job.model, searchContext);
-                break; // Success - exit the loop
-
-            } catch (error) {
-                lastError = error;
-
-                // If prompt too large, try again with more aggressive truncation
-                if (error.isPromptTooLarge && truncationLevel < MAX_TRUNCATION_LEVELS - 1) {
-                    logger.info(`Prompt too large at truncation level ${truncationLevel}, trying level ${truncationLevel + 1}`);
-                    continue;
-                }
-
-                // For other errors or max truncation reached, re-throw
-                throw error;
-            }
-        }
-
-        // If we exited the loop without analysis, throw the last error
-        if (!analysis) {
-            throw lastError || new Error('Analysis failed after all truncation attempts');
-        }
-
-        // Save final result
         await saveFinalResult(jobId, analysis, context);
-
         logger.info(`Analysis complete for job ${jobId}`);
 
         return {
@@ -179,39 +216,7 @@ exports.handler = async function(event, context) {
         };
 
     } catch (error) {
-        logger.error('Analysis error:', error);
-
-        try {
-            const { jobId } = JSON.parse(event.body);
-
-            // For daily limit errors, we want to update the job status but NOT save any analysis
-            // This ensures no database changes are made for this product
-            if (error.isDailyLimit) {
-                // Store retrySeconds in job metadata so frontend can show countdown
-                await updateJobStatus(jobId, 'error', error.message, context, {
-                    isDailyLimit: true,
-                    retrySeconds: error.retrySeconds || null
-                });
-
-                // Return immediately with a clear message - no retries, no timeouts
-                return {
-                    statusCode: 429,
-                    body: JSON.stringify({
-                        error: error.message,
-                        isDailyLimit: true,
-                        retrySeconds: error.retrySeconds || null,
-                        message: 'Daily Groq token limit reached (rolling 24h window). Analysis cancelled. Tokens gradually recover as they age out of the 24-hour window.'
-                    })
-                };
-            }
-
-            // For other errors, update status as normal
-            await updateJobStatus(jobId, 'error', error.message, context);
-        } catch (e) {
-            logger.info(`Exception thrown: ${e}`);
-        }
-
-        return errorResponse(error.message);
+        return handleAnalysisError(error, event.body, context);
     }
 };
 

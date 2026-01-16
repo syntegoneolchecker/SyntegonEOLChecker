@@ -184,43 +184,48 @@ async function setupResourceBlocking(page, options = {}) {
 async function extractPageContent(page, timeout = 10000) {
     const extractionPromise = (async () => {
         const extractedContent = await page.evaluate(() => {
-            // Remove scripts, styles, and noscript elements
-            const scripts = document.querySelectorAll('script, style, noscript');
-            scripts.forEach(script => script.remove());
+            // Helper function to extract and escape cell text
+            function getCellText(cell) {
+                let text = cell.innerText || cell.textContent || '';
+                text = text.replace(/\s+/g, ' ').trim();
+                text = text.replace(/\\/g, '\\\\');
+                text = text.replace(/\|/g, '\\|');
+                return text;
+            }
 
-            // Convert tables to pipe-delimited format before extracting text
-            // We use <pre> elements to preserve newlines when innerText is called
-            const tables = document.querySelectorAll('table');
-            tables.forEach(table => {
+            // Helper function to convert a row to pipe-delimited format
+            function convertRowToText(row) {
+                const cells = row.querySelectorAll('th, td');
+                if (cells.length === 0) return null;
+                const cellTexts = Array.from(cells).map(getCellText);
+                return '| ' + cellTexts.join(' | ') + ' |';
+            }
+
+            // Helper function to convert a table to text format
+            function convertTableToText(table) {
                 const rows = table.querySelectorAll('tr');
-                if (rows.length === 0) return;
+                if (rows.length === 0) return null;
 
-                let tableText = '=== TABLE START ===\n';
+                const rowTexts = Array.from(rows)
+                    .map(convertRowToText)
+                    .filter(text => text !== null);
 
-                rows.forEach(row => {
-                    const cells = row.querySelectorAll('th, td');
-                    if (cells.length === 0) return;
+                if (rowTexts.length === 0) return null;
+                return '=== TABLE START ===\n' + rowTexts.join('\n') + '\n=== TABLE END ===';
+            }
 
-                    const cellTexts = Array.from(cells).map(cell => {
-                        // Get text content, normalize whitespace
-                        let text = cell.innerText || cell.textContent || '';
-                        text = text.replaceAll(/\s+/g, ' ').trim();
-                        // Escape backslashes and pipe characters in cell content
-                        text = text.replaceAll('\\', '\\\\');
-                        text = text.replaceAll('|', String.raw`\|`);
-                        return text;
-                    });
+            // Remove scripts, styles, and noscript elements
+            document.querySelectorAll('script, style, noscript').forEach(el => el.remove());
 
-                    tableText += '| ' + cellTexts.join(' | ') + ' |\n';
-                });
-
-                tableText += '=== TABLE END ===';
-
-                // Use <pre> element to preserve newlines when innerText extracts content
-                const preElement = document.createElement('pre');
-                preElement.textContent = tableText;
-                preElement.style.whiteSpace = 'pre-wrap';
-                table.parentNode.replaceChild(preElement, table);
+            // Convert tables to pipe-delimited format
+            document.querySelectorAll('table').forEach(table => {
+                const tableText = convertTableToText(table);
+                if (tableText) {
+                    const preElement = document.createElement('pre');
+                    preElement.textContent = tableText;
+                    preElement.style.whiteSpace = 'pre-wrap';
+                    table.parentNode.replaceChild(preElement, table);
+                }
             });
 
             return document.body.innerText;
