@@ -22,10 +22,10 @@ This application has a centralized logging system that aggregates logs from both
 ## Architecture
 
 ```
-┌─────────────────────┐       ┌─────────────────────┐
-│ Netlify Functions   │       │ Render Service      │
-│ (38 functions)      │       │ (scraping-service)  │
-└──────────┬──────────┘       └──────────┬──────────┘
+┌─────────────────────┐        ┌─────────────────────┐
+│ Netlify Functions   │        │ Render Service      │
+│                     │        │ (scraping-service)  │
+└──────────┬──────────┘        └──────────┬──────────┘
            │                              │
            │ Direct INSERT                │ Direct INSERT
            │ (fire-and-forget)            │ (fire-and-forget)
@@ -64,7 +64,7 @@ This application has a centralized logging system that aggregates logs from both
 ✅ **Full-Text Search**: Built-in PostgreSQL search across all log messages
 ✅ **Fire-and-Forget**: Logging failures don't break your application
 ✅ **Structured Data**: Logs include message, context objects (JSONB), and metadata
-✅ **Web UI**: Beautiful, filterable web interface to view logs
+✅ **Web UI**: Filterable web interface to view logs
 ✅ **JSON API**: Programmatic access to logs via REST
 ✅ **Auto-Cleanup**: Automatic deletion of old logs (configurable retention)
 ✅ **Free Tier**: Supabase free tier (500MB database, 2GB bandwidth/month)
@@ -352,17 +352,6 @@ Both loggers:
 - Creates logger instances for all services
 - Sends logs directly to Supabase (fire-and-forget)
 - Falls back to console logging if Supabase is unavailable
-
-## Future Enhancements
-
-Potential improvements to consider:
-
-- [x] ~~Automatic log retention/cleanup (delete logs older than N days)~~ - Implemented via pg_cron
-- [ ] Log search with regex support
-- [ ] Real-time log streaming (WebSocket/SSE)
-- [ ] Alert rules (email/webhook on ERROR count threshold)
-- [ ] Log analytics dashboard (error rates, response times)
-- [ ] Export to external services (CloudWatch, Datadog, etc.)
 
 ## Security Notes
 
