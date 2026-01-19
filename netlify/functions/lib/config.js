@@ -37,7 +37,7 @@ module.exports = {
     SERPAPI_MAX_RESULTS: 10,            // Search results to fetch from SerpAPI (organic_results limit)
     SERPAPI_ENGINE: 'google',           // Search engine to use with SerpAPI
     SERPAPI_GOOGLE_DOMAIN: 'google.com', // Google domain for searches
-    SERPAPI_SITES_TO_SEARCH = [
+    SERPAPI_SITES_TO_SEARCH: [
         'accuride.co.jp',
         'adlinktech.com',
         'allied-telesis.co.jp',
