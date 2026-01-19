@@ -13,6 +13,7 @@ const crypto = require('node:crypto');
 
 const USERS_BLOB_KEY = 'users';
 const TOKENS_BLOB_KEY = 'verification-tokens';
+const PASSWORD_RESET_TOKENS_BLOB_KEY = 'password-reset-tokens';
 const LOGIN_ATTEMPTS_BLOB_KEY = 'login-attempts';
 
 /**
@@ -192,6 +193,59 @@ async function deleteVerificationToken(token) {
 }
 
 /**
+ * Store password reset token
+ * @param {string} token - Password reset token
+ * @param {Object} data - Token data (email, expiresAt)
+ * @returns {Promise<void>}
+ */
+async function storePasswordResetToken(token, data) {
+    const store = getAuthStore();
+    const tokens = await store.get(PASSWORD_RESET_TOKENS_BLOB_KEY, { type: 'json' }) || {};
+
+    tokens[token] = {
+        ...data,
+        createdAt: new Date().toISOString()
+    };
+
+    await store.setJSON(PASSWORD_RESET_TOKENS_BLOB_KEY, tokens);
+}
+
+/**
+ * Get and validate password reset token
+ * @param {string} token - Password reset token
+ * @returns {Promise<Object|null>} Token data or null if invalid/expired
+ */
+async function getPasswordResetToken(token) {
+    const store = getAuthStore();
+    const tokens = await store.get(PASSWORD_RESET_TOKENS_BLOB_KEY, { type: 'json' }) || {};
+
+    const tokenData = tokens[token];
+    if (!tokenData) return null;
+
+    // Check expiration
+    if (new Date(tokenData.expiresAt) < new Date()) {
+        // Token expired, remove it
+        await deletePasswordResetToken(token);
+        return null;
+    }
+
+    return tokenData;
+}
+
+/**
+ * Delete password reset token (after use or expiration)
+ * @param {string} token - Password reset token
+ * @returns {Promise<void>}
+ */
+async function deletePasswordResetToken(token) {
+    const store = getAuthStore();
+    const tokens = await store.get(PASSWORD_RESET_TOKENS_BLOB_KEY, { type: 'json' }) || {};
+
+    delete tokens[token];
+    await store.setJSON(PASSWORD_RESET_TOKENS_BLOB_KEY, tokens);
+}
+
+/**
  * Record failed login attempt
  * @param {string} email - User email
  * @returns {Promise<number>} Number of failed attempts
@@ -289,6 +343,9 @@ module.exports = {
     storeVerificationToken,
     getVerificationToken,
     deleteVerificationToken,
+    storePasswordResetToken,
+    getPasswordResetToken,
+    deletePasswordResetToken,
     recordFailedLogin,
     clearFailedLogins,
     getFailedLoginCount,
