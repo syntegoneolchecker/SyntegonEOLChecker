@@ -14,7 +14,7 @@ All architectural decisions are driven by these **hard limits**:
 |---------|-------|------------------------|
 | **Netlify Functions** | 30s timeout (regular)<br/>15min timeout (background) | - Polling instead of long-running tasks<br/>- Chain multiple background functions for long operations |
 | **Groq LLM** | 200,000 tokens/day<br/>8,000 tokens/minute<br/>(rolling windows) | - Smart content truncation (`analyze-job.js:235-467`)<br/>- Token availability checks before analysis<br/>- Retry logic with exponential backoff |
-| **SerpAPI Search** | 100 searches/month | - 1 search per product, only 2 search results used due to LLM token constraints<br/>- Manufacturer-specific direct URLs to skip search<br/>- 10 product limit on daily auto-checks |
+| **SerpAPI Search** | 250 searches/month | - 1 search per product, only 2 search results used due to LLM token constraints<br/>- Manufacturer-specific direct URLs to skip search<br/>- 10 product limit on daily auto-checks |
 | **BrowserQL** | 1,000 tokens/month<br/>(1 token = 30 seconds) | - Use ONLY for Cloudflare-protected sites<br/>- Puppeteer (free) for everything else |
 | **Render (Scraping Service)** | 512MB RAM<br/>750 hours/month | - Aggressive memory management<br/>- Self-restart when approaching limit<br/>- Sequential scraping (no concurrency) |
 | **Netlify Blobs** | Limited storage | - Job cleanup after 24 hours (1440 minutes)<br/>- No historical data retention |
@@ -23,7 +23,7 @@ All architectural decisions are driven by these **hard limits**:
 
 #### 1. **Manufacturer-Specific URL Strategies** (`initialize-job.js:12-90`)
 
-Instead of always using SerpAPI search (1 search per product, limited to 100/month), we maintain hardcoded URL patterns for manufacturers with many database entries:
+Instead of always using SerpAPI search (1 search per product, limited to 250/month), we maintain hardcoded URL patterns for manufacturers with many database entries:
 
 ```javascript
 // Example: SMC has consistent URL pattern
@@ -35,13 +35,13 @@ case 'SMC':
 ```
 
 **Benefits**:
-- Saves ~100 SerpAPI searches per month for frequently-checked manufacturers
+- Saves SerpAPI searches for a large amount of products
 - Faster (no search delay)
-- More reliable (direct to manufacturer page)
+- More reliable information (direct to manufacturer page)
 
 **Trade-off**:
-- Manual maintenance required
-- Only works for manufacturers with predictable URL patterns
+- Manual maintenance required (manufacturer sites could change layout or URL structure)
+- Can only be implemented for some manufacturers with consistent and predictable locations for product information
 
 #### 2. **BrowserQL vs Puppeteer Decision Matrix**
 
@@ -56,25 +56,24 @@ case 'SMC':
 **BrowserQL** (`lib/browserql-scraper.js`):
 - ✅ Bypasses Cloudflare
 - ❌ Limited to 1000 tokens/month
-- ❌ Cannot use custom proxies (their proxy is too expensive)
 - **Use cases**: Oriental Motor, NTN (on motion.com)
 
 **Puppeteer** (Render scraping service):
 - ✅ "Free indefinitely" for our usage
-- ✅ Can use custom proxies (Webshare)
 - ❌ Blocked by Cloudflare
-- **Use cases**: 90% of manufacturers
+- **Use cases**: All the other manufacturers
 
 #### 3. **Groq Token Optimization**
 
-**Problem**: 200,000 tokens/day limit means ~25-30 products max per day
+**Problem**: 200,000 tokens/day limit means ~25-30 products max per day (more if less Groq tokens are used per request)
 
 **Solutions**:
 1. **Smart Content Truncation** (`analyze-job.js:235-467`):
    - Remove tables that don't mention the product
    - Extract only sections around product mentions
-   - Truncate each URL to 6,500 characters
-   - Total limit: 13,000 characters (~3,250 tokens)
+   - Truncate each URL to 6,500 characters, total limit 13,000 characters
+   - Mix of Hiragana, Katakana, Kanji and other characters makes a direct translation of characters to Groq tokens difficult
+       Solution -> Dynamic truncation depending on composition of characters with retry logic that reduces characters further if token limit is breached
 
 2. **Token Availability Checks** (`analyze-job.js:93-99`):
    ```javascript
@@ -173,7 +172,7 @@ async function createJob(maker, model, context) {
     ↓
 [auto-eol-check-background] Finds oldest unchecked product
     ↓
-[Checks SerpAPI credits] Must have 30+ credits
+[Checks SerpAPI credits] Must have 30+ credits (so users can still use the manual checking)
     ↓
 [initialize-job] → [fetch-url] → [analyze-job] (same as manual)
     ↓
@@ -219,7 +218,7 @@ Add a manufacturer to `initialize-job.js:12-90` if:
 4. **Test Thoroughly**:
    - Test with 5+ different products
    - Check for edge cases (special characters, long names)
-   - Verify token usage (check SerpAPI dashboard)
+   - Verify token usage (check SerpAPI dashboard, searches should not be used if the manufacturer case works correctly)
 
 ## Token Usage Optimization Tips
 
@@ -229,8 +228,8 @@ Add a manufacturer to `initialize-job.js:12-90` if:
 |-----------|---------------|-------------|------------------|
 | Manual check (SerpAPI) | 1 | ~5,000 | 0 |
 | Manual check (Direct URL) | 0 | ~5,000 | 0 |
-| Manual check (BrowserQL) | 0 | ~5,000 | ~0.5 |
-| Daily auto-check (10 products) | 0-10 | ~50,000 | 0-5 |
+| Manual check (BrowserQL) | 0 | ~5,000 | 1 |
+| Daily auto-check (10 products) | 0-10 | ~50,000 | 0-10 |
 
 ### Maximizing Daily Capacity
 
@@ -238,12 +237,15 @@ Add a manufacturer to `initialize-job.js:12-90` if:
 
 **Optimization strategies**:
 1. **Manufacturer Direct URLs**: Already implemented, saves SerpAPI tokens
-2. **Content Truncation**: Already aggressive, hard to improve further
-3. **Caching**: NOT implemented (same product won't be checked twice in months anyway)
+2. **Content Truncation**: Already complex, hard to improve further
+3. **Caching**: NOT implemented (same product won't be checked twice in months anyway), SerpAPI has 1 hour caching for search results
 4. **Parallel LLM Requests**: Not possible (rate limit is per-account)
 
-**Bottleneck**: Groq 200,000 tokens/day limit is the hard cap
-
+**Bottlenecks**:
+   - Per minute: 8,000 Groq tokens, reset time is shown after request
+   - Per day: 200,000 Groq tokens, reset time will be shown if reached
+   - Per month: 250 SerpAPI searches (SerpAPI is most likely bottleneck, less likely are BrowserQL 1000 tokens and render.com 750 instance hours)
+    
 ## Monitoring & Debugging
 
 ### Logs to Watch
@@ -267,9 +269,9 @@ Add a manufacturer to `initialize-job.js:12-90` if:
 | Issue | Cause | Solution |
 |-------|-------|----------|
 | "Daily token limit reached" | Groq 200K/day limit hit | Wait for tokens to recover (rolling window) |
-| Job timeout after 2min | Render cold start + slow site | Retry (first request wakes Render) |
+| Job timeout after 2min | Render cold start + slow site or unforseen issues during EOL check | Retry (first request wakes Render) |
 | Memory limit restart | Large page or PDF | Expected behavior, service auto-restarts |
-| "No SerpAPI credits" | Used 100 searches this month | Wait for monthly reset or add direct URLs |
+| "No SerpAPI credits" | Used 250 searches this month | Wait for monthly reset or add direct URLs |
 | BrowserQL quota exhausted | Used 1000 tokens this month | Wait for monthly reset or reduce usage |
 
 ## Testing Strategy
