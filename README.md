@@ -2,6 +2,9 @@
 
 An automated End-of-Life (EOL) status checker for industrial products. The system uses AI-powered web scraping to determine if products are discontinued and identify their successors.
 
+Why is the repository public? 
+  -> In order to use SonarCloud for free, the repository must be public.
+
 ## 🔒 Security Notice
 
 **This repository is safe to be public.** All sensitive data is properly secured:
@@ -24,20 +27,18 @@ If you're forking this project, make sure to set up your own environment variabl
   - SerpAPI (web search)
   - Groq (LLM analysis)
   - BrowserQL/Browserless (Cloudflare bypass)
-- **Proxies**: Optional proxies for manufacturer-specific requests
 
 ## Key Features
 
 - **Manual EOL Checks**: Check individual products on-demand
-- **Automated Daily Checks**: Schedule up to 20 automatic EOL checks per day (21:00 GMT+9)
+- **Automated Daily Checks**: Schedule up to 10 automatic EOL checks per day (21:00 GMT+9)
 - **Multiple Scraping Methods**:
-  - Fast fetch (simple pages)
-  - Puppeteer (JavaScript-heavy pages)
+  - Fast fetch (PDFs)
+  - Puppeteer (General websites, Javascript-heavy sites supported)
   - BrowserQL (Cloudflare-protected sites)
   - Interactive search (manufacturer-specific)
-  - Proxy usage to access data from multiple countries (manufacturer-specific)
 - **Excel Import/Export**: Bulk manage product database
-- **Smart Content Extraction**: AI-powered table detection and product mention extraction
+- **Smart Content Extraction**: AI-powered table detection and product mention extraction with advanced truncation logic to fit token limits
 
 ## Environment Variables
 
@@ -45,29 +46,30 @@ If you're forking this project, make sure to set up your own environment variabl
 
 Set these in your Netlify dashboard under Site Settings > Environment Variables:
 
-| Variable | Description | Example |
+| Variable | Description | Example | Secret/Public |
 |----------|-------------|---------|
-| `ALLOWED_EMAIL_DOMAIN` | Allowed email domain for registration | `syntegon.com` |
-| `BROWSERQL_API_KEY` | Browserless.io API key (for Cloudflare bypass) | `abc123...` |
-| `EMAIL_API_KEY` | Email service API key (if using external service) | `key_abc123...` |
-| `EMAIL_PASSWORD` | Gmail app password for SMTP | `xxxx xxxx xxxx xxxx` |
-| `EMAIL_SERVICE` | Email service provider (legacy, optional) | `gmail` |
-| `EMAIL_USER` | Gmail account for sending emails | `your-account@gmail.com` |
-| `FROM_EMAIL` | From address for verification emails | `noreply@syntegon.com` |
-| `GROQ_API_KEY` | Groq LLM API key | `gsk_abc123...` |
-| `JWT_SECRET` | Secret key for JWT tokens (REQUIRED) | `your-random-64-char-hex` |
-| `LOG_LEVEL` | Logging level | `info` |
-| `NETLIFY_TOKEN` | Token for Netlify Blobs access | Provided by Netlify |
-| `SCRAPING_SERVICE_URL` | URL of Render scraping service | `https://eolscrapingservice.onrender.com` |
-| `SERPAPI_API_KEY` | SerpAPI web search API key | `abc123...` |
-| `SUPABASE_URL` | Supabase project URL (for logging) | `https://xxxxx.supabase.co` |
-| `SUPABASE_API_KEY` | Supabase anon key (for logging) | `eyJhbGci...` |
+| `ALLOWED_EMAIL_DOMAIN` | Allowed email domain for registration | `syntegon.com` | Public |
+| `BROWSERQL_API_KEY` | Browserless.io API key (for Cloudflare bypass) | `abc123...` | Secret |
+| `EMAIL_API_KEY` | Email service API key (if using external service) | `key_abc123...` | Secret |
+| `EMAIL_PASSWORD` | Gmail app password for SMTP | `xxxx xxxx xxxx xxxx` | Secret |
+| `EMAIL_SERVICE` | Email service provider (legacy, optional) | `gmail` | Public |
+| `EMAIL_USER` | Gmail account for sending emails | `your-account@gmail.com` | Public |
+| `FROM_EMAIL` | From address for verification emails | `noreply@syntegon.com` | Public |
+| `GROQ_API_KEY` | Groq LLM API key | `gsk_abc123...` | Secret |
+| `JWT_SECRET` | Secret key for JWT tokens (REQUIRED) | `your-random-64-char-hex` | Secret |
+| `LOG_LEVEL` | Logging level | `info` | Public |
+| `NETLIFY_TOKEN` | Token for Netlify Blobs access | Provided by Netlify | Secret |
+| `SCRAPING_SERVICE_URL` | URL of Render scraping service | `https://eolscrapingservice.onrender.com` | Public |
+| `SERPAPI_API_KEY` | SerpAPI web search API key | `abc123...` | Secret |
+| `SUPABASE_URL` | Supabase project URL (for logging) | `https://xxxxx.supabase.co` | Public |
+| `SUPABASE_API_KEY` | Supabase anon key (for logging) | `eyJhbGci...` | Secret |
 
 ## API Rate Limits
 
-- **SerpAPI**: 100 searches/month (free tier)
+- **SerpAPI**: 250 searches/month (free tier)
 - **Groq**: 8000 tokens/minute, 200000 tokens/day (rolling window)
 - **BrowserQL**: 1000 credits/month (1 credit = 30 seconds)
+- **Render**: 750 instance hours/month (free tier)
 
 ## Setup Instructions
 
@@ -99,11 +101,10 @@ netlify deploy --prod
 
 1. Create new Web Service on Render
 2. Connect GitHub repository
-3. Select `scraping-service` directory as root
 4. Build command: `npm install`
 5. Start command: `npm start`
 6. Instance type: Free (512 MB RAM)
-7. Environment variables: None required (auto-configured)
+7. Create Environment Variables
 
 **Important**: The service will spin down after 15 minutes of inactivity. Cold starts take ~1 minute.
 
@@ -121,6 +122,7 @@ The system includes a Netlify scheduled function that runs daily at **21:00 GMT+
 - Runs at 21:00 GMT+9 daily
 - Auto-disables if SerpAPI credits < 30
 - Chain-based execution (avoids 15min function timeout)
+- Scheduled functions only trigger on the production deploy on netlify (currently the branch named "main")
 
 ## Database Schema
 
@@ -226,7 +228,7 @@ If a job times out:
 
 Render free tier spins down after 15 minutes of inactivity:
 - First request after spin-down: **~60 seconds**
-- Subsequent requests: **~5-15 seconds**
+- Subsequent requests: **~1-5 seconds**
 
 The auto-check background function wakes up Render on the first daily check.
 
@@ -235,8 +237,8 @@ The auto-check background function wakes up Render on the first daily check.
 **Current monthly costs** (all free tiers):
 
 - Netlify: Free (100GB bandwidth, 300 build minutes)
-- Render: Free (512MB RAM, 750 hours/month)
-- SerpAPI: Free (100 searches/month)
+- Render: Free (512MB RAM, 750 instance hours/month)
+- SerpAPI: Free (250 searches/month)
 - Groq: Free (rate-limited but no hard cap)
 - BrowserQL: Free (1000 credits/month)
 - Supabase: Free (500MB database, 2GB bandwidth/month)
@@ -244,19 +246,6 @@ The auto-check background function wakes up Render on the first daily check.
 **Estimated capacity**:
 - 10 products/day × 30 days = 300 products/month (limited by SerpAPI)
 - Capacity much higher when using manufacturer-specific direct URL strategies (bypasses search)
-
-## Contributing
-
-When making changes:
-
-1. **Critical fixes**: Schema mismatches, data corruption
-2. **Major improvements**: Deduplication, refactoring
-3. **Minor enhancements**: Logging, error messages
-
-Test thoroughly before deploying:
-- Verify Netlify functions work locally
-- Test scraping service memory behavior
-- Validate CSV parsing with edge cases
 
 ## License
 
