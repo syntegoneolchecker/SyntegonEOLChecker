@@ -4,7 +4,7 @@ Puppeteer-based web scraping service for the EOL Database Manager.
 
 ## Purpose
 
-This service handles dynamic website scraping that Tavily cannot handle (JavaScript-heavy sites, bot detection, etc.). It runs on Render.com's free tier.
+This service handles dynamic website scraping for general websites, PDFs and Javascript-heavy websites. It runs on Render.com's free tier.
 
 ## Endpoints
 
