@@ -1,6 +1,5 @@
 const { getAuthenticatedUser } = require('./lib/auth-middleware');
 const logger = require('./lib/logger');
-const { handleCORSPreflight, successResponse, errorResponse, methodNotAllowedResponse } = require('./lib/response-builder');
 
 /**
  * Authentication Check Endpoint
@@ -21,25 +20,62 @@ const { handleCORSPreflight, successResponse, errorResponse, methodNotAllowedRes
 
 exports.handler = async (event) => {
     // Handle CORS preflight
-    const corsResponse = handleCORSPreflight(event, 'GET, OPTIONS');
-    if (corsResponse) return corsResponse;
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 204,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS'
+            },
+            body: ''
+        };
+    }
 
     // Only allow GET requests
     if (event.httpMethod !== 'GET') {
-        return methodNotAllowedResponse('GET');
+        return {
+            statusCode: 405,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify({ error: 'Method not allowed' })
+        };
     }
 
     try {
         const user = await getAuthenticatedUser(event);
 
         if (!user) {
-            return successResponse({ authenticated: false });
+            return {
+                statusCode: 200,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                body: JSON.stringify({ authenticated: false })
+            };
         }
 
-        return successResponse({ authenticated: true, user });
+        return {
+            statusCode: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify({ authenticated: true, user })
+        };
 
     } catch (error) {
         logger.error('Auth check error:', error);
-        return errorResponse('Internal server error', { authenticated: false });
+        return {
+            statusCode: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify({ authenticated: false, error: 'Internal server error' })
+        };
     }
 };

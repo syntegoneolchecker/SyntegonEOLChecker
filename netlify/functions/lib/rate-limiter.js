@@ -16,6 +16,10 @@ const RATE_LIMITS = {
     register: {
         maxAttempts: 3,
         windowMs: 60 * 60 * 1000  // 1 hour
+    },
+    'password-reset': {
+        maxAttempts: 1,
+        windowMs: 15 * 60 * 1000  // 15 minutes cooldown between requests
     }
 };
 
