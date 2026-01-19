@@ -35,7 +35,10 @@ let puppeteerQueue = Promise.resolve();
  */
 function enqueuePuppeteerTask(task) {
   const result = puppeteerQueue.then(task, task); // Run task whether previous succeeded or failed
-  puppeteerQueue = result.catch(() => {}); // Prevent unhandled rejections from blocking queue
+  // Log errors but don't block the queue - this allows subsequent tasks to proceed
+  puppeteerQueue = result.catch((error) => {
+    logger.error('Puppeteer queue task failed:', error.message);
+  });
   return result;
 }
 

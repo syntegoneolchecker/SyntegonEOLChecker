@@ -199,7 +199,6 @@ exports.handler = requireAuth(myFunctionHandler);
 These endpoints are called by external services and use different security mechanisms:
 
 - **`scraping-callback.js`** - Called by Render scraping service
-- **`log-ingest.js`** - Called by Render service
 - **`analyze-job.js`** - Internal job processing
 - **`fetch-url.js`** - Internal job processing
 - **`auto-eol-check-background.js`** - Background job

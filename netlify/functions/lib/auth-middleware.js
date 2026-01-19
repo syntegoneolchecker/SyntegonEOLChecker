@@ -19,8 +19,8 @@ function extractToken(event) {
     }
 
     // Check cookies
-    const cookies = event.headers.cookie;
-    if (cookies) {
+    const cookies = event.headers?.cookie;
+    if (cookies && typeof cookies === 'string') {
         const tokenCookie = cookies.split(';').find(c => c.trim().startsWith('auth_token='));
         if (tokenCookie) {
             return tokenCookie.split('=')[1];

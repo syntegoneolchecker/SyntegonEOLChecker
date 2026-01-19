@@ -1,30 +1,15 @@
 // Set auto-check state in Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
+const { handleCORSPreflight, successResponse, errorResponse, methodNotAllowedResponse } = require('./lib/response-builder');
 
 exports.handler = async function(event, context) {
     // Handle CORS
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS'
-            },
-            body: ''
-        };
-    }
+    const corsResponse = handleCORSPreflight(event, 'POST, OPTIONS');
+    if (corsResponse) return corsResponse;
 
     if (event.httpMethod !== 'POST') {
-        return {
-            statusCode: 405,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ error: 'Method Not Allowed' })
-        };
+        return methodNotAllowedResponse('POST');
     }
 
     try {
@@ -91,30 +76,10 @@ exports.handler = async function(event, context) {
 
         logger.info('Auto-check state updated:', state);
 
-        return {
-            statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                success: true,
-                state: state
-            })
-        };
+        return successResponse({ state });
 
     } catch (error) {
         logger.error('Set auto-check state error:', error);
-        return {
-            statusCode: 500,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                error: 'Failed to set auto-check state',
-                details: error.message
-            })
-        };
+        return errorResponse('Failed to set auto-check state', { details: error.message });
     }
 };
