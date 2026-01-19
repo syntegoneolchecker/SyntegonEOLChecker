@@ -19,8 +19,9 @@ If you're forking this project, make sure to set up your own environment variabl
 - **Backend**: Netlify Functions (serverless)
 - **Scraping Service**: Node.js + Puppeteer service deployed on Render
 - **Storage**: Netlify Blobs (for database and job state)
+- **Logging**: Supabase PostgreSQL (centralized logging)
 - **APIs**:
-  - Tavily (web search)
+  - SerpAPI (web search)
   - Groq (LLM analysis)
   - BrowserQL/Browserless (Cloudflare bypass)
 - **Proxies**: Optional proxies for manufacturer-specific requests
@@ -58,11 +59,13 @@ Set these in your Netlify dashboard under Site Settings > Environment Variables:
 | `LOG_LEVEL` | Logging level | `info` |
 | `NETLIFY_TOKEN` | Token for Netlify Blobs access | Provided by Netlify |
 | `SCRAPING_SERVICE_URL` | URL of Render scraping service | `https://eolscrapingservice.onrender.com` |
-| `TAVILY_API_KEY` | Tavily AI web search API key | `tvly-abc123...` |
+| `SERPAPI_API_KEY` | SerpAPI web search API key | `abc123...` |
+| `SUPABASE_URL` | Supabase project URL (for logging) | `https://xxxxx.supabase.co` |
+| `SUPABASE_API_KEY` | Supabase anon key (for logging) | `eyJhbGci...` |
 
 ## API Rate Limits
 
-- **Tavily**: 1000 tokens/month -> 500 searches (free tier)
+- **SerpAPI**: 100 searches/month (free tier)
 - **Groq**: 8000 tokens/minute, 200000 tokens/day (rolling window)
 - **BrowserQL**: 1000 credits/month (1 credit = 30 seconds)
 
@@ -81,10 +84,12 @@ netlify login
 netlify init
 
 # Set environment variables
-netlify env:set TAVILY_API_KEY "your-key"
+netlify env:set SERPAPI_API_KEY "your-key"
 netlify env:set GROQ_API_KEY "your-key"
 netlify env:set BROWSERQL_API_KEY "your-key"
 netlify env:set SCRAPING_SERVICE_URL "https://your-render-url.onrender.com"
+netlify env:set SUPABASE_URL "https://xxxxx.supabase.co"
+netlify env:set SUPABASE_API_KEY "your-supabase-anon-key"
 
 # Deploy
 netlify deploy --prod
@@ -112,9 +117,9 @@ The system includes a Netlify scheduled function that runs daily at **21:00 GMT+
 3. Toggle the auto-check slider in the UI
 
 **Configuration**:
-- Max 20 checks per day
+- Max 10 checks per day (reduced to conserve SerpAPI credits)
 - Runs at 21:00 GMT+9 daily
-- Auto-disables if Tavily credits < 50
+- Auto-disables if SerpAPI credits < 30
 - Chain-based execution (avoids 15min function timeout)
 
 ## Database Schema
@@ -231,15 +236,14 @@ The auto-check background function wakes up Render on the first daily check.
 
 - Netlify: Free (100GB bandwidth, 300 build minutes)
 - Render: Free (512MB RAM, 750 hours/month)
-- Tavily: Free (1000 searches/month = ~500 products)
+- SerpAPI: Free (100 searches/month)
 - Groq: Free (rate-limited but no hard cap)
 - BrowserQL: Free (1000 credits/month)
+- Supabase: Free (500MB database, 2GB bandwidth/month)
 
 **Estimated capacity**:
-- 20 products/day × 30 days = 600 products/month
-- 2 URLs/product × 600 products = 1200 searches (needs paid Tavily)
-- Worst case BrowserQL: 2 credits/product × 600 = 1200 credits (needs paid plan)
-- Capacity higher when taking manufacturer specific approaches into consideration
+- 10 products/day × 30 days = 300 products/month (limited by SerpAPI)
+- Capacity much higher when using manufacturer-specific direct URL strategies (bypasses search)
 
 ## Contributing
 

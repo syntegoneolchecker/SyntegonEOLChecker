@@ -1,20 +1,12 @@
 // Get auto-check state from Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
+const { handleCORSPreflight, errorResponse } = require('./lib/response-builder');
 
 exports.handler = async function(event, _context) {
     // Handle CORS
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'GET, OPTIONS'
-            },
-            body: ''
-        };
-    }
+    const corsResponse = handleCORSPreflight(event, 'GET, OPTIONS');
+    if (corsResponse) return corsResponse;
 
     try {
         // Diagnostic logging for blob store configuration
@@ -57,17 +49,6 @@ exports.handler = async function(event, _context) {
 
     } catch (error) {
         logger.error('Get auto-check state error:', error);
-        return {
-            statusCode: 500,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json',
-                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
-            },
-            body: JSON.stringify({
-                error: 'Failed to get auto-check state',
-                details: error.message
-            })
-        };
+        return errorResponse('Failed to get auto-check state', { details: error.message });
     }
 };

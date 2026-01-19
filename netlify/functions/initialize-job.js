@@ -623,6 +623,11 @@ function prioritizeUrls(serpResults, model) {
     const regularUrls = [];
 
     for (const result of serpResults) {
+        // Skip results without a valid link
+        if (!result || !result.link) {
+            logger.warn('Skipping search result with missing link');
+            continue;
+        }
         if (urlEndsWithModel(result.link, normalizedModel)) {
             exactMatchUrls.push(result);
         } else {
@@ -632,7 +637,7 @@ function prioritizeUrls(serpResults, model) {
 
     // Log all found URLs for debugging
     serpResults.forEach((result, index) => {
-        logger.info(`Found URL Number ${index + 1}: ${result.link}`);
+        logger.info(`Found URL Number ${index + 1}: ${result?.link || 'N/A'}`);
     });
 
     logger.info(`Smart URL prioritization: ${exactMatchUrls.length} exact matches, ${regularUrls.length} regular URLs from ${serpResults.length} total`);
