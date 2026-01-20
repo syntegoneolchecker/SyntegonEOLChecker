@@ -121,35 +121,61 @@
             <h1>Account Deletion</h1>
         </div>
 
-        <div id="deletion-status" class="deletion-status loading">
-            <div class="spinner"></div>
-            <div class="message">Deleting your account...</div>
+        <div id="deletion-status" class="deletion-status">
+            <div class="icon" style="color: #d9534f;">&#9888;</div>
+            <div class="message">Delete Your Account</div>
+            <div class="details">
+                Clicking the button below will permanently delete your account.<br>
+                You can then register again with a new password.
+            </div>
         </div>
 
-        <div id="action-container" style="display: none;">
-            <a href="/auth.html" class="action-btn" id="action-btn">Go to Login</a>
+        <div id="action-container">
+            <button onclick="deleteAccount()" class="action-btn" id="delete-btn" style="background: #d9534f;">
+                Confirm Account Deletion
+            </button>
+        </div>
+
+        <div id="result-container" style="display: none;">
+            <a href="/auth.html" class="action-btn register" id="result-btn">Go to Login</a>
         </div>
     </div>
 
     <script>
-        async function deleteAccount() {
+        // Check for token on page load
+        (function() {
             const urlParams = new URLSearchParams(window.location.search);
             const token = urlParams.get('token');
 
-            const statusEl = document.getElementById('deletion-status');
-            const actionEl = document.getElementById('action-container');
-            const actionBtn = document.getElementById('action-btn');
-
             if (!token) {
+                const statusEl = document.getElementById('deletion-status');
+                const actionEl = document.getElementById('action-container');
+                const resultEl = document.getElementById('result-container');
+
                 statusEl.className = 'deletion-status error';
                 statusEl.innerHTML = `
                     <div class="icon">&#10007;</div>
                     <div class="message">No deletion token provided</div>
                     <div class="details">Please use the link from your password reset email.</div>
                 `;
-                actionEl.style.display = 'block';
-                return;
+                actionEl.style.display = 'none';
+                resultEl.style.display = 'block';
             }
+        })();
+
+        async function deleteAccount() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+
+            const statusEl = document.getElementById('deletion-status');
+            const actionEl = document.getElementById('action-container');
+            const resultEl = document.getElementById('result-container');
+            const deleteBtn = document.getElementById('delete-btn');
+            const resultBtn = document.getElementById('result-btn');
+
+            // Show loading state
+            deleteBtn.disabled = true;
+            deleteBtn.textContent = 'Deleting...';
 
             try {
                 const response = await fetch(`/.netlify/functions/auth-delete-account?token=${encodeURIComponent(token)}`);
@@ -162,10 +188,9 @@
                         <div class="message">Account deleted successfully!</div>
                         <div class="details">You can now register again with a new password.</div>
                     `;
-                    actionEl.style.display = 'block';
-                    actionBtn.textContent = 'Register New Account';
-                    actionBtn.className = 'action-btn register';
-                    actionBtn.href = '/auth.html';
+                    actionEl.style.display = 'none';
+                    resultEl.style.display = 'block';
+                    resultBtn.textContent = 'Register New Account';
                 } else {
                     statusEl.className = 'deletion-status error';
                     statusEl.innerHTML = `
@@ -173,7 +198,8 @@
                         <div class="message">Deletion failed</div>
                         <div class="details">${data.message || 'Invalid or expired password reset link.'}</div>
                     `;
-                    actionEl.style.display = 'block';
+                    actionEl.style.display = 'none';
+                    resultEl.style.display = 'block';
                 }
             } catch (error) {
                 console.error('Deletion error:', error);
@@ -183,12 +209,10 @@
                     <div class="message">An error occurred</div>
                     <div class="details">Please try again or contact support.</div>
                 `;
-                actionEl.style.display = 'block';
+                actionEl.style.display = 'none';
+                resultEl.style.display = 'block';
             }
         }
-
-        // Start deletion when page loads
-        deleteAccount();
     </script>
 </body>
 </html>

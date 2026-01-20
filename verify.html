@@ -113,34 +113,57 @@
             <h1>Email Verification</h1>
         </div>
 
-        <div id="verification-status" class="verification-status loading">
-            <div class="spinner"></div>
-            <div class="message">Verifying your email...</div>
+        <div id="verification-status" class="verification-status">
+            <div class="icon" style="color: #007bff;">&#9993;</div>
+            <div class="message">Verify Your Email</div>
+            <div class="details">Click the button below to verify your email address and activate your account.</div>
         </div>
 
-        <div id="action-container" style="display: none;">
+        <div id="action-container">
+            <button onclick="verifyEmail()" class="action-btn" id="verify-btn">
+                Verify Email Address
+            </button>
+        </div>
+
+        <div id="result-container" style="display: none;">
             <a href="/auth.html" class="action-btn">Go to Login</a>
         </div>
     </div>
 
     <script>
+        // Check for token on page load
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+
+            if (!token) {
+                const statusEl = document.getElementById('verification-status');
+                const actionEl = document.getElementById('action-container');
+                const resultEl = document.getElementById('result-container');
+
+                statusEl.className = 'verification-status error';
+                statusEl.innerHTML = `
+                    <div class="icon">&#10007;</div>
+                    <div class="message">No verification token provided</div>
+                    <div class="details">Please use the link from your verification email.</div>
+                `;
+                actionEl.style.display = 'none';
+                resultEl.style.display = 'block';
+            }
+        })();
+
         async function verifyEmail() {
             const urlParams = new URLSearchParams(window.location.search);
             const token = urlParams.get('token');
 
             const statusEl = document.getElementById('verification-status');
             const actionEl = document.getElementById('action-container');
+            const resultEl = document.getElementById('result-container');
+            const verifyBtn = document.getElementById('verify-btn');
 
-            if (!token) {
-                statusEl.className = 'verification-status error';
-                statusEl.innerHTML = `
-                    <div class="icon">✗</div>
-                    <div class="message">No verification token provided</div>
-                    <div class="details">Please use the link from your verification email.</div>
-                `;
-                actionEl.style.display = 'block';
-                return;
-            }
+            // Show loading state
+            verifyBtn.disabled = true;
+            verifyBtn.textContent = 'Verifying...';
 
             try {
                 const response = await fetch(`/.netlify/functions/auth-verify?token=${encodeURIComponent(token)}`);
@@ -149,11 +172,12 @@
                 if (data.success) {
                     statusEl.className = 'verification-status success';
                     statusEl.innerHTML = `
-                        <div class="icon">✓</div>
+                        <div class="icon">&#10003;</div>
                         <div class="message">Email verified successfully!</div>
                         <div class="details">You can now log in to your account.</div>
                     `;
-                    actionEl.style.display = 'block';
+                    actionEl.style.display = 'none';
+                    resultEl.style.display = 'block';
 
                     // Auto-redirect to login after 3 seconds
                     setTimeout(() => {
@@ -162,26 +186,25 @@
                 } else {
                     statusEl.className = 'verification-status error';
                     statusEl.innerHTML = `
-                        <div class="icon">✗</div>
+                        <div class="icon">&#10007;</div>
                         <div class="message">Verification failed</div>
                         <div class="details">${data.message || 'Invalid or expired verification token.'}</div>
                     `;
-                    actionEl.style.display = 'block';
+                    actionEl.style.display = 'none';
+                    resultEl.style.display = 'block';
                 }
             } catch (error) {
                 console.error('Verification error:', error);
                 statusEl.className = 'verification-status error';
                 statusEl.innerHTML = `
-                    <div class="icon">✗</div>
+                    <div class="icon">&#10007;</div>
                     <div class="message">An error occurred</div>
                     <div class="details">Please try again or contact support.</div>
                 `;
-                actionEl.style.display = 'block';
+                actionEl.style.display = 'none';
+                resultEl.style.display = 'block';
             }
         }
-
-        // Start verification when page loads
-        verifyEmail();
     </script>
 </body>
 </html>
