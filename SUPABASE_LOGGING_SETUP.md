@@ -87,28 +87,18 @@ SELECT * FROM logs LIMIT 1;
 
 You should see an empty result (no rows yet) with the correct column structure.
 
-### 2.4 Enable Row Level Security (RLS)
-
-Enable RLS on the logs table for security compliance:
-
-```sql
--- Enable RLS (required by Supabase security advisor)
-ALTER TABLE logs ENABLE ROW LEVEL SECURITY;
-```
-
-> **Note**: No RLS policies are needed because we use a secret key (`sb_secret_...`) or
-> `service_role` key, which bypasses RLS. This satisfies security requirements while
-> allowing full server-side access.
-
 ---
 
 ## Step 3: Set Up Automatic Log Cleanup (Optional but Recommended)
 
-### 3.1 Create Cleanup Function
+### 3.1 Enable Row Level Security (RLS) and Create Cleanup Function
 
-Run this SQL to create a function that deletes logs older than 7 days:
+Run this SQL to enable RLS and create a function that deletes logs older than 7 days:
 
 ```sql
+-- Enable RLS (required by Supabase security advisor)
+ALTER TABLE logs ENABLE ROW LEVEL SECURITY;
+
 -- Function to delete old logs (with fixed search_path for security)
 CREATE OR REPLACE FUNCTION cleanup_old_logs()
 RETURNS void
@@ -123,6 +113,10 @@ $$;
 -- Add comment
 COMMENT ON FUNCTION cleanup_old_logs() IS 'Deletes logs older than 7 days to save storage';
 ```
+
+> **Note**: No RLS policies are needed because we use a secret key (`sb_secret_...`) or
+> `service_role` key, which bypasses RLS. This satisfies security requirements while
+> allowing full server-side access.
 
 > **Note**: The `SET search_path = ''` prevents search path manipulation attacks.
 > With an empty search_path, you must use fully qualified table names (`public.logs`).
