@@ -5,6 +5,17 @@ const { checkRateLimit, recordAttempt } = require('./lib/rate-limiter');
 const { findUserByEmail, storePasswordResetToken, normalizeEmail } = require('./lib/user-storage');
 
 /**
+ * Construct base URL from request headers (works correctly for branch deploys)
+ * @param {Object} headers - Request headers
+ * @returns {string} Base URL
+ */
+function constructBaseUrl(headers) {
+    const protocol = headers['x-forwarded-proto'] || 'https';
+    const host = headers['host'];
+    return `${protocol}://${host}`;
+}
+
+/**
  * Password Reset Request Endpoint
  * POST /auth-password-reset
  *
@@ -120,8 +131,8 @@ exports.handler = async (event) => {
                 expiresAt
             });
 
-            // Generate deletion URL (prefer deploy-specific URL for branch deploys)
-            const siteUrl = process.env.DEPLOY_PRIME_URL || process.env.URL || 'http://localhost:8888';
+            // Generate deletion URL from request headers (works correctly for branch deploys)
+            const siteUrl = constructBaseUrl(event.headers);
             const deletionUrl = `${siteUrl}/delete-account.html?token=${token}`;
 
             // Send password reset email
