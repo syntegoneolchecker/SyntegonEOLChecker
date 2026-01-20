@@ -85,16 +85,15 @@ async function logout() {
 // Disable/enable all controls except logout during init
 function setControlsDisabled(disabled) {
     document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
-        if (el.onclick?.toString().includes('logout')) return;
         el.disabled = disabled;
     });
 }
 
 // Initialize the app
 async function init() {
+    await loadFromServer();
     setControlsDisabled(true);
     try {
-        await loadFromServer();
         await loadSerpAPICredits();
         await loadGroqUsage();
         await checkRenderHealth();
