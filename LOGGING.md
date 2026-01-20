@@ -22,10 +22,10 @@ This application has a centralized logging system that aggregates logs from both
 ## Architecture
 
 ```
-┌─────────────────────┐       ┌─────────────────────┐
-│ Netlify Functions   │       │ Render Service      │
-│ (38 functions)      │       │ (scraping-service)  │
-└──────────┬──────────┘       └──────────┬──────────┘
+┌─────────────────────┐        ┌─────────────────────┐
+│ Netlify Functions   │        │ Render Service      │
+│                     │        │ (scraping-service)  │
+└──────────┬──────────┘        └──────────┬──────────┘
            │                              │
            │ Direct INSERT                │ Direct INSERT
            │ (fire-and-forget)            │ (fire-and-forget)
@@ -64,7 +64,7 @@ This application has a centralized logging system that aggregates logs from both
 ✅ **Full-Text Search**: Built-in PostgreSQL search across all log messages
 ✅ **Fire-and-Forget**: Logging failures don't break your application
 ✅ **Structured Data**: Logs include message, context objects (JSONB), and metadata
-✅ **Web UI**: Beautiful, filterable web interface to view logs
+✅ **Web UI**: Filterable web interface to view logs
 ✅ **JSON API**: Programmatic access to logs via REST
 ✅ **Auto-Cleanup**: Automatic deletion of old logs (configurable retention)
 ✅ **Free Tier**: Supabase free tier (500MB database, 2GB bandwidth/month)
@@ -265,8 +265,8 @@ SELECT COUNT(*) FROM logs;
 **Problem**: Render service logs aren't showing in the centralized viewer
 
 **Solutions**:
-1. Check `NETLIFY_SITE_URL` is set correctly in Render environment variables
-2. Verify the URL is accessible (test: `curl https://your-site.netlify.app/.netlify/functions/log-ingest`)
+1. Check `SUPABASE_URL` and `SUPABASE_API_KEY` are set correctly in Render environment variables
+2. Verify Supabase connection is working by checking Render service logs
 3. Check Render service logs for any network errors
 
 ### Logs not appearing from Netlify
@@ -280,11 +280,11 @@ SELECT COUNT(*) FROM logs;
 
 ### Log ingestion errors
 
-**Problem**: `log-ingest` function returns errors
+**Problem**: Logs not being written to Supabase
 
 **Solutions**:
-1. Check Netlify Blobs quota (1GB free tier)
-2. Verify log entry format includes required fields (timestamp, level, source)
+1. Check Supabase storage quota (500MB free tier)
+2. Verify `SUPABASE_URL` and `SUPABASE_API_KEY` environment variables are set
 3. Check function logs for specific error messages
 
 ### Performance concerns
@@ -301,24 +301,17 @@ SELECT COUNT(*) FROM logs;
 ### Local Development
 
 When running locally (e.g., `netlify dev`):
-- Netlify functions will use `http://localhost:8888` for log ingestion
-- Render service needs `NETLIFY_SITE_URL` pointing to your local dev server or staging environment
-- Logs will still appear in your terminal via `console.*` calls
+- Set `SUPABASE_URL` and `SUPABASE_API_KEY` environment variables
+- Logs will appear in both your terminal (console) and Supabase
+- If Supabase variables are not set, logs will only appear in console
 
 ### Testing Logging
 
-Test log ingestion manually:
+Test by inserting a log directly into Supabase:
 
-```bash
-curl -X POST https://your-site.netlify.app/.netlify/functions/log-ingest \
-  -H "Content-Type: application/json" \
-  -d '{
-    "timestamp": "2025-01-15T14:30:00.000Z",
-    "level": "INFO",
-    "source": "test/manual",
-    "message": "Test log entry",
-    "context": {"test": true}
-  }'
+```sql
+INSERT INTO logs (timestamp, level, source, message, context)
+VALUES (NOW(), 'INFO', 'test/manual', 'Test log entry', '{"test": true}');
 ```
 
 ### Adding Structured Context
@@ -350,34 +343,22 @@ Both loggers:
 
 ### Core Functions
 
-**Log Ingestion**: `/netlify/functions/log-ingest.js`
-- Receives POST requests with log entries
-- Validates required fields
-- Appends to daily JSONL file in Netlify Blobs
-
 **Log Viewer**: `/netlify/functions/view-logs.js`
-- Reads JSONL files from Netlify Blobs
-- Filters and sorts logs
+- Queries logs from Supabase PostgreSQL
+- Filters and sorts logs with efficient SQL queries
 - Provides HTML UI and JSON API
 
-## Future Enhancements
-
-Potential improvements to consider:
-
-- [ ] Automatic log retention/cleanup (delete logs older than N days)
-- [ ] Log search with regex support
-- [ ] Real-time log streaming (WebSocket/SSE)
-- [ ] Alert rules (email/webhook on ERROR count threshold)
-- [ ] Log analytics dashboard (error rates, response times)
-- [ ] Compressed log storage (gzip)
-- [ ] Export to external services (CloudWatch, Datadog, etc.)
+**Logger Factory**: `/shared/logger-factory.js`
+- Creates logger instances for all services
+- Sends logs directly to Supabase (fire-and-forget)
+- Falls back to console logging if Supabase is unavailable
 
 ## Security Notes
 
-- Log ingestion endpoint is public (required for Render to POST logs)
+- Logs are written directly to Supabase from each service
 - Logs may contain sensitive data - review what you log
 - Consider adding authentication to log viewer for production
-- Logs are stored in Netlify Blobs with site-level access control
+- Logs are stored in Supabase with project-level access control
 
 ## Questions?
 

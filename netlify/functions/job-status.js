@@ -2,7 +2,7 @@
 // Used by frontend for polling manual EOL check progress
 // (Auto-checks poll Blobs directly in auto-eol-check-background)
 const { getJob } = require('./lib/job-storage');
-const { _successResponse, notFoundResponse, errorResponse } = require('./lib/response-builder');
+const { handleCORSPreflight, notFoundResponse, errorResponse } = require('./lib/response-builder');
 const logger = require('./lib/logger');
 const { requireAuth } = require('./lib/auth-middleware');
 
@@ -12,17 +12,8 @@ const jobStatusHandler = async function(event, context) {
     const jobId = pathParts[pathParts.length - 1];
 
     // Handle CORS
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'GET, OPTIONS'
-            },
-            body: ''
-        };
-    }
+    const corsResponse = handleCORSPreflight(event, 'GET, OPTIONS');
+    if (corsResponse) return corsResponse;
 
     try {
         logger.debug(`[STATUS] Fetching status for job: ${jobId}`);

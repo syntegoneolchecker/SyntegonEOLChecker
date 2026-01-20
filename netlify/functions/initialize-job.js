@@ -55,7 +55,7 @@ async function quickPdfTextCheck(pdfUrl) {
     try {
         const response = await fetch(pdfUrl, {
             signal: AbortSignal.timeout(config.PDF_SCREENING_TIMEOUT_MS),
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; EOLChecker/1.0)' }
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
         });
 
         if (!response.ok) {
@@ -68,11 +68,11 @@ async function quickPdfTextCheck(pdfUrl) {
         }
 
         const contentLength = response.headers.get('content-length');
-        if (contentLength && parseInt(contentLength) > config.PDF_SCREENING_MAX_SIZE_MB * 1024 * 1024) {
+        if (contentLength && Number.parseInt(contentLength) > config.PDF_SCREENING_MAX_SIZE_MB * 1024 * 1024) {
             return {
                 success: false,
                 charCount: 0,
-                error: `PDF too large (${(parseInt(contentLength) / 1024 / 1024).toFixed(1)}MB, max ${config.PDF_SCREENING_MAX_SIZE_MB}MB)`
+                error: `PDF too large (${(Number.parseInt(contentLength) / 1024 / 1024).toFixed(1)}MB, max ${config.PDF_SCREENING_MAX_SIZE_MB}MB)`
             };
         }
 
@@ -81,7 +81,6 @@ async function quickPdfTextCheck(pdfUrl) {
 
         // Try pdf-parse first (faster)
         let fullText = '';
-        let usedLibrary = '';
 
         try {
             const data = await pdfParse(pdfBuffer, {
@@ -90,7 +89,6 @@ async function quickPdfTextCheck(pdfUrl) {
             fullText = data.text.replaceAll(/\s+/g, ' ').trim();
 
             if (fullText.length > 0) {
-                usedLibrary = 'pdf-parse';
                 logger.info(`[PDF-SCREEN] ✓ pdf-parse extracted ${fullText.length} chars`);
                 return { success: true, charCount: fullText.length };
             }
@@ -113,7 +111,6 @@ async function quickPdfTextCheck(pdfUrl) {
                 };
             }
 
-            usedLibrary = 'pdfjs-dist';
             logger.info(`[PDF-SCREEN] ✓ pdfjs-dist extracted ${fullText.length} chars`);
             return { success: true, charCount: fullText.length };
 
@@ -611,13 +608,14 @@ function urlEndsWithModel(url, normalizedModel) {
 }
 
 /**
- * Select best 2 URLs from SerpAPI results using smart prioritization
- * Prioritizes URLs ending with exact product model name
+ * Prioritize URLs from SerpAPI results using smart ordering
+ * Returns ALL URLs sorted by priority (exact model matches first, then regular URLs)
+ * This allows screening to fall back to lower-priority URLs if higher ones fail
  * @param {Array} serpResults - Array of SerpAPI organic search results
  * @param {string} model - Product model to match
- * @returns {Array} Best 2 URLs selected
+ * @returns {Array} All URLs sorted by priority
  */
-function selectBestUrls(serpResults, model) {
+function prioritizeUrls(serpResults, model) {
     const normalizedModel = model.trim().toUpperCase();
 
     // Categorize URLs
@@ -625,6 +623,11 @@ function selectBestUrls(serpResults, model) {
     const regularUrls = [];
 
     for (const result of serpResults) {
+        // Skip results without a valid link
+        if (!result || !result.link) {
+            logger.warn('Skipping search result with missing link');
+            continue;
+        }
         if (urlEndsWithModel(result.link, normalizedModel)) {
             exactMatchUrls.push(result);
         } else {
@@ -632,36 +635,23 @@ function selectBestUrls(serpResults, model) {
         }
     }
 
-        // Log selected URLs for debugging
+    // Log all found URLs for debugging
     serpResults.forEach((result, index) => {
-        logger.info(`Found URL Number ${index + 1}: ${result.link}`);
+        logger.info(`Found URL Number ${index + 1}: ${result?.link || 'N/A'}`);
     });
 
-    logger.info(`Smart URL selection: ${exactMatchUrls.length} exact matches, ${regularUrls.length} regular URLs from ${serpResults.length} total`);
+    logger.info(`Smart URL prioritization: ${exactMatchUrls.length} exact matches, ${regularUrls.length} regular URLs from ${serpResults.length} total`);
 
-    // Select best 2 URLs based on priority
-    let selectedResults = [];
+    // Return all URLs in priority order: exact matches first, then regular URLs
+    const prioritizedResults = [...exactMatchUrls, ...regularUrls];
 
-    if (exactMatchUrls.length >= 2) {
-        // Use first 2 exact matches
-        selectedResults = exactMatchUrls.slice(0, 2);
-        logger.info(`Selected 2 URLs with exact model match in path`);
-    } else if (exactMatchUrls.length === 1) {
-        // Use 1 exact match + top 1 from regular
-        selectedResults = [exactMatchUrls[0], regularUrls[0]].filter(Boolean);
-        logger.info(`Selected 1 exact match + 1 top regular URL`);
+    if (exactMatchUrls.length > 0) {
+        logger.info(`Prioritized ${exactMatchUrls.length} exact match URL(s) at the front`);
     } else {
-        // Use top 2 from regular (current behavior)
-        selectedResults = regularUrls.slice(0, 2);
-        logger.info(`No exact matches found, using top 2 regular URLs`);
+        logger.info(`No exact matches found, using search result order`);
     }
 
-    // Log selected URLs for debugging
-    selectedResults.forEach((result, index) => {
-        logger.info(`Selected URL ${index + 1}: ${result.link}`);
-    });
-
-    return selectedResults;
+    return prioritizedResults;
 }
 
 function createUrlEntry(index, url, title, snippet, scrapingMethod = null) {
@@ -725,6 +715,15 @@ async function performSerpAPISearch(maker, model, jobId, context) {
             });
         });
     } catch (error) {
+        // Check if this is a "no results" response from Google (not a real API error)
+        const errorMessage = error.message || '';
+        if (errorMessage.includes("hasn't returned any results") ||
+            errorMessage.includes("no results")) {
+            logger.info(`SerpAPI returned no results: ${errorMessage}`);
+            return await handleNoSearchResults(maker, model, jobId, context);
+        }
+
+        // Actual API error - return error response
         logger.error('SerpAPI error:', error);
         return errorResponse('SerpAPI failed', error.message, 500);
     }
@@ -736,11 +735,12 @@ async function performSerpAPISearch(maker, model, jobId, context) {
         return await handleNoSearchResults(maker, model, jobId, context);
     }
 
-    // Smart URL selection: prioritize URLs ending with exact product model
-    const selectedResults = selectBestUrls(organicResults, model);
+    // Smart URL prioritization: exact model matches first, then regular URLs
+    const prioritizedResults = prioritizeUrls(organicResults, model);
 
-    // Screen URLs for PDF accessibility (replace unreadable PDFs with next best URL)
-    const validResults = await screenAndSelectUrls(selectedResults.length >= 2 ? selectedResults : organicResults, 2);
+    // Screen URLs for PDF accessibility, using full prioritized list as fallback pool
+    // If top URLs fail screening, next best URLs will be tried automatically
+    const validResults = await screenAndSelectUrls(prioritizedResults, 2);
 
     if (validResults.length === 0) {
         logger.warn('No valid URLs found after PDF screening');

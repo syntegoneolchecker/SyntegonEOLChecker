@@ -51,6 +51,48 @@ async function retryBlobsOperation(operationName, operation, maxRetries = 5) {
 }
 
 /**
+ * Build payload for triggering next URL fetch
+ */
+function buildNextUrlPayload(jobId, nextUrl) {
+    const payload = {
+        jobId,
+        urlIndex: nextUrl.index,
+        url: nextUrl.url,
+        title: nextUrl.title,
+        snippet: nextUrl.snippet,
+        scrapingMethod: nextUrl.scrapingMethod
+    };
+    // Pass model for interactive searches (KEYENCE)
+    if (nextUrl.model) {
+        payload.model = nextUrl.model;
+    }
+    return payload;
+}
+
+/**
+ * Trigger the next pending URL in the job
+ */
+async function triggerNextPendingUrl(job, jobId, baseUrl) {
+    if (!job) {
+        logger.error(`[CALLBACK] Failed to get job ${jobId} for next URL trigger`);
+        return;
+    }
+
+    logger.debug(`[CALLBACK] Job retrieved. Total URLs: ${job.urls?.length}`);
+    const nextUrl = job.urls.find(u => u.status === 'pending');
+
+    if (!nextUrl) {
+        logger.warn(`[CALLBACK] No more pending URLs found (this should not happen)`);
+        return;
+    }
+
+    logger.debug(`[CALLBACK] Found pending URL ${nextUrl.index}: ${nextUrl.url}. Triggering fetch.`);
+    const payload = buildNextUrlPayload(jobId, nextUrl);
+    await triggerFetchUrl(baseUrl, payload);
+    logger.debug(`[CALLBACK] Next URL ${nextUrl.index} triggered successfully`);
+}
+
+/**
  * IMPORTANT: This function must complete within Netlify's 30s timeout
  * - We await triggerFetchUrl (fire-and-forget helper with retry) to ensure next URL is triggered (fast, < 1s)
  * - We skip triggering analysis (let polling loop handle it)
@@ -103,40 +145,10 @@ exports.handler = async function(event, context) {
 
         // Continue pipeline: trigger next URL or let polling loop handle analysis
         if (allDone) {
-            // All URLs complete - let polling loop detect and trigger analysis
-            // We don't trigger analysis here to avoid 30s timeout (analyze-job can take 30-60s waiting for Groq tokens)
             logger.debug(`[CALLBACK] ✓ All URLs complete for job ${jobId}. Polling loop will trigger analysis.`);
         } else {
-            // Find and trigger next pending URL
             logger.debug(`[CALLBACK] Checking for next pending URL...`);
-
-            if (job) {
-                logger.debug(`[CALLBACK] Job retrieved. Total URLs: ${job.urls?.length}`);
-                const nextUrl = job.urls.find(u => u.status === 'pending');
-
-                if (nextUrl) {
-                    logger.debug(`[CALLBACK] Found pending URL ${nextUrl.index}: ${nextUrl.url}. Triggering fetch.`);
-                    // Build payload for fire-and-forget helper
-                    const payload = {
-                        jobId,
-                        urlIndex: nextUrl.index,
-                        url: nextUrl.url,
-                        title: nextUrl.title,
-                        snippet: nextUrl.snippet,
-                        scrapingMethod: nextUrl.scrapingMethod
-                    };
-                    // Pass model for interactive searches (KEYENCE)
-                    if (nextUrl.model) {
-                        payload.model = nextUrl.model;
-                    }
-                    await triggerFetchUrl(baseUrl, payload);
-                    logger.debug(`[CALLBACK] Next URL ${nextUrl.index} triggered successfully`);
-                } else {
-                    logger.warn(`[CALLBACK] No more pending URLs found (this should not happen)`);
-                }
-            } else {
-                logger.error(`[CALLBACK] Failed to get job ${jobId} for next URL trigger`);
-            }
+            await triggerNextPendingUrl(job, jobId, baseUrl);
         }
 
         const duration = Date.now() - startTime;

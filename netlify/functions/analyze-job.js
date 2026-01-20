@@ -47,6 +47,32 @@ async function checkGroqTokenAvailability() {
     }
 }
 
+// Estimate token count with CJK-aware calculation
+// CJK characters (kanji, hiragana, katakana) typically use 2-3 tokens each
+// ASCII/Latin characters average ~0.25 tokens (4 chars = 1 token)
+function estimateTokenCount(text) {
+    if (!text) return 0;
+
+    // Unicode ranges for CJK characters
+    // Hiragana: U+3040-U+309F
+    // Katakana: U+30A0-U+30FF
+    // CJK Unified Ideographs (Kanji): U+4E00-U+9FFF
+    // CJK Extension A: U+3400-U+4DBF
+    // Full-width ASCII: U+FF00-U+FFEF
+    const cjkRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3400-\u4DBF\uFF00-\uFFEF]/g;
+
+    const cjkMatches = text.match(cjkRegex) || [];
+    const cjkCount = cjkMatches.length;
+    const nonCjkCount = text.length - cjkCount;
+
+    // CJK characters: ~2.5 tokens per character (conservative average)
+    // Non-CJK characters: ~0.25 tokens per character (4 chars = 1 token)
+    const cjkTokens = cjkCount * 2.5;
+    const nonCjkTokens = nonCjkCount * 0.25;
+
+    return Math.round(cjkTokens + nonCjkTokens);
+}
+
 // Parse time string (e.g., "7m54.336s", "2h30m15s") to seconds
 function parseTimeToSeconds(timeStr) {
     let totalSeconds = 0;
@@ -72,6 +98,84 @@ function parseTimeToSeconds(timeStr) {
     return totalSeconds;
 }
 
+/**
+ * Wait for Groq token rate limit reset if needed
+ * @param {Object} tokenCheck - Token availability check result
+ */
+async function waitForTokenReset(tokenCheck) {
+    if (!tokenCheck.available && tokenCheck.resetSeconds > 0) {
+        const waitMs = Math.ceil(tokenCheck.resetSeconds * 1000) + 1000; // Add 1s buffer
+        logger.info(`⏳ Groq tokens low (${tokenCheck.remainingTokens}), waiting ${waitMs}ms for rate limit reset...`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        logger.info(`✓ Wait complete, proceeding with analysis`);
+    }
+}
+
+/**
+ * Run analysis with progressive truncation
+ * @param {Object} job - Job object
+ * @returns {Promise<Object>} Analysis result
+ */
+async function runAnalysisWithTruncation(job) {
+    const MAX_TRUNCATION_LEVELS = 3;
+    let lastError = null;
+
+    for (let truncationLevel = 0; truncationLevel < MAX_TRUNCATION_LEVELS; truncationLevel++) {
+        try {
+            const searchContext = formatResults(job, truncationLevel);
+            return await analyzeWithGroq(job.maker, job.model, searchContext);
+        } catch (error) {
+            lastError = error;
+            const canRetryWithMoreTruncation = error.isPromptTooLarge && truncationLevel < MAX_TRUNCATION_LEVELS - 1;
+            if (canRetryWithMoreTruncation) {
+                logger.info(`Prompt too large at truncation level ${truncationLevel}, trying level ${truncationLevel + 1}`);
+                continue;
+            }
+            throw error;
+        }
+    }
+
+    throw lastError || new Error('Analysis failed after all truncation attempts');
+}
+
+/**
+ * Handle analysis errors and update job status
+ * @param {Error} error - The error that occurred
+ * @param {string} eventBody - Request body string
+ * @param {Object} context - Netlify context
+ * @returns {Object} HTTP response
+ */
+async function handleAnalysisError(error, eventBody, context) {
+    logger.error('Analysis error:', error);
+
+    try {
+        const { jobId } = JSON.parse(eventBody);
+
+        if (error.isDailyLimit) {
+            await updateJobStatus(jobId, 'error', error.message, context, {
+                isDailyLimit: true,
+                retrySeconds: error.retrySeconds || null
+            });
+
+            return {
+                statusCode: 429,
+                body: JSON.stringify({
+                    error: error.message,
+                    isDailyLimit: true,
+                    retrySeconds: error.retrySeconds || null,
+                    message: 'Daily Groq token limit reached (rolling 24h window). Analysis cancelled. Tokens gradually recover as they age out of the 24-hour window.'
+                })
+            };
+        }
+
+        await updateJobStatus(jobId, 'error', error.message, context);
+    } catch (e) {
+        logger.info(`Exception thrown: ${e}`);
+    }
+
+    return errorResponse(error.message);
+}
+
 exports.handler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
         return methodNotAllowedResponse();
@@ -94,29 +198,16 @@ exports.handler = async function(event, context) {
 
         logger.debug(`[ANALYZE] Job retrieved. Current status: ${job.status}, URLs: ${job.urls?.length}, Completed: ${job.urls?.filter(u => u.status === 'complete').length}`);
 
-        // Update status to analyzing
         logger.debug(`[ANALYZE] Updating job status to 'analyzing'`);
         await updateJobStatus(jobId, 'analyzing', null, context);
         logger.debug(`[ANALYZE] Job status updated to 'analyzing'`);
 
-        // FIX: Check Groq token availability BEFORE analysis
         const tokenCheck = await checkGroqTokenAvailability();
-        if (!tokenCheck.available && tokenCheck.resetSeconds > 0) {
-            const waitMs = Math.ceil(tokenCheck.resetSeconds * 1000) + 1000; // Add 1s buffer
-            logger.info(`⏳ Groq tokens low (${tokenCheck.remainingTokens}), waiting ${waitMs}ms for rate limit reset...`);
-            await new Promise(resolve => setTimeout(resolve, waitMs));
-            logger.info(`✓ Wait complete, proceeding with analysis`);
-        }
+        await waitForTokenReset(tokenCheck);
 
-        // Format results for LLM
-        const searchContext = formatResults(job);
+        const analysis = await runAnalysisWithTruncation(job);
 
-        // Call Groq with retry logic
-        const analysis = await analyzeWithGroq(job.maker, job.model, searchContext);
-
-        // Save final result
         await saveFinalResult(jobId, analysis, context);
-
         logger.info(`Analysis complete for job ${jobId}`);
 
         return {
@@ -125,46 +216,93 @@ exports.handler = async function(event, context) {
         };
 
     } catch (error) {
-        logger.error('Analysis error:', error);
-
-        try {
-            const { jobId } = JSON.parse(event.body);
-
-            // For daily limit errors, we want to update the job status but NOT save any analysis
-            // This ensures no database changes are made for this product
-            if (error.isDailyLimit) {
-                // Store retrySeconds in job metadata so frontend can show countdown
-                await updateJobStatus(jobId, 'error', error.message, context, {
-                    isDailyLimit: true,
-                    retrySeconds: error.retrySeconds || null
-                });
-
-                // Return immediately with a clear message - no retries, no timeouts
-                return {
-                    statusCode: 429,
-                    body: JSON.stringify({
-                        error: error.message,
-                        isDailyLimit: true,
-                        retrySeconds: error.retrySeconds || null,
-                        message: 'Daily Groq token limit reached (rolling 24h window). Analysis cancelled. Tokens gradually recover as they age out of the 24-hour window.'
-                    })
-                };
-            }
-
-            // For other errors, update status as normal
-            await updateJobStatus(jobId, 'error', error.message, context);
-        } catch (e) {
-            logger.info(`Exception thrown: ${e}`);
-        }
-
-        return errorResponse(error.message);
+        return handleAnalysisError(error, event.body, context);
     }
 };
 
 // Format job results for LLM with token limiting
-function formatResults(job) {
-    const MAX_CONTENT_LENGTH = 6000; // Maximum characters per result (leaves ~500 chars for headers/overhead)
-    const MAX_TOTAL_CHARS = 13000; // 2 URLs × ~6500 chars (content + overhead) = 13,000 chars
+// truncationLevel: 0 = normal, 1 = aggressive (-1500 chars), 2 = very aggressive (-3000 chars)
+
+/**
+ * Calculate content length limits based on truncation level
+ */
+function calculateContentLimits(truncationLevel) {
+    const BASE_CONTENT_LENGTH = 6000;
+    const TRUNCATION_REDUCTION = 1500;
+    const MIN_CONTENT_LENGTH = 1500;
+
+    const maxContentLength = Math.max(
+        MIN_CONTENT_LENGTH,
+        BASE_CONTENT_LENGTH - (truncationLevel * TRUNCATION_REDUCTION)
+    );
+    const maxTotalChars = maxContentLength * 2 + 1000;
+
+    return { maxContentLength, maxTotalChars };
+}
+
+/**
+ * Process and truncate URL content if needed
+ */
+function processUrlContent(content, maxContentLength, model, urlIndex) {
+    if (!content) {
+        return null;
+    }
+
+    let processedContent = content;
+
+    // Skip table processing if already marked
+    if (!processedContent.includes('=== TABLE START ===')) {
+        processedContent = processTablesInContent(processedContent);
+    }
+
+    const filteringThreshold = maxContentLength / 2;
+    if (processedContent.length <= filteringThreshold) {
+        return processedContent;
+    }
+
+    processedContent = filterIrrelevantTables(processedContent, model);
+
+    if (processedContent.length > maxContentLength) {
+        logger.info(`Truncating URL #${urlIndex + 1} content from ${processedContent.length} to ${maxContentLength} chars`);
+        processedContent = smartTruncate(processedContent, maxContentLength, model);
+    }
+
+    return processedContent;
+}
+
+/**
+ * Build result section for a single URL
+ */
+function buildResultSection(urlInfo, result, processedContent, index) {
+    const lines = [
+        '\n========================================',
+        `RESULT #${index + 1}:`,
+        '========================================',
+        `Title: ${urlInfo.title}`,
+        `URL: ${result?.url || urlInfo.url}`
+    ];
+
+    if (!result?.fullContent) {
+        lines.push(`Snippet: ${urlInfo.snippet}`);
+    }
+
+    if (processedContent) {
+        lines.push('', 'FULL PAGE CONTENT:', processedContent);
+    } else {
+        lines.push('', '[Note: Could not fetch full content - using snippet only]');
+    }
+
+    lines.push('', '========================================', '');
+
+    return lines.join('\n');
+}
+
+function formatResults(job, truncationLevel = 0) {
+    const { maxContentLength, maxTotalChars } = calculateContentLimits(truncationLevel);
+
+    if (truncationLevel > 0) {
+        logger.info(`Progressive truncation level ${truncationLevel}: max ${maxContentLength} chars/URL, ${maxTotalChars} total`);
+    }
 
     let formatted = '';
     let totalChars = 0;
@@ -172,37 +310,11 @@ function formatResults(job) {
     for (let index = 0; index < job.urls.length; index++) {
         const urlInfo = job.urls[index];
         const result = job.urlResults[urlInfo.index];
+        const processedContent = processUrlContent(result?.fullContent, maxContentLength, job.model, index);
+        const resultSection = buildResultSection(urlInfo, result, processedContent, index);
 
-        let resultSection = `\n========================================\n`;
-        resultSection += `RESULT #${index + 1}:\n`;
-        resultSection += `========================================\n`;
-        resultSection += `Title: ${urlInfo.title}\n`;
-        resultSection += `URL: ${result?.url || urlInfo.url}\n`;
-
-        // Only include snippet if we don't have full content (saves tokens)
-        if (!result?.fullContent) {
-            resultSection += `Snippet: ${urlInfo.snippet}\n`;
-        }
-
-        if (result?.fullContent) {
-            let processedContent = processTablesInContent(result.fullContent);
-            processedContent = filterIrrelevantTables(processedContent, job.model);
-
-            if (processedContent.length > MAX_CONTENT_LENGTH) {
-                logger.info(`Truncating URL #${index + 1} content from ${processedContent.length} to ${MAX_CONTENT_LENGTH} chars`);
-                processedContent = smartTruncate(processedContent, MAX_CONTENT_LENGTH, job.model);
-            }
-
-            resultSection += `\nFULL PAGE CONTENT:\n`;
-            resultSection += `${processedContent}\n`;
-        } else {
-            resultSection += `\n[Note: Could not fetch full content - using snippet only]\n`;
-        }
-
-        resultSection += '\n========================================\n';
-
-        if (totalChars + resultSection.length > MAX_TOTAL_CHARS) {
-            logger.info(`Stopping at URL #${index + 1} - total char limit (${MAX_TOTAL_CHARS}) would be exceeded`);
+        if (totalChars + resultSection.length > maxTotalChars) {
+            logger.info(`Stopping at URL #${index + 1} - total char limit (${maxTotalChars}) would be exceeded`);
             formatted += `\n[Note: Remaining URLs omitted to stay within token limits]\n`;
             break;
         }
@@ -211,7 +323,8 @@ function formatResults(job) {
         totalChars += resultSection.length;
     }
 
-    logger.info(`Final formatted content: ${totalChars} characters (~${Math.round(totalChars / 4)} tokens)`);
+    const estimatedTokens = estimateTokenCount(formatted);
+    logger.info(`Final formatted content: ${totalChars} characters (~${estimatedTokens} tokens estimated, CJK-aware)`);
     return formatted.trim();
 }
 
@@ -348,6 +461,11 @@ class GroqAnalyzer {
         const errorText = await response.text();
         logger.error(`Groq API error (attempt ${attempt}):`, errorText);
 
+        // Check for prompt too large (413 status or "Request too large" message)
+        if (response.status === 413 || errorText.includes('Request too large')) {
+            throw this.createPromptTooLargeError(errorText);
+        }
+
         if (response.status === 429) {
             if (errorText.includes('tokens per day (TPD)')) {
                 throw this.createDailyLimitError(errorText);
@@ -356,6 +474,14 @@ class GroqAnalyzer {
         }
 
         throw new Error(`Groq API failed: ${response.status} - ${errorText}`);
+    }
+
+    createPromptTooLargeError(errorText) {
+        logger.warn('Prompt too large for Groq API - will retry with more aggressive truncation');
+        const error = new Error('Prompt too large - requires more aggressive truncation');
+        error.isPromptTooLarge = true;
+        error.originalError = errorText;
+        return error;
     }
 
     async handleRateLimit(response, attempt) {
@@ -414,7 +540,8 @@ EOL check cancelled - no database changes will be made.
     }
 
     async handleRetry(error, attempt) {
-        if (error.isDailyLimit) throw error;
+        // Don't retry daily limit or prompt-too-large errors - let them bubble up
+        if (error.isDailyLimit || error.isPromptTooLarge) throw error;
 
         logger.error(`Groq API attempt ${attempt} failed:`, error.message);
 

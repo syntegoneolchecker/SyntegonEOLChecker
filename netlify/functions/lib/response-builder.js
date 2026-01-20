@@ -4,6 +4,27 @@
  */
 
 /**
+ * Handle CORS preflight (OPTIONS) requests
+ * @param {Object} event - Netlify function event
+ * @param {string} allowedMethods - Comma-separated list of allowed HTTP methods (default: 'GET, POST, OPTIONS')
+ * @returns {Object|null} CORS preflight response or null if not an OPTIONS request
+ */
+function handleCORSPreflight(event, allowedMethods = 'GET, POST, OPTIONS') {
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 204,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                'Access-Control-Allow-Methods': allowedMethods
+            },
+            body: ''
+        };
+    }
+    return null;
+}
+
+/**
  * Build a successful response
  * @param {any} data - Response data
  * @param {number} statusCode - HTTP status code (default: 200)
@@ -126,6 +147,7 @@ function rateLimitResponse(message, retryAfter = null) {
 }
 
 module.exports = {
+    handleCORSPreflight,
     successResponse,
     errorResponse,
     validationErrorResponse,

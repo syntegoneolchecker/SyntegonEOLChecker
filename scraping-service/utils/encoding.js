@@ -65,10 +65,10 @@ function extractEncodingFromContentType(contentTypeHeader) {
  * @returns {string|null} Encoding or null
  */
 function extractEncodingFromHtmlMeta(buffer) {
-    const preview = buffer.slice(0, 2048).toString('binary');
+    const preview = buffer.subarray(0, 2048).toString('binary');
 
     // Look for <meta charset="...">
-    const metaCharsetMatch = preview.match(/<meta[^>]+charset=["']?([^"'\s>]+)/i);
+    const metaCharsetMatch = new RegExp(/<meta[^>]+charset=["']?([^"'\s>]+)/i).exec(preview);
     if (metaCharsetMatch) {
         const encoding = metaCharsetMatch[1].toLowerCase();
         logger.info(`Encoding from meta charset tag: ${encoding}`);
@@ -76,7 +76,7 @@ function extractEncodingFromHtmlMeta(buffer) {
     }
 
     // Look for <meta http-equiv="Content-Type" content="...charset=...">
-    const httpEquivMatch = preview.match(/<meta[^>]+http-equiv=["']?content-type["']?[^>]+content=["']?[^"'>]*charset=([^"'\s>]+)/i);
+    const httpEquivMatch = new RegExp(/<meta[^>]+http-equiv=["']?content-type["']?[^>]+content=["']?[^"'>]*charset=([^"'\s>]+)/i).exec(preview);
     if (httpEquivMatch) {
         const encoding = httpEquivMatch[1].toLowerCase();
         logger.info(`Encoding from http-equiv meta tag: ${encoding}`);

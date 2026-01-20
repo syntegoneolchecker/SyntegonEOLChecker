@@ -8,7 +8,7 @@ This scraping service contains **intentional SSRF (Server-Side Request Forgery) 
 
 ### Application Purpose
 This is a **web scraping service** that:
-- Fetches arbitrary URLs from Tavily search results (manufacturer product pages)
+- Fetches arbitrary URLs from SerpAPI search results (manufacturer product pages)
 - Extracts End-of-Life information from these pages
 - Sends results back to configured backend servers via callbacks
 
@@ -153,8 +153,3 @@ MEMORY_WARNING_MB=400
 - OWASP SSRF: https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
 - RFC 1918 (Private IPs): https://tools.ietf.org/html/rfc1918
 - CodeQL SSRF Detection: https://codeql.github.com/codeql-query-help/javascript/js-ssrf/
-
----
-
-**Last Updated:** 2025-12-22
-**Reviewed By:** Claude Code (Automated Security Analysis)

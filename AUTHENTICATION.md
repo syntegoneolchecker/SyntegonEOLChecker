@@ -14,6 +14,11 @@ The EOL Checker now includes a secure email-domain-based authentication system t
 ✅ **Protected Endpoints** - All user-facing APIs require authentication
 ✅ **HTTPS Only** - Secure cookies in production
 
+## IMPORTANT - READ FIRST
+**The Syntegon mail system puts the mails with the confirmation link in quarantine due to fishing/spam protection measures.**
+**In order to get access to the account confirmation link, check the Gmail "Sent" tab from the EMAIL_USER mail account and get the link from there.**
+**Otherwise, access the mail in the quarantine.**
+
 ## Architecture
 
 ### Frontend
@@ -199,7 +204,6 @@ exports.handler = requireAuth(myFunctionHandler);
 These endpoints are called by external services and use different security mechanisms:
 
 - **`scraping-callback.js`** - Called by Render scraping service
-- **`log-ingest.js`** - Called by Render service
 - **`analyze-job.js`** - Internal job processing
 - **`fetch-url.js`** - Internal job processing
 - **`auto-eol-check-background.js`** - Background job
@@ -341,12 +345,10 @@ exports.handler = async () => {
 
 ### Reset User Password
 
-Currently not implemented. To add:
-1. Create `auth-forgot-password.js` endpoint
-2. Generate reset token
-3. Send email with reset link
-4. Create `auth-reset-password.js` endpoint
-5. Validate token and update password
+Currently not implemented.
+In the case of a forgotten password, delete the "users" file in the blob storage "auth-data".
+This will delete all existing accounts.
+Afterwards create a new account with an accessible syntegon mail address.
 
 ### View All Users
 
@@ -368,17 +370,6 @@ exports.handler = async () => {
     };
 };
 ```
-
-## Migration Guide
-
-If you need to migrate to a proper database later (Supabase, etc.):
-
-1. Export users from Netlify Blobs
-2. Set up new database
-3. Import users
-4. Update `lib/user-storage.js` to use new database
-5. Update environment variables
-6. Test thoroughly before deploying
 
 ## Support
 

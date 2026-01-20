@@ -25,7 +25,7 @@ exports.handler = async (event) => {
             statusCode: 204,
             headers: {
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
                 'Access-Control-Allow-Methods': 'GET, OPTIONS'
             },
             body: ''
@@ -54,9 +54,7 @@ exports.handler = async (event) => {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*'
                 },
-                body: JSON.stringify({
-                    authenticated: false
-                })
+                body: JSON.stringify({ authenticated: false })
             };
         }
 
@@ -66,10 +64,7 @@ exports.handler = async (event) => {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            body: JSON.stringify({
-                authenticated: true,
-                user
-            })
+            body: JSON.stringify({ authenticated: true, user })
         };
 
     } catch (error) {
@@ -80,10 +75,7 @@ exports.handler = async (event) => {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            body: JSON.stringify({
-                authenticated: false,
-                error: 'Internal server error'
-            })
+            body: JSON.stringify({ authenticated: false, error: 'Internal server error' })
         };
     }
 };

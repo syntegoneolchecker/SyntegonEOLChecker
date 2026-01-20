@@ -1,32 +1,26 @@
 // Get auto-check state from Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
+const { handleCORSPreflight, errorResponse } = require('./lib/response-builder');
 
 exports.handler = async function(event, _context) {
     // Handle CORS
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'GET, OPTIONS'
-            },
-            body: ''
-        };
-    }
+    const corsResponse = handleCORSPreflight(event, 'GET, OPTIONS');
+    if (corsResponse) return corsResponse;
 
     try {
+        // Diagnostic logging for blob store configuration
+        const siteID = process.env.SITE_ID;
+
         const store = getStore({
             name: 'auto-check-state',
-            siteID: process.env.SITE_ID,
+            siteID: siteID,
             token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN,
             consistency: 'strong'
         });
 
         // Get state from blob storage
         let state = await store.get('state', { type: 'json' });
-        logger.info('GET auto-check-state: raw state from blob:', state);
 
         // Initialize default state if not exists
         if (!state) {
@@ -45,23 +39,16 @@ exports.handler = async function(event, _context) {
             statusCode: 200,
             headers: {
                 'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             },
             body: JSON.stringify(state)
         };
 
     } catch (error) {
         logger.error('Get auto-check state error:', error);
-        return {
-            statusCode: 500,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                error: 'Failed to get auto-check state',
-                details: error.message
-            })
-        };
+        return errorResponse('Failed to get auto-check state', { details: error.message });
     }
 };

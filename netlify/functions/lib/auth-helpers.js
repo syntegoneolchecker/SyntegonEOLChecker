@@ -7,7 +7,7 @@ const { checkRateLimit, getClientIP } = require('./rate-limiter');
  *
  * @param {Object} event - Netlify function event object
  * @param {string} action - Action type ('login' or 'register') for rate limiting
- * @returns {Object} - { error: null, email, password, clientIP } on success
+ * @returns {Promise<Object>} - { error: null, email, password, clientIP } on success
  *                   - { error: response } on failure (return this response immediately)
  */
 async function validateAuthRequest(event, action) {
@@ -46,7 +46,7 @@ async function validateAuthRequest(event, action) {
         const body = JSON.parse(event.body);
         email = body.email;
         password = body.password;
-    } catch (parseError) {
+    } catch {
         return {
             error: {
                 statusCode: 400,

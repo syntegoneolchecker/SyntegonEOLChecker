@@ -68,7 +68,87 @@ function isTableSeparator(line) {
 }
 
 /**
- * Remove tables that don't contain the product model
+ * Find all tables in content and mark which contain the product model
+ */
+function findAllTables(content, productModel) {
+    const tableRegex = /=== TABLE START ===[\s\S]*?=== TABLE END ===/g;
+    const tables = [];
+    let match;
+
+    while ((match = tableRegex.exec(content)) !== null) {
+        const tableContent = match[0];
+        tables.push({
+            content: tableContent,
+            start: match.index,
+            end: match.index + tableContent.length,
+            containsProduct: tableContent.toLowerCase().includes(productModel.toLowerCase())
+        });
+    }
+
+    return tables;
+}
+
+/**
+ * Check if a table at given index is adjacent to a product table
+ */
+function isAdjacentToProductTable(tables, tableIndex, productTableIndex, threshold) {
+    const table = tables[tableIndex];
+    const productTable = tables[productTableIndex];
+
+    const gap = tableIndex < productTableIndex
+        ? productTable.start - table.end
+        : table.start - productTable.end;
+
+    return gap <= threshold;
+}
+
+/**
+ * Determine which tables to keep (product tables and their adjacent tables)
+ */
+function determineTablesToKeep(tables, adjacentThreshold) {
+    const tablesToKeep = new Set();
+
+    tables.forEach((table, i) => {
+        if (!table.containsProduct) {
+            return;
+        }
+
+        tablesToKeep.add(i);
+
+        // Check previous table
+        if (i > 0 && isAdjacentToProductTable(tables, i - 1, i, adjacentThreshold)) {
+            tablesToKeep.add(i - 1);
+            logger.debug(`Keeping table ${i - 1} as adjacent (before) to product table ${i}`);
+        }
+
+        // Check next table
+        if (i < tables.length - 1 && isAdjacentToProductTable(tables, i + 1, i, adjacentThreshold)) {
+            tablesToKeep.add(i + 1);
+            logger.debug(`Keeping table ${i + 1} as adjacent (after) to product table ${i}`);
+        }
+    });
+
+    return tablesToKeep;
+}
+
+/**
+ * Remove specified tables from content (in reverse order to preserve indices)
+ */
+function removeTablesFromContent(content, tablesToRemove) {
+    let result = content;
+
+    for (let i = tablesToRemove.length - 1; i >= 0; i--) {
+        const table = tablesToRemove[i];
+        result = result.substring(0, table.start) + result.substring(table.end);
+    }
+
+    return result.replaceAll(/\n{3,}/g, '\n\n');
+}
+
+/**
+ * Remove tables that don't contain the product model and aren't adjacent to product tables
+ * Adjacent tables (within ADJACENT_TABLE_THRESHOLD chars) are kept as they often contain
+ * related product info like pricing, delivery dates, or specifications
  * @param {string} content - Content with table delimiters
  * @param {string} productModel - Product model to search for
  * @returns {string} Filtered content
@@ -76,32 +156,22 @@ function isTableSeparator(line) {
 function filterIrrelevantTables(content, productModel) {
     if (!content || !productModel) return content;
 
-    const tableRegex = /=== TABLE START ===[\s\S]*?=== TABLE END ===/g;
-    const tablesToRemove = [];
-    let match;
+    const ADJACENT_TABLE_THRESHOLD = 200;
+    const allTables = findAllTables(content, productModel);
 
-    while ((match = tableRegex.exec(content)) !== null) {
-        const tableContent = match[0];
-
-        if (!tableContent.toLowerCase().includes(productModel.toLowerCase())) {
-            tablesToRemove.push({
-                content: tableContent,
-                start: match.index,
-                end: match.index + tableContent.length
-            });
-        }
+    if (allTables.length === 0) {
+        return content;
     }
 
-    let filteredContent = content;
-    for (let i = tablesToRemove.length - 1; i >= 0; i--) {
-        const table = tablesToRemove[i];
-        filteredContent = filteredContent.substring(0, table.start) +
-                         filteredContent.substring(table.end);
+    const tablesToKeep = determineTablesToKeep(allTables, ADJACENT_TABLE_THRESHOLD);
+    const tablesToRemove = allTables.filter((_, index) => !tablesToKeep.has(index));
+
+    if (tablesToRemove.length === 0) {
+        return content;
     }
 
-    filteredContent = filteredContent.replaceAll(/\n{3,}/g, '\n\n');
-
-    return filteredContent;
+    logger.debug(`filterIrrelevantTables: kept ${tablesToKeep.size}/${allTables.length} tables, removed ${tablesToRemove.length}`);
+    return removeTablesFromContent(content, tablesToRemove);
 }
 
 /**
@@ -158,8 +228,8 @@ function smartTruncate(content, maxLength, productModel) {
     }
 
     // Step 2: Remove excessive whitespace
-    processedContent = processedContent.replace(/\n{4,}/g, '\n\n');
-    processedContent = processedContent.replace(/ {3,}/g, ' ');
+    processedContent = processedContent.replaceAll(/\n{4,}/g, '\n\n');
+    processedContent = processedContent.replaceAll(/ {3,}/g, ' ');
     logger.info(`After whitespace removal: ${processedContent.length} chars`);
 
     if (processedContent.length <= maxLength) {
@@ -296,87 +366,6 @@ function truncateTableRows(tableContent, productModel) {
 }
 
 /**
- * Extract sections containing product mentions with context
- */
-function extractProductSections(content, productModel, maxLength) {
-    const CONTEXT_CHARS = config.PRODUCT_MENTION_CONTEXT_CHARS;
-
-    if (!content) return content;
-
-    const contentLower = content.toLowerCase();
-    const productLower = productModel.toLowerCase();
-    const mentions = [];
-
-    // Find all product mentions
-    let index = contentLower.indexOf(productLower);
-    while (index !== -1) {
-        mentions.push(index);
-        index = contentLower.indexOf(productLower, index + 1);
-    }
-
-    if (mentions.length === 0) {
-        return content.length <= maxLength ? content : content.substring(0, maxLength - 3) + '...';
-    }
-
-    logger.info(`Found ${mentions.length} product mentions, extracting sections`);
-
-    // Extract sections with context
-    const sections = mentions.map(mentionIndex => {
-        const start = Math.max(0, mentionIndex - CONTEXT_CHARS);
-        const end = Math.min(content.length, mentionIndex + productModel.length + CONTEXT_CHARS);
-
-        let section = content.substring(start, end);
-        if (start > 0) section = '...' + section;
-        if (end < content.length) section = section + '...';
-
-        return section;
-    });
-
-    const combined = sections.join('\n\n[...]\n\n');
-
-    // If combined is still too long, prioritize first mentions
-    if (combined.length > maxLength) {
-        let result = '';
-        for (const section of sections) {
-            if (result.length + section.length + 20 > maxLength) {
-                break;
-            }
-            if (result.length > 0) {
-                result += '\n\n[...]\n\n';
-            }
-            result += section;
-        }
-        return result;
-    }
-
-    return combined;
-}
-
-/**
- * Final hard truncation while preserving first product mention
- */
-function finalTruncate(content, productModel, maxLength) {
-    const productLower = productModel.toLowerCase();
-    const contentLower = content.toLowerCase();
-    const firstMention = contentLower.indexOf(productLower);
-
-    if (firstMention === -1 || firstMention > maxLength) {
-        return simpleTruncate(content, maxLength);
-    }
-
-    // Keep content centered around first mention
-    const CONTEXT = 200;
-    const start = Math.max(0, firstMention - CONTEXT);
-    const end = Math.min(content.length, start + maxLength);
-
-    let result = content.substring(start, end);
-    if (start > 0) result = '...' + result;
-    if (end < content.length) result = result + '...';
-
-    return result;
-}
-
-/**
  * Remove common boilerplate patterns from content
  * @param {string} content - Content to clean
  * @returns {string} Content with boilerplate removed
@@ -385,22 +374,25 @@ function removeBoilerplate(content) {
     if (!content) return content;
 
     // Common boilerplate patterns (case-insensitive)
+    const RE2 = require('re2');
+
     const boilerplatePatterns = [
         // Navigation and menu items
-        /^(Home|About|Contact|Products|Services|Support|FAQ|Login|Register|Cart|Checkout)[\s\|]*$/gim,
+        new RE2(String.raw`^(Home|About|Contact|Products|Services|Support|FAQ|Login|Register|Cart|Checkout)[\s|]*$`, 'gim'),
         // Copyright notices
-        /Copyright\s*©?\s*\d{4}.*?(\n|$)/gi,
-        /All rights reserved.*?(\n|$)/gi,
+        new RE2(String.raw`Copyright\s*©?\s*\d{4}.*?(\n|$)`, 'gi'),
+        new RE2(String.raw`All rights reserved.*?(\n|$)`, 'gi'),
         // Cookie notices (common phrases)
-        /This (site|website) uses cookies.*?(\n|$)/gi,
-        /By continuing to use.*?cookies.*?(\n|$)/gi,
+        new RE2(String.raw`This (site|website) uses cookies.*?(\n|$)`, 'gi'),
+        new RE2(String.raw`By continuing to use.*?cookies.*?(\n|$)`, 'gi'),
         // Social media links
-        /^(Facebook|Twitter|LinkedIn|Instagram|YouTube|Follow us)[\s\|]*$/gim,
+        new RE2(String.raw`^(Facebook|Twitter|LinkedIn|Instagram|YouTube|Follow us)[\s|]*$`, 'gim'),
         // Generic footer text
-        /^(Terms|Privacy|Sitemap|Accessibility)[\s\|]*$/gim,
+        new RE2(String.raw`^(Terms|Privacy|Sitemap|Accessibility)[\s|]*$`, 'gim'),
         // Repeated navigation separators
-        /^[\s\|>-]{3,}$/gm
+        new RE2(String.raw`^[\s|>-]{3,}$`, 'gm')
     ];
+
 
     let cleaned = content;
     boilerplatePatterns.forEach(pattern => {
@@ -408,9 +400,106 @@ function removeBoilerplate(content) {
     });
 
     // Remove excessive blank lines that might result from removal
-    cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+    cleaned = cleaned.replaceAll(/\n{3,}/g, '\n\n');
 
     return cleaned;
+}
+
+// HIGH-CONFIDENCE EOL keywords only - removed generic terms that appear everywhere
+const IMPORTANT_KEYWORDS = [
+    // Japanese - Discontinuation/End of Life (high confidence)
+    '受注終了', '生産終了', '販売終了', '生産中止', '製造中止',
+    '供給終了', '出荷終了', '廃番', '廃止',
+    // Japanese - Replacement/Successor (high confidence)
+    '代替品', '後継品', '後継機種', '推奨代替',
+    // English - Discontinuation/End of Life (high confidence)
+    'discontinued', 'end of life', 'EOL',
+    'end of sales', 'obsolete',
+    'no longer available', 'phased out',
+    // English - Replacement/Successor (high confidence)
+    'replacement', 'successor', 'replaced by', 'superseded by',
+    // Lifecycle indicators
+    'last time buy', 'last order date'
+];
+
+/**
+ * Find all product mention positions in content
+ */
+function findProductPositions(contentLower, productLower) {
+    const positions = [];
+    let idx = contentLower.indexOf(productLower);
+    while (idx !== -1) {
+        positions.push({ pos: idx, type: 'product', priority: 1 });
+        idx = contentLower.indexOf(productLower, idx + 1);
+    }
+    return positions;
+}
+
+/**
+ * Find keyword positions with frequency limiting
+ */
+function findKeywordPositions(contentLower, maxOccurrences = 3, maxTotal = 20) {
+    const positions = [];
+    let totalCount = 0;
+
+    for (const keyword of IMPORTANT_KEYWORDS) {
+        if (totalCount >= maxTotal) break;
+
+        let occurrences = 0;
+        let idx = contentLower.indexOf(keyword.toLowerCase());
+        while (idx !== -1 && occurrences < maxOccurrences && totalCount < maxTotal) {
+            positions.push({ pos: idx, type: 'keyword', keyword: keyword, priority: 2 });
+            occurrences++;
+            totalCount++;
+            idx = contentLower.indexOf(keyword.toLowerCase(), idx + 1);
+        }
+    }
+    return positions;
+}
+
+/**
+ * Calculate adaptive zone radius based on number of positions
+ */
+function calculateZoneRadius(positionCount, maxLength) {
+    const estimatedMergedZones = Math.max(1, Math.floor(positionCount / 3));
+    const separatorOverhead = estimatedMergedZones * 15;
+    const availableSpace = maxLength - separatorOverhead - 100;
+    const idealZoneSize = availableSpace / estimatedMergedZones;
+    return {
+        radius: Math.max(400, Math.min(2000, Math.floor(idealZoneSize / 2))),
+        estimatedZones: estimatedMergedZones
+    };
+}
+
+/**
+ * Extract zone content with proper ellipses and separators
+ */
+function extractZoneContent(content, mergedZones, maxLength) {
+    let result = '';
+    let firstZone = true;
+
+    for (const zone of mergedZones) {
+        const zoneText = content.substring(zone.start, zone.end);
+        const separator = firstZone ? '' : '\n\n[...]\n\n';
+        const ellipsisBefore = zone.start > 0 ? '...' : '';
+        const ellipsisAfter = zone.end < content.length ? '...' : '';
+
+        const fullZoneText = separator + ellipsisBefore + zoneText + ellipsisAfter;
+
+        if (result.length + fullZoneText.length > maxLength) {
+            const remaining = maxLength - result.length;
+            if (remaining > 500) {
+                const partialZone = zoneText.substring(0, remaining - separator.length - 50);
+                result += separator + ellipsisBefore + partialZone + '...';
+            }
+            break;
+        }
+
+        result += fullZoneText;
+        firstZone = false;
+    }
+
+    return result;
 }
 
 /**
@@ -423,145 +512,36 @@ function removeBoilerplate(content) {
 function removeDistantContent(content, productModel, maxLength) {
     if (!content || !productModel) return content;
 
-    // Comprehensive list of important keywords
-    const IMPORTANT_KEYWORDS = [
-        // Japanese - Discontinuation/End of Life
-        '受注終了', '生産終了', '販売終了', '生産中止', '製造中止',
-        '取り扱い終了', '供給終了', '出荷終了', '廃番', '廃止',
-
-        // Japanese - Replacement/Successor
-        '代替品', '代替製品', '後継品', '後継機種', '後継モデル',
-        '推奨代替', '代替機種', '切替', '新製品', '新型',
-
-        // Japanese - Status/Availability
-        '在庫', '在庫あり', '在庫なし', '納期', '納入', '出荷',
-        '受注可能', '販売中', '発売中', '標準価格', '価格',
-        'お届け', '配送', '入荷', '欠品', '品薄',
-
-        // Japanese - Lifecycle
-        'ライフサイクル', '製品寿命', 'サポート終了', '保守終了',
-
-        // English - Discontinuation/End of Life
-        'discontinued', 'discontinuation', 'end of life', 'EOL',
-        'end of sales', 'end of production', 'obsolete', 'obsoleted',
-        'no longer available', 'no longer manufactured', 'no longer produced',
-        'phased out', 'phase out', 'withdrawn', 'ceased production',
-
-        // English - Replacement/Successor
-        'replacement', 'successor', 'alternative', 'substitute',
-        'recommended replacement', 'replaced by', 'superseded by',
-        'new model', 'upgraded to', 'migration', 'transition',
-
-        // English - Status/Availability
-        'stock', 'in stock', 'out of stock', 'availability', 'available',
-        'not available', 'delivery', 'lead time', 'shipping',
-        'price', 'pricing', 'cost', 'order', 'purchase',
-        'backorder', 'back order', 'pre-order', 'reserve',
-
-        // English - Lifecycle
-        'lifecycle', 'life cycle', 'product lifecycle', 'support end',
-        'maintenance end', 'last time buy', 'last order date',
-
-        // Common date patterns that might indicate EOL dates
-        '2019/03', '2020/', '2021/', '2022/', '2023/', '2024/', '2025/',
-
-        // Product series indicators (for OMRON example)
-        'S8VM', 'specifications', 'spec', 'datasheet', 'catalog',
-        'lineup', 'series', 'family', 'model', 'type',
-
-        // Document section headers
-        'notice', 'announcement', 'update', 'information',
-        'お知らせ', '告知', '案内', 'ニュース', '情報'
-    ];
-
-    // Find all important positions (product mentions + keywords)
-    const importantPositions = [];
     const contentLower = content.toLowerCase();
     const productLower = productModel.toLowerCase();
 
-    // Find product mentions
-    let idx = contentLower.indexOf(productLower);
-    while (idx !== -1) {
-        importantPositions.push({ pos: idx, type: 'product' });
-        idx = contentLower.indexOf(productLower, idx + 1);
-    }
-
-    // Find keyword mentions
-    IMPORTANT_KEYWORDS.forEach(keyword => {
-        let idx = contentLower.indexOf(keyword.toLowerCase());
-        while (idx !== -1) {
-            importantPositions.push({ pos: idx, type: 'keyword', keyword: keyword });
-            idx = contentLower.indexOf(keyword.toLowerCase(), idx + 1);
-        }
-    });
+    // Find all important positions
+    const productPositions = findProductPositions(contentLower, productLower);
+    const keywordPositions = findKeywordPositions(contentLower);
+    const importantPositions = [...productPositions, ...keywordPositions];
 
     if (importantPositions.length === 0) {
-        // No important positions found (no product mentions, no keywords), just truncate from end
         logger.info('No important positions found, truncating from end');
         if (content.length <= maxLength) return content;
         return content.substring(0, maxLength - 50) + '\n\n[Content truncated]';
     }
 
-    // Count keywords vs product mentions
-    const keywordCount = importantPositions.filter(p => p.type === 'keyword').length;
-    const productCount = importantPositions.filter(p => p.type === 'product').length;
-    logger.info(`Found ${importantPositions.length} important positions (${productCount} product mentions, ${keywordCount} keywords)`);
+    logger.info(`Found ${importantPositions.length} important positions (${productPositions.length} product mentions, ${keywordPositions.length} keywords)`);
 
-    // Calculate adaptive zone radius based on number of positions
-    // Estimate merged zones (rough estimate: importantPositions / 3 due to overlapping)
-    const estimatedMergedZones = Math.max(1, Math.floor(importantPositions.length / 3));
+    // Calculate adaptive zone radius
+    const { radius: ZONE_RADIUS, estimatedZones } = calculateZoneRadius(importantPositions.length, maxLength);
+    logger.info(`Using adaptive zone radius: ${ZONE_RADIUS} chars (estimated ${estimatedZones} zones after merging)`);
 
-    // Calculate ideal zone size to fit all zones within maxLength
-    // Reserve space for separators between zones (~15 chars each)
-    const separatorOverhead = estimatedMergedZones * 15;
-    const availableSpace = maxLength - separatorOverhead - 100; // 100 char safety margin
-    const idealZoneSize = availableSpace / estimatedMergedZones;
-
-    // Zone radius is half the zone size (radius on each side)
-    // Minimum 400 chars, maximum 2000 chars
-    const ZONE_RADIUS = Math.max(400, Math.min(2000, Math.floor(idealZoneSize / 2)));
-
-    logger.info(`Using adaptive zone radius: ${ZONE_RADIUS} chars (estimated ${estimatedMergedZones} zones after merging)`);
-
-    // Create zones around important positions
+    // Create and merge zones
     const zones = importantPositions.map(item => ({
         start: Math.max(0, item.pos - ZONE_RADIUS),
         end: Math.min(content.length, item.pos + ZONE_RADIUS),
         type: item.type
     }));
-
-    // Merge overlapping zones while maintaining order
     const mergedZones = mergeOverlappingSections(zones);
     logger.info(`Merged into ${mergedZones.length} zones`);
 
-    // Extract zones in order, respecting the maxLength limit
-    let result = '';
-    let firstZone = true;
-
-    for (const zone of mergedZones) {
-        const zoneText = content.substring(zone.start, zone.end);
-        const separator = firstZone ? '' : '\n\n[...]\n\n';
-        const ellipsisBefore = zone.start > 0 ? '...' : '';
-        const ellipsisAfter = zone.end < content.length ? '...' : '';
-
-        const fullZoneText = separator + ellipsisBefore + zoneText + ellipsisAfter;
-
-        // Check if adding this zone would exceed limit
-        if (result.length + fullZoneText.length > maxLength) {
-            // Try to fit partial zone if it's the first zone or we have room
-            const remaining = maxLength - result.length;
-            if (remaining > 500) { // Only if we can fit meaningful content
-                const partialZone = zoneText.substring(0, remaining - separator.length - 50);
-                result += separator + ellipsisBefore + partialZone + '...';
-            }
-            break;
-        }
-
-        result += fullZoneText;
-        firstZone = false;
-    }
-
-    return result;
+    return extractZoneContent(content, mergedZones, maxLength);
 }
 
 /**
@@ -579,7 +559,7 @@ function mergeOverlappingSections(sections) {
 
     for (let i = 1; i < sorted.length; i++) {
         const current = sorted[i];
-        const last = merged[merged.length - 1];
+        const last = merged.at(-1);
 
         // Check if current overlaps with last merged section
         if (current.start <= last.end) {

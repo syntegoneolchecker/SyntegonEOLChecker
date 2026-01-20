@@ -154,6 +154,22 @@
         .password-requirements li {
             margin: 4px 0;
         }
+
+        .forgot-password {
+            text-align: right;
+            margin-bottom: 15px;
+        }
+
+        .forgot-password a {
+            color: #007bff;
+            text-decoration: none;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .forgot-password a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -180,6 +196,10 @@
             <div class="form-group">
                 <label for="login-password">Password</label>
                 <input type="password" id="login-password" required autocomplete="current-password">
+            </div>
+
+            <div class="forgot-password">
+                <a onclick="handleForgotPassword()">Forgot your password?</a>
             </div>
 
             <button type="submit" class="submit-btn" id="login-btn">Login</button>
@@ -340,6 +360,58 @@
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Register';
+            }
+        }
+
+        async function handleForgotPassword() {
+            const email = document.getElementById('login-email').value;
+
+            if (!email) {
+                showMessage('Please enter your email address first.', 'error');
+                return;
+            }
+
+            // Confirm with user that this will delete their account
+            const confirmed = confirm(
+                'Password Reset\n\n' +
+                'This will send a link to delete your account.\n' +
+                'After deletion, you can register again with a new password.\n\n' +
+                'Do you want to reset the password for:\n' + email + '?'
+            );
+
+            if (!confirmed) {
+                return;
+            }
+
+            hideMessage();
+
+            try {
+                const response = await fetch('/.netlify/functions/auth-password-reset', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+
+                if (response.status === 429) {
+                    // Rate limited
+                    showMessage(data.message || 'Please wait before requesting another password reset.', 'error');
+                } else if (data.success) {
+                    alert(
+                        'Password Reset Email Sent\n\n' +
+                        'If an account exists with this email, you will receive an email with a link to delete your account.\n\n' +
+                        'After clicking the link, you can register again with a new password.'
+                    );
+                    showMessage('If an account exists with this email, a password reset link has been sent.', 'info');
+                } else {
+                    showMessage(data.message || 'An error occurred. Please try again.', 'error');
+                }
+            } catch (error) {
+                console.error('Password reset error:', error);
+                showMessage('An error occurred. Please try again.', 'error');
             }
         }
 

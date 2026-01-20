@@ -1,36 +1,35 @@
 // Set auto-check state in Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
+const { handleCORSPreflight, successResponse, errorResponse, methodNotAllowedResponse } = require('./lib/response-builder');
 
-exports.handler = async function(event, _context) {
+exports.handler = async function(event, context) {
     // Handle CORS
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS'
-            },
-            body: ''
-        };
-    }
+    const corsResponse = handleCORSPreflight(event, 'POST, OPTIONS');
+    if (corsResponse) return corsResponse;
 
     if (event.httpMethod !== 'POST') {
-        return {
-            statusCode: 405,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ error: 'Method Not Allowed' })
-        };
+        return methodNotAllowedResponse('POST');
     }
 
     try {
+        // Diagnostic logging for blob store configuration
+        const siteID = process.env.SITE_ID;
+        const hasToken = !!(process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN);
+        const deployContext = process.env.CONTEXT;
+        const branch = process.env.BRANCH;
+
+        logger.info('SET blob store config:', {
+            siteID: siteID || 'NOT SET',
+            hasToken,
+            deployContext,
+            branch,
+            deployId: context?.deployId || 'NOT AVAILABLE'
+        });
+
         const store = getStore({
             name: 'auto-check-state',
-            siteID: process.env.SITE_ID,
+            siteID: siteID,
             token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN,
             consistency: 'strong'
         });
@@ -38,12 +37,10 @@ exports.handler = async function(event, _context) {
 
         // Get current state
         let state = await store.get('state', { type: 'json' });
-        logger.info('SET auto-check-state: raw state from blob:', state);
-        logger.info('SET auto-check-state: updates requested:', updates);
+        logger.info('SET current state from blob:', state);
 
         // Initialize if not exists
         if (!state) {
-            logger.info('SET auto-check-state: state is null, initializing fresh state');
             state = {
                 enabled: false,
                 dailyCounter: 0,
@@ -79,30 +76,10 @@ exports.handler = async function(event, _context) {
 
         logger.info('Auto-check state updated:', state);
 
-        return {
-            statusCode: 200,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                success: true,
-                state: state
-            })
-        };
+        return successResponse({ state });
 
     } catch (error) {
         logger.error('Set auto-check state error:', error);
-        return {
-            statusCode: 500,
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                error: 'Failed to set auto-check state',
-                details: error.message
-            })
-        };
+        return errorResponse('Failed to set auto-check state', { details: error.message });
     }
 };

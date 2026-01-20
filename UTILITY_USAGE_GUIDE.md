@@ -273,10 +273,3 @@ exports.handler = async function(event, context) {
 ```
 
 ---
-
-## Notes for Gradual Migration
-
-- **Logger:** Update console.log/error calls as you touch each file
-- **Response Builder:** Update when modifying endpoint logic
-- **Priority:** Focus on new code and frequently modified files first
-- **Tests:** All utilities have test coverage in `/tests` directory

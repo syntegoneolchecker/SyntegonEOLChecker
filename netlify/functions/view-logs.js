@@ -47,25 +47,34 @@ const fetchLogsFromSupabase = async (filters) => {
 
     // Date filter
     if (date) {
-        // Specific date - SINGLE parameter with comma-separated conditions
+        // Specific date - use 'and' for range query
         const startOfDay = `${date}T00:00:00.000Z`;
         const endOfDay = `${date}T23:59:59.999Z`;
-        params.set('timestamp', `gte.${startOfDay},lte.${endOfDay}`);
+        params.set('and', `(timestamp.gte.${startOfDay},timestamp.lte.${endOfDay})`);
     } else if (days) {
-        // Last N days - include BOTH lower AND upper bounds
+        // Last N days - only need lower bound
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
-        const now = new Date().toISOString();
-        params.set('timestamp', `gte.${startDate.toISOString()},lte.${now}`);
+        params.set('timestamp', `gte.${startDate.toISOString()}`);
     }
 
-    // Level filter - INCLUSIVE hierarchy
+    // Level filter - INCLUSIVE hierarchy (shows selected level and higher)
     if (level) {
         const levelUpper = level.toUpperCase();
-        const levelConditions = getLevelHierarchyConditions(levelUpper);
-        if (levelConditions.length > 0) {
-            // Use OR operator for multiple levels
-            params.set('or', `(level.in.${levelConditions.join(',')})`);
+        const levelHierarchy = {
+            'DEBUG': ['DEBUG', 'INFO', 'WARN', 'ERROR'],
+            'INFO': ['INFO', 'WARN', 'ERROR'],
+            'WARN': ['WARN', 'ERROR'],
+            'ERROR': ['ERROR']
+        };
+        const levels = levelHierarchy[levelUpper] || [levelUpper];
+
+        if (levels.length === 1) {
+            params.set('level', `eq.${levels[0]}`);
+        } else {
+            // Use 'or' with individual conditions for multiple levels
+            const levelsInHierarchy = (l) => `level.eq.${l}`;
+            params.set('or', `(${levels.map(levelsInHierarchy).join(',')})`);
         }
     }
 
@@ -85,7 +94,6 @@ const fetchLogsFromSupabase = async (filters) => {
     const response = await fetch(url, {
         headers: {
             'apikey': process.env.SUPABASE_API_KEY,
-            'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
             'Content-Type': 'application/json'
         }
     });
@@ -107,7 +115,6 @@ const fetchLogsFromSupabase = async (filters) => {
         method: 'HEAD',
         headers: {
             'apikey': process.env.SUPABASE_API_KEY,
-            'Authorization': `Bearer ${process.env.SUPABASE_API_KEY}`,
             'Prefer': 'count=exact'
         }
     });
@@ -116,21 +123,6 @@ const fetchLogsFromSupabase = async (filters) => {
 
     return { logs, totalCount };
 };
-
-/**
- * Helper function to get log level hierarchy
- * Returns an array of levels to include based on selected level
- */
-function getLevelHierarchyConditions(selectedLevel) {
-    const levelHierarchy = {
-        'DEBUG': ['DEBUG', 'INFO', 'WARN', 'ERROR'],
-        'INFO': ['INFO', 'WARN', 'ERROR'],
-        'WARN': ['WARN', 'ERROR'],
-        'ERROR': ['ERROR']
-    };
-    
-    return levelHierarchy[selectedLevel] || [selectedLevel];
-}
 
 // Response formatting - separate concern
 const formatResponse = (paginatedData, filters, format) => {
@@ -393,7 +385,7 @@ function generateHTMLTemplate(data) {
       background: #f5f5f5;
     }
     .container {
-      max-width: 90%;
+      max-width: 100%;
       margin: 0 auto;
       background: white;
       border-radius: 8px;
