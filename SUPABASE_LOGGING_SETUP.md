@@ -1,6 +1,6 @@
 # Supabase PostgreSQL Logging Setup Guide
 
-This guide walks you through setting up Supabase PostgreSQL as your centralized logging backend, replacing the previous Netlify Blobs implementation.
+This guide walks you through setting up Supabase PostgreSQL as your centralized logging backend
 
 ## Why Supabase?
 
@@ -426,7 +426,6 @@ CREATE TABLE logs (
    DELETE FROM logs WHERE timestamp < NOW() - INTERVAL '3 days';
    ```
 3. Reduce retention period in cleanup function (change `7 days` to `3 days`)
-4. Consider upgrading to Supabase Pro ($25/month for 8GB)
 
 ---
 
@@ -486,28 +485,9 @@ WHERE timestamp > NOW() - INTERVAL '1 day';
 
 ---
 
-## Performance Comparison
+## Setup Complete Checklist
 
-### Before (Netlify Blobs):
-- **100 logs**: ~3 seconds load time, 100 HTTP requests
-- **1000 logs**: Browser crash, ~1000 HTTP requests
-- **Search**: Not possible
-- **Pagination**: Complex, slow
-
-### After (Supabase PostgreSQL):
-- **100 logs**: ~200ms load time, 2 HTTP requests (query + count)
-- **1000 logs**: ~500ms load time, 2 HTTP requests
-- **10,000 logs**: ~1 second load time, 2 HTTP requests
-- **Search**: Instant with full-text search index
-- **Pagination**: Instant with SQL LIMIT/OFFSET
-
-**Result**: 10-20x faster, no more crashes, handles millions of logs!
-
----
-
-## Migration Complete Checklist
-
-Use this checklist to verify your migration:
+Use this checklist to verify your setup:
 
 - [ ] Supabase account created
 - [ ] Supabase project created
@@ -546,17 +526,3 @@ If you encounter issues:
 - **Supabase REST API**: https://supabase.com/docs/guides/api
 - **PostgreSQL Full-Text Search**: https://www.postgresql.org/docs/current/textsearch.html
 - **pg_cron Extension**: https://github.com/citusdata/pg_cron
-
----
-
-## What's Next?
-
-Optional enhancements you can add:
-
-1. **Real-time Log Streaming**: Use Supabase Realtime subscriptions to show logs live
-2. **Log Alerts**: Set up email alerts when ERROR logs exceed a threshold
-3. **Analytics Dashboard**: Create charts for error rates, response times, etc.
-4. **Log Retention Policies**: Different retention for different log levels (keep ERRORs longer)
-5. **Advanced Search**: Use PostgreSQL full-text search for complex queries
-
-Congratulations! Your logging system is now production-ready and scalable! 🎉
