@@ -120,8 +120,8 @@ exports.handler = async (event) => {
                 expiresAt
             });
 
-            // Generate deletion URL
-            const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'http://localhost:8888';
+            // Generate deletion URL (prefer deploy-specific URL for branch deploys)
+            const siteUrl = process.env.DEPLOY_PRIME_URL || process.env.URL || 'http://localhost:8888';
             const deletionUrl = `${siteUrl}/delete-account.html?token=${token}`;
 
             // Send password reset email

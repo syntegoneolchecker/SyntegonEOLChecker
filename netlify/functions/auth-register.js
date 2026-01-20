@@ -50,7 +50,8 @@ exports.handler = async (event) => {
         }
 
         // Generate verification URL
-        const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'http://localhost:8888';
+        // Prefer deploy-specific URL for branch deploys
+        const siteUrl = process.env.DEPLOY_PRIME_URL || process.env.URL || 'http://localhost:8888';
         const verificationUrl = `${siteUrl}/verify.html?token=${result.verificationToken}`;
 
         // Send verification email via Gmail SMTP
