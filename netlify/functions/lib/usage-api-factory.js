@@ -3,7 +3,7 @@
  * Consolidates common patterns across SerpAPI, Groq, and Tavily usage endpoints
  */
 const logger = require('./logger');
-const { successResponse, errorResponse } = require('./response-builder');
+const { errorResponse } = require('./response-builder');
 
 /**
  * Create a usage API handler for external API services

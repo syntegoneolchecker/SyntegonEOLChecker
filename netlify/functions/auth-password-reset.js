@@ -120,7 +120,7 @@ exports.handler = async (event) => {
         // Check if user exists (don't reveal this in response)
         const user = await findUserByEmail(email);
 
-        if (user && user.verified) {
+        if (user?.verified) {
             // Generate password reset token
             const token = crypto.randomBytes(32).toString('hex');
             const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(); // 48 hours
