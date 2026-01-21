@@ -11,7 +11,6 @@ Why is the repository public?
 
 - ✅ **API Keys**: Stored in Netlify environment variables (never committed to repo)
 - ✅ **Database**: SAP part numbers and product data stored in Netlify Blobs (not in repo)
-- ✅ **Proxy Credentials**: Stored in environment variables (not in code)
 - ⚠️ **Important**: Never commit `.env` files or API keys to this repository
 
 If you're forking this project, make sure to set up your own environment variables (see setup instructions below).

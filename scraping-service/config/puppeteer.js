@@ -35,16 +35,6 @@ function getStandardBrowserArgs() {
     ];
 }
 
-/**
- * Browser launch arguments with proxy configuration
- * @param {string} proxyServer - Proxy server address (e.g., "proxy.example.com:8080")
- * @returns {Array<string>} Browser launch arguments with proxy
- */
-function getBrowserArgsWithProxy(proxyServer) {
-    const args = getStandardBrowserArgs();
-    args.push(`--proxy-server=${proxyServer}`);
-    return args;
-}
 
 /**
  * Launch browser with standard configuration
@@ -60,20 +50,6 @@ async function launchBrowser(options = {}) {
     });
 }
 
-/**
- * Launch browser with proxy configuration
- * @param {string} proxyServer - Proxy server address
- * @param {Object} options - Additional launch options
- * @returns {Promise<Browser>} Puppeteer browser instance
- */
-async function launchBrowserWithProxy(proxyServer, options = {}) {
-    return await puppeteer.launch({
-        headless: 'new',
-        args: getBrowserArgsWithProxy(proxyServer),
-        timeout: 120000, // 2 minutes
-        ...options
-    });
-}
 
 /**
  * Configure page with standard settings
@@ -85,22 +61,11 @@ async function configureStandardPage(page, options = {}) {
     const {
         userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         viewportWidth = 1280,
-        viewportHeight = 720,
-        proxyUsername = null,
-        proxyPassword = null
+        viewportHeight = 720
     } = options;
 
     await page.setUserAgent(userAgent);
     await page.setViewport({ width: viewportWidth, height: viewportHeight });
-
-    // Set up proxy authentication if credentials provided
-    if (proxyUsername && proxyPassword) {
-        await page.authenticate({
-            username: proxyUsername,
-            password: proxyPassword
-        });
-        logger.info('Proxy authentication configured');
-    }
 }
 
 /**
@@ -251,9 +216,7 @@ async function extractPageContent(page, timeout = 10000) {
 module.exports = {
     puppeteer,
     getStandardBrowserArgs,
-    getBrowserArgsWithProxy,
     launchBrowser,
-    launchBrowserWithProxy,
     configureStandardPage,
     setupResourceBlocking,
     extractPageContent

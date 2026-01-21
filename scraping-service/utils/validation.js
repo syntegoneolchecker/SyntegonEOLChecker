@@ -127,66 +127,7 @@ function isValidCallbackUrl(callbackUrl) {
     }
 }
 
-/**
- * Validates proxy URLs (prevents SSRF through proxy configuration)
- * @param {string} proxyUrl - The proxy URL to validate
- * @returns {{valid: boolean, reason?: string}} Validation result
- */
-function isValidProxyUrl(proxyUrl) {
-    if (!proxyUrl) return { valid: true }; // Optional parameter
-
-    try {
-        const parsedUrl = new URL(proxyUrl);
-
-        // Allow common proxy protocols
-        const allowedProtocols = ['http:', 'https:', 'socks4:', 'socks5:', 'socks:'];
-        if (!allowedProtocols.includes(parsedUrl.protocol)) {
-            return { valid: false, reason: 'Invalid proxy protocol' };
-        }
-
-        const hostname = parsedUrl.hostname.toLowerCase();
-
-        // Block localhost proxies (potential SSRF vector)
-        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
-            return { valid: false, reason: 'Cannot use localhost as proxy' };
-        }
-
-        // Block private IP proxies (potential SSRF vector)
-        if (hostname.startsWith("10.") ||
-            /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
-            hostname.startsWith("192.168.") ||
-            hostname.startsWith("169.254.")) {
-            return { valid: false, reason: 'Cannot use private IP addresses as proxy' };
-        }
-
-        return { valid: true };
-    } catch (error) {
-        return { valid: false, reason: `Invalid proxy URL format. Error: ${error}` };
-    }
-}
-
-/**
- * Parse proxy URL and extract credentials
- * @param {string} proxyUrl - Proxy URL to parse
- * @returns {Object|null} Proxy configuration or null if parsing fails
- */
-function parseProxyUrl(proxyUrl) {
-    try {
-        const url = new URL(proxyUrl);
-        return {
-            server: `${url.hostname}:${url.port}`,
-            username: url.username || null,
-            password: url.password || null
-        };
-    } catch (error) {
-        logger.error(`Failed to parse proxy URL: ${error.message}`);
-        return null;
-    }
-}
-
 module.exports = {
     isSafePublicUrl,
-    isValidCallbackUrl,
-    isValidProxyUrl,
-    parseProxyUrl
+    isValidCallbackUrl
 };
