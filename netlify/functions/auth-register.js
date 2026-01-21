@@ -5,6 +5,17 @@ const { recordAttempt } = require('./lib/rate-limiter');
 const { validateAuthRequest } = require('./lib/auth-helpers');
 
 /**
+ * Construct base URL from request headers (works correctly for branch deploys)
+ * @param {Object} headers - Request headers
+ * @returns {string} Base URL
+ */
+function constructBaseUrl(headers) {
+    const protocol = headers['x-forwarded-proto'] || 'https';
+    const host = headers['host'];
+    return `${protocol}://${host}`;
+}
+
+/**
  * User Registration Endpoint
  * POST /auth-register
  *
@@ -49,8 +60,8 @@ exports.handler = async (event) => {
             };
         }
 
-        // Generate verification URL
-        const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'http://localhost:8888';
+        // Generate verification URL from request headers (works correctly for branch deploys)
+        const siteUrl = constructBaseUrl(event.headers);
         const verificationUrl = `${siteUrl}/verify.html?token=${result.verificationToken}`;
 
         // Send verification email via Gmail SMTP

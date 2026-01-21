@@ -624,7 +624,7 @@ function prioritizeUrls(serpResults, model) {
 
     for (const result of serpResults) {
         // Skip results without a valid link
-        if (!result || !result.link) {
+        if (!result?.link) {
             logger.warn('Skipping search result with missing link');
             continue;
         }

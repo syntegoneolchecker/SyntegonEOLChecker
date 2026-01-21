@@ -1,6 +1,5 @@
 const { verifyEmail } = require('./lib/auth-manager');
 const logger = require('./lib/logger');
-const { handleCORSPreflight, successResponse, errorResponse, methodNotAllowedResponse, validationErrorResponse } = require('./lib/response-builder');
 
 /**
  * Email Verification Endpoint
@@ -18,32 +17,74 @@ const { handleCORSPreflight, successResponse, errorResponse, methodNotAllowedRes
 
 exports.handler = async (event) => {
     // Handle CORS preflight
-    const corsResponse = handleCORSPreflight(event, 'GET, OPTIONS');
-    if (corsResponse) return corsResponse;
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 204,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS'
+            },
+            body: ''
+        };
+    }
 
     // Only allow GET requests
     if (event.httpMethod !== 'GET') {
-        return methodNotAllowedResponse('GET');
+        return {
+            statusCode: 405,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify({
+                success: false,
+                message: 'Method not allowed'
+            })
+        };
     }
 
     try {
         const token = event.queryStringParameters?.token;
 
         if (!token) {
-            return validationErrorResponse(['Verification token is required']);
+            return {
+                statusCode: 400,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                body: JSON.stringify({
+                    success: false,
+                    message: 'Verification token is required'
+                })
+            };
         }
 
         // Verify email
         const result = await verifyEmail(token);
 
-        if (!result.success) {
-            return errorResponse(result.message, null, 400);
-        }
-
-        return successResponse(result);
+        return {
+            statusCode: result.success ? 200 : 400,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify(result)
+        };
 
     } catch (error) {
         logger.error('Verification error:', error);
-        return errorResponse('Internal server error during verification');
+        return {
+            statusCode: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify({
+                success: false,
+                message: 'Internal server error during verification'
+            })
+        };
     }
 };
