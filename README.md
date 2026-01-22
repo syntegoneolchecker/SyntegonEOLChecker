@@ -51,7 +51,6 @@ Set these in your Netlify dashboard under Site Settings > Environment Variables:
 | `BROWSERQL_API_KEY` | Browserless.io API key (for Cloudflare bypass) | `abc123...` | Secret |
 | `EMAIL_PASSWORD` | Gmail app password for SMTP | `xxxx xxxx xxxx xxxx` | Secret |
 | `EMAIL_USER` | Gmail account for sending emails | `your-account@gmail.com` | Public |
-| `FROM_EMAIL` | From address for verification emails | `noreply@syntegon.com` | Public |
 | `GROQ_API_KEY` | Groq LLM API key | `gsk_abc123...` | Secret |
 | `JWT_SECRET` | Secret key for JWT tokens (REQUIRED) | `your-random-64-char-hex` | Secret |
 | `LOG_LEVEL` | Logging level | `info` | Public |
