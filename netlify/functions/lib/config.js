@@ -5,7 +5,7 @@
  * FREE TIER LIMITS (as of 2025):
  * - Netlify Functions: 30s timeout (regular), 15min timeout (background)
  * - Groq: 200,000 tokens/day, 8,000 tokens/minute (rolling window)
- * - SerpAPI: 100 searches/month (reduced daily checks to 10 to accommodate)
+ * - SerpAPI: 100 searches/month (daily checks limited to 20 to accommodate)
  * - BrowserQL: 1,000 tokens/month (1 token = 30 seconds)
  * - Render: 512MB RAM, 750 hours/month
  * - Webshare Proxies: 1GB bandwidth/month

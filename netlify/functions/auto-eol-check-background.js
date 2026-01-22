@@ -1,8 +1,9 @@
 // Background function for automatic EOL checking (chains itself)
-// Checks ONE product and triggers next check if counter < 10
+// Checks ONE product and triggers next check if counter < MAX_AUTO_CHECKS_PER_DAY
 const { getStore } = require('@netlify/blobs');
 const { parseCSV, toCSV } = require('./lib/csv-parser');
 const logger = require('./lib/logger');
+const config = require('./lib/config');
 
 // Helper: Get current date in GMT+9 timezone
 function getGMT9Date() {
@@ -708,7 +709,7 @@ exports.handler = async function(event, _context) {
         // Update state with fresh data after potential resets
         state = shouldProceed.updatedState || state;
 
-        logger.info(`Current progress: ${state.dailyCounter}/10 checks today`);
+        logger.info(`Current progress: ${state.dailyCounter}/${config.MAX_AUTO_CHECKS_PER_DAY} checks today`);
 
         // Wake Render service on first check
         if (state.dailyCounter === 0) {
@@ -802,8 +803,8 @@ async function validateAndPrepareForCheck(state, siteUrl, store) {
     }
 
     // Check if daily limit reached
-    if (state.dailyCounter >= 10) {
-        logger.info('Daily limit reached (10 checks)');
+    if (state.dailyCounter >= config.MAX_AUTO_CHECKS_PER_DAY) {
+        logger.info(`Daily limit reached (${config.MAX_AUTO_CHECKS_PER_DAY} checks)`);
         await updateAutoCheckState(siteUrl, { isRunning: false });
         return { shouldContinue: false, reason: 'Daily limit reached' };
     }
@@ -869,7 +870,7 @@ async function determineChainContinuation(siteUrl, store) {
     const freshState = await store.get('state', { type: 'json' });
     logger.info(`Post-check state: enabled=${freshState.enabled}, counter=${freshState.dailyCounter}, isRunning=${freshState.isRunning}`);
 
-    const shouldContinue = freshState.enabled && freshState.dailyCounter < 10;
+    const shouldContinue = freshState.enabled && freshState.dailyCounter < config.MAX_AUTO_CHECKS_PER_DAY;
 
     if (shouldContinue) {
         await triggerNextCheck(siteUrl);
@@ -911,7 +912,7 @@ async function triggerNextCheck(siteUrl) {
 
 async function stopChain(siteUrl, state) {
     const reason = state.enabled ? 'daily limit reached' : 'slider disabled';
-    logger.info(`🛑 Chain stopped: ${reason} (enabled=${state.enabled}, counter=${state.dailyCounter}/10)`);
+    logger.info(`🛑 Chain stopped: ${reason} (enabled=${state.enabled}, counter=${state.dailyCounter}/${config.MAX_AUTO_CHECKS_PER_DAY})`);
 
     await updateAutoCheckState(siteUrl, { isRunning: false });
 }
