@@ -14,7 +14,7 @@ All architectural decisions are driven by these **hard limits**:
 |---------|-------|------------------------|
 | **Netlify Functions** | 30s timeout (regular)<br/>15min timeout (background) | - Polling instead of long-running tasks<br/>- Chain multiple background functions for long operations |
 | **Groq LLM** | 200,000 tokens/day<br/>8,000 tokens/minute<br/>(rolling windows) | - Smart content truncation (`analyze-job.js:235-467`)<br/>- Token availability checks before analysis<br/>- Retry logic with exponential backoff |
-| **SerpAPI Search** | 250 searches/month | - 1 search per product, only 2 search results used due to LLM token constraints<br/>- Manufacturer-specific direct URLs to skip search<br/>- 10 product limit on daily auto-checks |
+| **SerpAPI Search** | 250 searches/month | - 1 search per product, only 2 search results used due to LLM token constraints<br/>- Manufacturer-specific direct URLs to skip search<br/>- 20 product limit on daily auto-checks |
 | **BrowserQL** | 1,000 tokens/month<br/>(1 token = 30 seconds) | - Use ONLY for Cloudflare-protected sites<br/>- Puppeteer (free) for everything else |
 | **Render (Scraping Service)** | 512MB RAM<br/>750 hours/month | - Aggressive memory management<br/>- Self-restart when approaching limit<br/>- Sequential scraping (no concurrency) |
 | **Netlify Blobs** | Limited storage | - Job cleanup after 24 hours (1440 minutes)<br/>- No historical data retention |
@@ -178,7 +178,7 @@ async function createJob(maker, model, context) {
     ↓
 [Chains next check] If time remaining & credits available
     ↓
-[Max 10 checks per day]
+[Max 20 checks per day]
 ```
 
 ## Adding a New Manufacturer
@@ -229,7 +229,7 @@ Add a manufacturer to `initialize-job.js:12-90` if:
 | Manual check (SerpAPI) | 1 | ~5,000 | 0 |
 | Manual check (Direct URL) | 0 | ~5,000 | 0 |
 | Manual check (BrowserQL) | 0 | ~5,000 | 1 |
-| Daily auto-check (10 products) | 0-10 | ~50,000 | 0-10 |
+| Daily auto-check (20 products) | 0-20 | ~100,000 | 0-20 |
 
 ### Maximizing Daily Capacity
 

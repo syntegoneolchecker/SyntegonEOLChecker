@@ -3,6 +3,7 @@
 const { getStore } = require('@netlify/blobs');
 const { schedule } = require('@netlify/functions');
 const logger = require('./lib/logger');
+const config = require('./lib/config');
 
 // Helper: Get current date in GMT+9 timezone
 function getGMT9Date() {
@@ -135,9 +136,9 @@ const handler = async (event, context) => {
             state = await store.get('state', { type: 'json' });
         }
 
-        // Check if we've already done 10 checks today
-        if (state.dailyCounter >= 10) {
-            logger.info('Daily limit reached (10 checks), skipping');
+        // Check if we've already done max checks today
+        if (state.dailyCounter >= config.MAX_AUTO_CHECKS_PER_DAY) {
+            logger.info(`Daily limit reached (${config.MAX_AUTO_CHECKS_PER_DAY} checks), skipping`);
             return {
                 statusCode: 200,
                 body: JSON.stringify({ message: 'Daily limit reached' })

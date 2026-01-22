@@ -30,7 +30,7 @@ If you're forking this project, make sure to set up your own environment variabl
 ## Key Features
 
 - **Manual EOL Checks**: Check individual products on-demand
-- **Automated Daily Checks**: Schedule up to 10 automatic EOL checks per day (21:00 GMT+9)
+- **Automated Daily Checks**: Schedule up to 20 automatic EOL checks per day (21:00 GMT+9)
 - **Multiple Scraping Methods**:
   - Fast fetch (PDFs)
   - Puppeteer (General websites, Javascript-heavy sites supported)
@@ -119,7 +119,7 @@ The system includes a Netlify scheduled function that runs daily at **21:00 GMT+
 3. Toggle the auto-check slider in the UI
 
 **Configuration**:
-- Max 10 checks per day (reduced to conserve SerpAPI credits)
+- Max 20 checks per day (reduced to conserve SerpAPI credits)
 - Runs at 21:00 GMT+9 daily
 - Auto-disables if SerpAPI credits < 30
 - Chain-based execution (avoids 15min function timeout)
