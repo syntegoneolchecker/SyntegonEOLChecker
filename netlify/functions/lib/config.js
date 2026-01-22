@@ -58,7 +58,7 @@ module.exports = {
     PDF_SCREENING_MAX_PAGES: 3,         // Only check first N pages during screening
 
     // === AUTO-CHECK LIMITS ===
-    MAX_AUTO_CHECKS_PER_DAY: 10,        // Daily auto-check limit (reduced for SerpAPI)
+    MAX_AUTO_CHECKS_PER_DAY: 20,        // Daily auto-check limit (reduced for SerpAPI)
     MIN_SERPAPI_CREDITS_FOR_AUTO: 30,   // Min SerpAPI credits to enable auto-check
     AUTO_CHECK_SCHEDULE_CRON: '0 12 * * *', // Daily at 21:00 GMT+9 (12:00 UTC)
 
