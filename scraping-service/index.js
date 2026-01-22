@@ -94,15 +94,36 @@ app.get("/status", (req, res) => {
   });
 });
 
+// Middleware: API Key authentication for scraping endpoints
+const PROTECTED_ENDPOINTS = ["/scrape", "/scrape-keyence", "/scrape-batch"];
+
+app.use((req, res, next) => {
+  // Only protect scraping endpoints, not health/status
+  if (!PROTECTED_ENDPOINTS.includes(req.path)) {
+    return next();
+  }
+
+  const apiKey = req.headers["x-api-key"];
+  const expectedKey = process.env.SCRAPING_API_KEY;
+
+  if (!expectedKey) {
+    logger.error("SCRAPING_API_KEY not configured - rejecting all scraping requests");
+    return res.status(500).json({ error: "Service misconfigured" });
+  }
+
+  if (!apiKey || apiKey !== expectedKey) {
+    logger.warn(`Unauthorized request to ${req.path} - invalid or missing API key`);
+    return res.status(401).json({ error: "Unauthorized - invalid API key" });
+  }
+
+  next();
+});
+
 // Middleware: Reject new scraping requests during shutdown
 app.use((req, res, next) => {
   if (
     getShutdownState() &&
-    [
-      "/scrape",
-      "/scrape-keyence",
-      "/scrape-batch",
-    ].includes(req.path)
+    PROTECTED_ENDPOINTS.includes(req.path)
   ) {
     logger.info(`Rejecting ${req.path} request during shutdown`);
     return res.status(503).json({

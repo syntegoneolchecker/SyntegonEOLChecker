@@ -48,13 +48,24 @@ Located in `scraping-service/utils/validation.js`
 - ✅ Strict hostname and port matching for localhost
 - ✅ Subdomain matching for production domains
 
-### 3. Defense-in-Depth
+### 3. API Key Authentication
+
+Located in `scraping-service/index.js`
+
+**Bearer-style authentication** - requires valid API key for all scraping endpoints:
+- ✅ `X-API-Key` header required for `/scrape`, `/scrape-keyence`, `/scrape-batch`
+- ✅ Key validated against `SCRAPING_API_KEY` environment variable
+- ✅ Health/status endpoints remain public for monitoring
+- ✅ Requests without valid key receive 401 Unauthorized
+
+### 4. Defense-in-Depth
 
 Multiple validation layers:
-1. **Endpoint level** - validation in route handlers before processing
-2. **Pre-fetch level** - validation immediately before each `fetch()` or `page.goto()`
-3. **Protocol restrictions** - only HTTP/HTTPS allowed
-4. **CORS restrictions** - only configured origins can call the API
+1. **API Key authentication** - all scraping endpoints require valid API key
+2. **Endpoint level** - validation in route handlers before processing
+3. **Pre-fetch level** - validation immediately before each `fetch()` or `page.goto()`
+4. **Protocol restrictions** - only HTTP/HTTPS allowed
+5. **CORS restrictions** - only configured origins can call the API (browser requests)
 
 ## CodeQL Suppression Strategy
 
@@ -123,6 +134,8 @@ Global exclusion via CodeQL config (`js/tainted-format-string`) rather than inli
 
 When reviewing changes to this service, verify:
 
+- [ ] `SCRAPING_API_KEY` is set and matches between Netlify and Render
+- [ ] API key middleware protects all scraping endpoints
 - [ ] URL validation is called before all `fetch()` and `page.goto()` calls
 - [ ] `ALLOWED_ORIGINS` is properly configured in production
 - [ ] Blacklist validation covers all dangerous IP ranges
@@ -134,6 +147,10 @@ When reviewing changes to this service, verify:
 ### Required Environment Variables
 
 ```bash
+# API key for authentication (REQUIRED)
+# Must match the SCRAPING_API_KEY set in Netlify
+SCRAPING_API_KEY=your-secret-api-key
+
 # Callback URL whitelist (same as CORS origins)
 ALLOWED_ORIGINS=https://your-backend.example.com,https://api.example.com
 

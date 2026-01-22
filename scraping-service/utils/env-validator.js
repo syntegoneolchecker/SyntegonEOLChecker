@@ -11,10 +11,11 @@ const logger = require('./logger');
  */
 function validateEnvironmentVariables() {
     const requiredVars = [
-        'PORT' // Not strictly required (defaults to 3000), but good to document
+        'SCRAPING_API_KEY' // Required for API authentication
     ];
 
     const optionalVars = [
+        'PORT', // Defaults to 3000 if not set
         'ALLOWED_ORIGINS', // Defaults to localhost if not set
         'NODE_ENV', // Development vs production
         'NETLIFY_SITE_URL' // Required for centralized logging to Netlify
