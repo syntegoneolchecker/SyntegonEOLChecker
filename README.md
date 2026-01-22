@@ -46,7 +46,7 @@ If you're forking this project, make sure to set up your own environment variabl
 Set these in your Netlify dashboard under Site Settings > Environment Variables:
 
 | Variable | Description | Example | Secret/Public |
-|----------|-------------|---------|
+|----------|-------------|---------|---------------|
 | `ALLOWED_EMAIL_DOMAIN` | Allowed email domain for registration | `syntegon.com` | Public |
 | `BROWSERQL_API_KEY` | Browserless.io API key (for Cloudflare bypass) | `abc123...` | Secret |
 | `EMAIL_API_KEY` | Email service API key (if using external service) | `key_abc123...` | Secret |
