@@ -308,7 +308,7 @@ curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
 
 ### Verification email not received
 - Check spam folder
-- Verify `EMAIL_SERVICE` and `EMAIL_API_KEY` are set
+- Verify `EMAIL_USER` and `EMAIL_PASSWORD` are set in Netlify environment variables
 - Check Netlify function logs for errors
 - In development, get URL from function response
 
