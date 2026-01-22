@@ -55,6 +55,7 @@ Set these in your Netlify dashboard under Site Settings > Environment Variables:
 | `JWT_SECRET` | Secret key for JWT tokens (REQUIRED) | `your-random-64-char-hex` | Secret |
 | `LOG_LEVEL` | Logging level | `info` | Public |
 | `NETLIFY_TOKEN` | Token for Netlify Blobs access | Provided by Netlify | Secret |
+| `SCRAPING_API_KEY` | API key for authenticating with Render scraping service | `your-secret-key` | Secret |
 | `SCRAPING_SERVICE_URL` | URL of Render scraping service | `https://eolscrapingservice.onrender.com` | Public |
 | `SERPAPI_API_KEY` | SerpAPI web search API key | `abc123...` | Secret |
 | `SUPABASE_URL` | Supabase project URL (for logging) | `https://xxxxx.supabase.co` | Public |
@@ -85,6 +86,7 @@ netlify init
 netlify env:set SERPAPI_API_KEY "your-key"
 netlify env:set GROQ_API_KEY "your-key"
 netlify env:set BROWSERQL_API_KEY "your-key"
+netlify env:set SCRAPING_API_KEY "your-secret-key"
 netlify env:set SCRAPING_SERVICE_URL "https://your-render-url.onrender.com"
 netlify env:set SUPABASE_URL "https://xxxxx.supabase.co"
 netlify env:set SUPABASE_API_KEY "your-supabase-anon-key"
@@ -97,10 +99,13 @@ netlify deploy --prod
 
 1. Create new Web Service on Render
 2. Connect GitHub repository
+3. Root directory: `scraping-service`
 4. Build command: `npm install`
 5. Start command: `npm start`
 6. Instance type: Free (512 MB RAM)
-7. Create Environment Variables
+7. Set Environment Variables:
+   - `SCRAPING_API_KEY`: Same secret key as set in Netlify (for authentication)
+   - `ALLOWED_ORIGINS`: Your Netlify site URL (e.g., `https://your-site.netlify.app`)
 
 **Important**: The service will spin down after 15 minutes of inactivity. Cold starts take ~1 minute.
 

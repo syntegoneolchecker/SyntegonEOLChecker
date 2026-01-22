@@ -14,6 +14,7 @@ describe('Environment Validator', () => {
         delete process.env.SITE_ID;
         delete process.env.SERPAPI_API_KEY;
         delete process.env.GROQ_API_KEY;
+        delete process.env.SCRAPING_API_KEY;
         delete process.env.NETLIFY_BLOBS_TOKEN;
         delete process.env.NETLIFY_TOKEN;
         delete process.env.BROWSERQL_API_KEY;
@@ -40,6 +41,7 @@ describe('Environment Validator', () => {
         test('should throw if SITE_ID is missing', () => {
             process.env.SERPAPI_API_KEY = 'test-key';
             process.env.GROQ_API_KEY = 'test-key';
+            process.env.SCRAPING_API_KEY = 'test-key';
 
             expect(() => envValidator.validateCommonEnvVars())
                 .toThrow('Missing required environment variables');
@@ -48,6 +50,7 @@ describe('Environment Validator', () => {
         test('should throw if SERPAPI_API_KEY is missing', () => {
             process.env.SITE_ID = 'test-site';
             process.env.GROQ_API_KEY = 'test-key';
+            process.env.SCRAPING_API_KEY = 'test-key';
 
             expect(() => envValidator.validateCommonEnvVars())
                 .toThrow('Missing required environment variables');
@@ -56,6 +59,16 @@ describe('Environment Validator', () => {
         test('should throw if GROQ_API_KEY is missing', () => {
             process.env.SITE_ID = 'test-site';
             process.env.SERPAPI_API_KEY = 'test-key';
+            process.env.SCRAPING_API_KEY = 'test-key';
+
+            expect(() => envValidator.validateCommonEnvVars())
+                .toThrow('Missing required environment variables');
+        });
+
+        test('should throw if SCRAPING_API_KEY is missing', () => {
+            process.env.SITE_ID = 'test-site';
+            process.env.SERPAPI_API_KEY = 'test-key';
+            process.env.GROQ_API_KEY = 'test-key';
 
             expect(() => envValidator.validateCommonEnvVars())
                 .toThrow('Missing required environment variables');
@@ -65,6 +78,7 @@ describe('Environment Validator', () => {
             process.env.SITE_ID = 'test-site';
             process.env.SERPAPI_API_KEY = 'test-serpapi-key';
             process.env.GROQ_API_KEY = 'test-groq-key';
+            process.env.SCRAPING_API_KEY = 'test-scraping-key';
 
             expect(() => envValidator.validateCommonEnvVars()).not.toThrow();
         });

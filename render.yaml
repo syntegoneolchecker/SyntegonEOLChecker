@@ -15,5 +15,9 @@ services:
         value: production
       - key: LOG_LEVEL
         value: INFO
-      # SUPABASE_URL and SUPABASE_API_KEY should be set in Render dashboard
-      # for central logging to work (optional - gracefully degrades if not set)
+      # REQUIRED: Set these in Render dashboard
+      # - SCRAPING_API_KEY: API key for authentication (must match Netlify's SCRAPING_API_KEY)
+      # - ALLOWED_ORIGINS: Your Netlify site URL (e.g., https://your-site.netlify.app)
+      #
+      # OPTIONAL: Set for centralized logging
+      # - SUPABASE_URL and SUPABASE_API_KEY for central logging (gracefully degrades if not set)
