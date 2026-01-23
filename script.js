@@ -93,11 +93,12 @@ function setControlsDisabled(disabled) {
 async function init() {
     await loadFromServer();
     setControlsDisabled(true);
+    let autoCheckRunning = false;
     try {
         await loadSerpAPICredits();
         await loadGroqUsage();
         await checkRenderHealth();
-        await loadAutoCheckState();
+        autoCheckRunning = await loadAutoCheckState();
         startAutoCheckMonitoring(); // Start periodic monitoring
 
         // Ensure delete toggle is unchecked on load
@@ -106,6 +107,11 @@ async function init() {
         toggleDeleteButtons(); // Apply the state
     } finally {
         setControlsDisabled(false);
+        // Re-apply auto-check disabled state after init completes
+        // (setControlsDisabled(false) would otherwise override it)
+        if (autoCheckRunning) {
+            setControlsDisabledForAutoCheck(true);
+        }
     }
 }
 
@@ -1456,13 +1462,14 @@ function setControlsDisabledForAutoCheck(disabled) {
 }
 
 // Load auto-check state and update UI
+// Returns the isRunning state so caller can re-apply after init completes
 async function loadAutoCheckState() {
     try {
         const response = await fetch('/.netlify/functions/get-auto-check-state');
 
         if (!response.ok) {
             console.error('Failed to load auto-check state');
-            return;
+            return false;
         }
 
         const state = await response.json();
@@ -1486,8 +1493,11 @@ async function loadAutoCheckState() {
         // Enable/disable controls based on isRunning state
         setControlsDisabledForAutoCheck(state.isRunning);
 
+        return state.isRunning;
+
     } catch (error) {
         console.error('Error loading auto-check state:', error);
+        return false;
     }
 }
 
