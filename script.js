@@ -1104,8 +1104,8 @@ function processSuccessfulLoad(result, retry) {
     render();
 
     const successMessage = retry > 0
-        ? `✓ Database loaded successfully after ${retry + 1} attempts`
-        : '✓ Database loaded successfully from cloud storage';
+        ? `Database loaded successfully after ${retry + 1} attempts`
+        : 'Database loaded successfully from cloud storage';
 
     showStatus(successMessage);
 }
@@ -1327,7 +1327,7 @@ function updateRenderStatus(element, elapsed, data) {
 
 // Check Render scraping service health with retry logic
 async function checkRenderHealth() {
-    showStatus('Waiting for response from Render health check...', 'info');
+    showStatus('Waiting for response from Render health check...');
     const renderStatusElement = document.getElementById('render-status');
     const renderServiceUrl = 'https://eolscrapingservice.onrender.com';
 
