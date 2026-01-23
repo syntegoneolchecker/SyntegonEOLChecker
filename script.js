@@ -1380,7 +1380,7 @@ async function checkRenderHealth() {
         }
 
         // Both attempts failed
-        showStatus("Render health check returned no response, please reload the page.", 'error');
+        showStatus('Render health check returned no response, please reload the page.', 'error');
         console.error(`Render health check: Failed after 2 attempts (total: ${totalElapsed}s)`);
         renderStatusElement.textContent = `Offline after ${totalElapsed}s (${secondAttempt.error})`;
         renderStatusElement.classList.remove('credits-medium');
