@@ -305,11 +305,19 @@ async function handleRenderServiceCall(params) {
 
     logger.info(`Calling ${methodName} service: ${serviceUrl}/${endpoint}`);
 
+    const scrapingApiKey = process.env.SCRAPING_API_KEY;
+    if (!scrapingApiKey) {
+        throw new Error('SCRAPING_API_KEY environment variable not set');
+    }
+
     return await retryWithBackoff({
         operation: async () => {
             return fetch(`${serviceUrl}/${endpoint}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': scrapingApiKey
+                },
                 body: JSON.stringify(payload)
             });
         },

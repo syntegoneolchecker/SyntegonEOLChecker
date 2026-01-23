@@ -11,7 +11,6 @@ Why is the repository public?
 
 - ✅ **API Keys**: Stored in Netlify environment variables (never committed to repo)
 - ✅ **Database**: SAP part numbers and product data stored in Netlify Blobs (not in repo)
-- ✅ **Proxy Credentials**: Stored in environment variables (not in code)
 - ⚠️ **Important**: Never commit `.env` files or API keys to this repository
 
 If you're forking this project, make sure to set up your own environment variables (see setup instructions below).
@@ -31,7 +30,7 @@ If you're forking this project, make sure to set up your own environment variabl
 ## Key Features
 
 - **Manual EOL Checks**: Check individual products on-demand
-- **Automated Daily Checks**: Schedule up to 10 automatic EOL checks per day (21:00 GMT+9)
+- **Automated Daily Checks**: Schedule up to 20 automatic EOL checks per day (21:00 GMT+9)
 - **Multiple Scraping Methods**:
   - Fast fetch (PDFs)
   - Puppeteer (General websites, Javascript-heavy sites supported)
@@ -47,18 +46,16 @@ If you're forking this project, make sure to set up your own environment variabl
 Set these in your Netlify dashboard under Site Settings > Environment Variables:
 
 | Variable | Description | Example | Secret/Public |
-|----------|-------------|---------|
+|----------|-------------|---------|---------------|
 | `ALLOWED_EMAIL_DOMAIN` | Allowed email domain for registration | `syntegon.com` | Public |
 | `BROWSERQL_API_KEY` | Browserless.io API key (for Cloudflare bypass) | `abc123...` | Secret |
-| `EMAIL_API_KEY` | Email service API key (if using external service) | `key_abc123...` | Secret |
 | `EMAIL_PASSWORD` | Gmail app password for SMTP | `xxxx xxxx xxxx xxxx` | Secret |
-| `EMAIL_SERVICE` | Email service provider (legacy, optional) | `gmail` | Public |
 | `EMAIL_USER` | Gmail account for sending emails | `your-account@gmail.com` | Public |
-| `FROM_EMAIL` | From address for verification emails | `noreply@syntegon.com` | Public |
 | `GROQ_API_KEY` | Groq LLM API key | `gsk_abc123...` | Secret |
 | `JWT_SECRET` | Secret key for JWT tokens (REQUIRED) | `your-random-64-char-hex` | Secret |
 | `LOG_LEVEL` | Logging level | `info` | Public |
 | `NETLIFY_TOKEN` | Token for Netlify Blobs access | Provided by Netlify | Secret |
+| `SCRAPING_API_KEY` | API key for authenticating with Render scraping service | `your-secret-key` | Secret |
 | `SCRAPING_SERVICE_URL` | URL of Render scraping service | `https://eolscrapingservice.onrender.com` | Public |
 | `SERPAPI_API_KEY` | SerpAPI web search API key | `abc123...` | Secret |
 | `SUPABASE_URL` | Supabase project URL (for logging) | `https://xxxxx.supabase.co` | Public |
@@ -89,6 +86,7 @@ netlify init
 netlify env:set SERPAPI_API_KEY "your-key"
 netlify env:set GROQ_API_KEY "your-key"
 netlify env:set BROWSERQL_API_KEY "your-key"
+netlify env:set SCRAPING_API_KEY "your-secret-key"
 netlify env:set SCRAPING_SERVICE_URL "https://your-render-url.onrender.com"
 netlify env:set SUPABASE_URL "https://xxxxx.supabase.co"
 netlify env:set SUPABASE_API_KEY "your-supabase-anon-key"
@@ -101,10 +99,13 @@ netlify deploy --prod
 
 1. Create new Web Service on Render
 2. Connect GitHub repository
+3. Root directory: `scraping-service`
 4. Build command: `npm install`
 5. Start command: `npm start`
 6. Instance type: Free (512 MB RAM)
-7. Create Environment Variables
+7. Set Environment Variables:
+   - `SCRAPING_API_KEY`: Same secret key as set in Netlify (for authentication)
+   - `ALLOWED_ORIGINS`: Your Netlify site URL (e.g., `https://your-site.netlify.app`)
 
 **Important**: The service will spin down after 15 minutes of inactivity. Cold starts take ~1 minute.
 
@@ -118,7 +119,7 @@ The system includes a Netlify scheduled function that runs daily at **21:00 GMT+
 3. Toggle the auto-check slider in the UI
 
 **Configuration**:
-- Max 10 checks per day (reduced to conserve SerpAPI credits)
+- Max 20 checks per day (reduced to conserve SerpAPI credits)
 - Runs at 21:00 GMT+9 daily
 - Auto-disables if SerpAPI credits < 30
 - Chain-based execution (avoids 15min function timeout)

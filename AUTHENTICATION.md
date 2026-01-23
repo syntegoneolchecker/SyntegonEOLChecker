@@ -59,7 +59,6 @@ ALLOWED_EMAIL_DOMAIN=syntegon.com
 # OPTIONAL - Email Verification (Gmail SMTP)
 EMAIL_USER=your-gmail-account@gmail.com
 EMAIL_PASSWORD=your-app-specific-password
-FROM_EMAIL=your-gmail-account@gmail.com  # Optional, defaults to EMAIL_USER
 ```
 
 ### Generating JWT_SECRET
@@ -97,7 +96,6 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
    ```bash
    EMAIL_USER=your-gmail-account@gmail.com  # ⚠️ Mark as SECRET
    EMAIL_PASSWORD=xxxx xxxx xxxx xxxx       # ⚠️ Mark as SECRET (app password)
-   FROM_EMAIL=your-gmail-account@gmail.com  # Optional
    ```
 
 **Important Notes:**
@@ -308,7 +306,7 @@ curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
 
 ### Verification email not received
 - Check spam folder
-- Verify `EMAIL_SERVICE` and `EMAIL_API_KEY` are set
+- Verify `EMAIL_USER` and `EMAIL_PASSWORD` are set in Netlify environment variables
 - Check Netlify function logs for errors
 - In development, get URL from function response
 

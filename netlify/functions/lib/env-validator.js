@@ -13,7 +13,8 @@ function validateCommonEnvVars() {
     const required = [
         'SITE_ID',
         'SERPAPI_API_KEY',
-        'GROQ_API_KEY'
+        'GROQ_API_KEY',
+        'SCRAPING_API_KEY'
     ];
 
     const missing = required.filter(varName => !process.env[varName]);

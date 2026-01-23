@@ -29,6 +29,8 @@ let _lastToggleTime = 0;
 // Set to 15s to handle slower branch deploy latency (monitoring interval is 10s)
 const _toggleSyncGracePeriod = 15000;
 
+let initComplete = false;
+
 // ============================================================================
 // AUTHENTICATION CHECK
 // ============================================================================
@@ -82,7 +84,7 @@ async function logout() {
 // INITIALIZATION
 // ============================================================================
 
-// Disable/enable all controls except logout during init
+// Disable/enable all controls during init
 function setControlsDisabled(disabled) {
     document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
         el.disabled = disabled;
@@ -93,11 +95,12 @@ function setControlsDisabled(disabled) {
 async function init() {
     await loadFromServer();
     setControlsDisabled(true);
+    let autoCheckRunning = false;
     try {
         await loadSerpAPICredits();
         await loadGroqUsage();
         await checkRenderHealth();
-        await loadAutoCheckState();
+        autoCheckRunning = await loadAutoCheckState();
         startAutoCheckMonitoring(); // Start periodic monitoring
 
         // Ensure delete toggle is unchecked on load
@@ -106,6 +109,12 @@ async function init() {
         toggleDeleteButtons(); // Apply the state
     } finally {
         setControlsDisabled(false);
+        // Re-apply auto-check disabled state after init completes
+        // (setControlsDisabled(false) would otherwise override it)
+        if (autoCheckRunning) {
+            setControlsDisabledForAutoCheck(true);
+        }
+        initComplete = true;
     }
 }
 
@@ -197,7 +206,7 @@ function renderTableCell(cellContent) {
 
 // Render table action buttons
 function renderActionButtons(rowIndex) {
-    return `<td><button class="check-eol" onclick="checkEOL(${rowIndex})">Check EOL</button><button class="delete" onclick="delRow(${rowIndex})">Delete</button></td>`;
+    return `<td><button id="check-eol-button" class="check-eol" onclick="checkEOL(${rowIndex})">Check EOL</button><button class="delete" onclick="delRow(${rowIndex})">Delete</button></td>`;
 }
 
 // Update Check EOL button states after rendering
@@ -206,8 +215,8 @@ async function updateButtonStates() {
         const response = await fetch('/.netlify/functions/get-auto-check-state');
         const state = response.ok ? await response.json() : null;
 
-        // Disable buttons if EITHER manual check OR auto-check is running
-        const shouldDisable = isManualCheckRunning || (state?.isRunning);
+        // Disable buttons if EITHER manual check OR auto-check is running OR init is not complete
+        const shouldDisable = isManualCheckRunning || (state?.isRunning) || !initComplete;
         if (typeof updateCheckEOLButtons === 'function') {
             updateCheckEOLButtons(shouldDisable);
         }
@@ -1446,14 +1455,24 @@ async function clearDatabase() {
 // AUTO-CHECK FUNCTIONALITY
 // ============================================================================
 
+// Disable/enable controls based on auto-check running state
+function setControlsDisabledForAutoCheck(disabled) {
+    document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
+        // Skip the auto-check toggle - users can still disable it to cancel
+        if (el.id === 'auto-check-toggle' || el.id === 'logout-button' || el.id === 'view-logs-button') return;
+        el.disabled = disabled;
+    });
+}
+
 // Load auto-check state and update UI
+// Returns the isRunning state so caller can re-apply after init completes
 async function loadAutoCheckState() {
     try {
         const response = await fetch('/.netlify/functions/get-auto-check-state');
 
         if (!response.ok) {
             console.error('Failed to load auto-check state');
-            return;
+            return false;
         }
 
         const state = await response.json();
@@ -1471,8 +1490,15 @@ async function loadAutoCheckState() {
             updateCheckEOLButtons(state.isRunning);
         }
 
+        if (state.isRunning) {
+            showStatus('Background EOL check is running, controls are disabled', 'info');
+        }
+
+        return state.isRunning;
+
     } catch (error) {
         console.error('Error loading auto-check state:', error);
+        return false;
     }
 }
 
@@ -1496,7 +1522,7 @@ async function toggleAutoCheck() {
         }
 
         const result = await response.json();
-        console.log('Auto-check toggled:', result.state);
+        console.log('Auto-check toggled:', result.data.state);
 
         showStatus(`Auto EOL Check ${enabled ? 'enabled' : 'disabled'}`, 'success');
 
@@ -1522,7 +1548,12 @@ async function setAutoCheckState(stateUpdate) {
         throw new Error(`Failed to set state: ${response.statusText}`);
     }
 
-    return await response.json();
+    const newState = await response.json();
+
+    // Enable/disable controls based on isRunning state
+    setControlsDisabledForAutoCheck(newState.isRunning);
+
+    return await newState;
 }
 
 // Manual trigger for testing
@@ -1542,8 +1573,9 @@ async function manualTriggerAutoCheck() {
 
         showStatus('Counter reset. Triggering auto-check...', 'info');
 
-        // Set isRunning = true before triggering
+        // Set isRunning = true before triggering and disable controls accordingly
         await setAutoCheckState({ isRunning: true });
+        setControlsDisabledForAutoCheck(true);
 
         // Trigger the background function
         const siteUrl = globalThis.location.origin;
@@ -1568,7 +1600,6 @@ async function manualTriggerAutoCheck() {
         showStatus('Error triggering auto-check: ' + error.message, 'error');
     } finally {
         button.textContent = originalText;
-        button.disabled = false;
     }
 }
 
@@ -1576,7 +1607,7 @@ async function manualTriggerAutoCheck() {
 function updateCheckEOLButtons(isRunning) {
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
-        button.style.display = isRunning ? 'none' : '';
+        button.disabled = isRunning;
     });
 }
 
@@ -1585,7 +1616,7 @@ function disableAllCheckEOLButtons() {
     isManualCheckRunning = true;
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
-        button.style.display = 'none';
+        button.disabled = true;
     });
     console.log('All Check EOL buttons disabled (manual check in progress)');
 }
@@ -1595,7 +1626,7 @@ function enableAllCheckEOLButtons() {
     isManualCheckRunning = false;
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
-        button.style.display = '';
+        button.disabled = false;
         button.textContent = 'Check EOL';
     });
     console.log('All Check EOL buttons re-enabled (manual check complete)');
@@ -1689,6 +1720,7 @@ function startAutoCheckMonitoring() {
             // Update buttons based on isRunning (don't override manual check state)
             if (!isManualCheckRunning) {
                 updateCheckEOLButtons(state.isRunning);
+                setControlsDisabledForAutoCheck(state.isRunning);
             }
 
             // Auto-disable if credits too low
