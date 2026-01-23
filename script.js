@@ -1459,7 +1459,7 @@ async function clearDatabase() {
 function setControlsDisabledForAutoCheck(disabled) {
     document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
         // Skip the auto-check toggle - users can still disable it to cancel
-        if (el.id === 'auto-check-toggle' || el.id === 'check-eol-button') return;
+        if (el.id === 'auto-check-toggle') return;
         el.disabled = disabled;
     });
 }
@@ -1525,9 +1525,6 @@ async function toggleAutoCheck() {
         console.log('Auto-check toggled:', result.data.state);
 
         showStatus(`Auto EOL Check ${enabled ? 'enabled' : 'disabled'}`, 'success');
-
-        // Enable/disable controls based on isRunning state
-        setControlsDisabledForAutoCheck(result.isRunning);
 
     } catch (error) {
         console.error('Error toggling auto-check:', error);
