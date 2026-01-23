@@ -1446,6 +1446,15 @@ async function clearDatabase() {
 // AUTO-CHECK FUNCTIONALITY
 // ============================================================================
 
+// Disable/enable controls based on auto-check running state
+function setControlsDisabledForAutoCheck(disabled) {
+    document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
+        // Skip the auto-check toggle - users can still disable it to cancel
+        if (el.id === 'auto-check-toggle') return;
+        el.disabled = disabled;
+    });
+}
+
 // Load auto-check state and update UI
 async function loadAutoCheckState() {
     try {
@@ -1470,6 +1479,9 @@ async function loadAutoCheckState() {
         if (!isManualCheckRunning) {
             updateCheckEOLButtons(state.isRunning);
         }
+
+        // Enable/disable controls based on isRunning state
+        setControlsDisabledForAutoCheck(state.isRunning);
 
     } catch (error) {
         console.error('Error loading auto-check state:', error);
@@ -1500,6 +1512,9 @@ async function toggleAutoCheck() {
 
         showStatus(`Auto EOL Check ${enabled ? 'enabled' : 'disabled'}`, 'success');
 
+        // Enable/disable controls based on isRunning state
+        setControlsDisabledForAutoCheck(result.isRunning);
+
     } catch (error) {
         console.error('Error toggling auto-check:', error);
         showStatus('Error updating auto-check state: ' + error.message, 'error');
@@ -1522,7 +1537,12 @@ async function setAutoCheckState(stateUpdate) {
         throw new Error(`Failed to set state: ${response.statusText}`);
     }
 
-    return await response.json();
+    const newState = await response.json();
+
+    // Enable/disable controls based on isRunning state
+    setControlsDisabledForAutoCheck(newState.isRunning);
+
+    return await newState;
 }
 
 // Manual trigger for testing
