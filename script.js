@@ -1480,6 +1480,9 @@ async function loadAutoCheckState() {
             updateCheckEOLButtons(state.isRunning);
         }
 
+        if (state.isRunning) {
+            showStatus('Background EOL check is running, controls are disabled', 'info');
+        }
         // Enable/disable controls based on isRunning state
         setControlsDisabledForAutoCheck(state.isRunning);
 
