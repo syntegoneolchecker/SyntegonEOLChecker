@@ -203,7 +203,7 @@ function renderTableCell(cellContent) {
 
 // Render table action buttons
 function renderActionButtons(rowIndex) {
-    return `<td><button class="check-eol" onclick="checkEOL(${rowIndex})">Check EOL</button><button class="delete" onclick="delRow(${rowIndex})">Delete</button></td>`;
+    return `<td><button id="check-eol-button" class="check-eol" onclick="checkEOL(${rowIndex})">Check EOL</button><button class="delete" onclick="delRow(${rowIndex})">Delete</button></td>`;
 }
 
 // Update Check EOL button states after rendering
@@ -1456,7 +1456,7 @@ async function clearDatabase() {
 function setControlsDisabledForAutoCheck(disabled) {
     document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
         // Skip the auto-check toggle - users can still disable it to cancel
-        if (el.id === 'auto-check-toggle') return;
+        if (el.id === 'auto-check-toggle' || el.id === 'check-eol-button') return;
         el.disabled = disabled;
     });
 }
@@ -1609,7 +1609,7 @@ async function manualTriggerAutoCheck() {
 function updateCheckEOLButtons(isRunning) {
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
-        button.style.display = isRunning ? 'none' : '';
+        button.disabled = isRunning;
     });
 }
 
@@ -1618,7 +1618,7 @@ function disableAllCheckEOLButtons() {
     isManualCheckRunning = true;
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
-        button.style.display = 'none';
+        button.disabled = true;
     });
     console.log('All Check EOL buttons disabled (manual check in progress)');
 }
@@ -1628,7 +1628,7 @@ function enableAllCheckEOLButtons() {
     isManualCheckRunning = false;
     const checkButtons = document.querySelectorAll('.check-eol');
     checkButtons.forEach(button => {
-        button.style.display = '';
+        button.disabled = false;
         button.textContent = 'Check EOL';
     });
     console.log('All Check EOL buttons re-enabled (manual check complete)');
