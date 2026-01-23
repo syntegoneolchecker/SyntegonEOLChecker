@@ -29,6 +29,8 @@ let _lastToggleTime = 0;
 // Set to 15s to handle slower branch deploy latency (monitoring interval is 10s)
 const _toggleSyncGracePeriod = 15000;
 
+let initComplete = false;
+
 // ============================================================================
 // AUTHENTICATION CHECK
 // ============================================================================
@@ -112,6 +114,7 @@ async function init() {
         if (autoCheckRunning) {
             setControlsDisabledForAutoCheck(true);
         }
+        initComplete = true;
     }
 }
 
@@ -212,8 +215,8 @@ async function updateButtonStates() {
         const response = await fetch('/.netlify/functions/get-auto-check-state');
         const state = response.ok ? await response.json() : null;
 
-        // Disable buttons if EITHER manual check OR auto-check is running
-        const shouldDisable = isManualCheckRunning || (state?.isRunning);
+        // Disable buttons if EITHER manual check OR auto-check is running OR init is not complete
+        const shouldDisable = isManualCheckRunning || (state?.isRunning) || !initComplete;
         if (typeof updateCheckEOLButtons === 'function') {
             updateCheckEOLButtons(shouldDisable);
         }
