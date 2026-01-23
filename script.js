@@ -82,7 +82,7 @@ async function logout() {
 // INITIALIZATION
 // ============================================================================
 
-// Disable/enable all controls except logout during init
+// Disable/enable all controls during init
 function setControlsDisabled(disabled) {
     document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
         el.disabled = disabled;
