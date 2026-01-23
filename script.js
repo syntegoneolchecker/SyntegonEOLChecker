@@ -1575,8 +1575,9 @@ async function manualTriggerAutoCheck() {
 
         showStatus('Counter reset. Triggering auto-check...', 'info');
 
-        // Set isRunning = true before triggering
+        // Set isRunning = true before triggering and disable controls accordingly
         await setAutoCheckState({ isRunning: true });
+        setControlsDisabledForAutoCheck(true);
 
         // Trigger the background function
         const siteUrl = globalThis.location.origin;
@@ -1601,7 +1602,6 @@ async function manualTriggerAutoCheck() {
         showStatus('Error triggering auto-check: ' + error.message, 'error');
     } finally {
         button.textContent = originalText;
-        button.disabled = false;
     }
 }
 
