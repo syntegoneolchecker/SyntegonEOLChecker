@@ -1459,7 +1459,7 @@ async function clearDatabase() {
 function setControlsDisabledForAutoCheck(disabled) {
     document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
         // Skip the auto-check toggle - users can still disable it to cancel
-        if (el.id === 'auto-check-toggle' || el.id === 'logout-button') return;
+        if (el.id === 'auto-check-toggle' || el.id === 'logout-button' || el.id === 'view-logs-button') return;
         el.disabled = disabled;
     });
 }
