@@ -1490,8 +1490,6 @@ async function loadAutoCheckState() {
         if (state.isRunning) {
             showStatus('Background EOL check is running, controls are disabled', 'info');
         }
-        // Enable/disable controls based on isRunning state
-        setControlsDisabledForAutoCheck(state.isRunning);
 
         return state.isRunning;
 
@@ -1722,6 +1720,7 @@ function startAutoCheckMonitoring() {
             // Update buttons based on isRunning (don't override manual check state)
             if (!isManualCheckRunning) {
                 updateCheckEOLButtons(state.isRunning);
+                setControlsDisabledForAutoCheck(state.isRunning);
             }
 
             // Auto-disable if credits too low
