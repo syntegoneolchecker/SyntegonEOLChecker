@@ -1521,7 +1521,7 @@ async function toggleAutoCheck() {
         }
 
         const result = await response.json();
-        console.log('Auto-check toggled:', result.state);
+        console.log('Auto-check toggled:', result);
 
         showStatus(`Auto EOL Check ${enabled ? 'enabled' : 'disabled'}`, 'success');
 
