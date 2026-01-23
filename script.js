@@ -1,8 +1,5 @@
 // Functions in this file are called from HTML onclick handlers in index.html
 // ESLint's no-unused-vars is disabled for this file (see eslint.config.js)
-
-const { info } = require("pdfjs-dist/types/src/shared/util");
-
 // ============================================================================
 // GLOBAL VARIABLES
 // ============================================================================
