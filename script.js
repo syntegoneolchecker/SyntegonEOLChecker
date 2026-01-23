@@ -1344,7 +1344,7 @@ async function checkRenderHealth() {
         if (firstAttempt.success) {
             // Success on first attempt
             updateRenderStatus(renderStatusElement, firstAttempt.elapsed, firstAttempt.data);
-            showStatus('Render health check returned healthy.', 'info');
+            showStatus('Render health check returned healthy.');
             return;
         }
 
@@ -1372,7 +1372,7 @@ async function checkRenderHealth() {
             renderStatusElement.textContent = `Ready after retry (${totalElapsed}s total)`;
             renderStatusElement.classList.remove('credits-medium');
             renderStatusElement.classList.add('credits-medium');
-            showStatus('Render health check returned healthy.', 'info');
+            showStatus('Render health check returned healthy.');
             return;
         }
 
