@@ -205,7 +205,8 @@ function renderTableCell(cellContent) {
 
 // Render table action buttons
 function renderActionButtons(rowIndex) {
-    return `<td><button id="check-eol-button" class="check-eol" onclick="checkEOL(${rowIndex})">Check EOL</button><button class="delete" onclick="delRow(${rowIndex})">Delete</button></td>`;
+    const disabled = isManualCheckRunning ? 'disabled' : '';
+    return `<td><button id="check-eol-button" class="check-eol" onclick="checkEOL(${rowIndex})" ${disabled}>Check EOL</button><button class="delete" onclick="delRow(${rowIndex})">Delete</button></td>`;
 }
 
 // Update Check EOL button states after rendering
@@ -1460,6 +1461,12 @@ async function clearDatabase() {
 
 // Disable/enable controls based on auto-check running state
 function setControlsDisabledForAutoCheck(disabled) {
+    // Set delete toggle to false if it is currently true
+    const toggle = document.getElementById('delete-toggle');
+    if (toggle.checked) {
+        toggle.checked = false;
+        toggleDeleteButtons();
+    }
     document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
         // Skip the auto-check toggle - users can still disable it to cancel
         if (el.id === 'auto-check-toggle' || el.id === 'logout-button' || el.id === 'view-logs-button') return;
@@ -1614,25 +1621,37 @@ function updateCheckEOLButtons(isRunning) {
     });
 }
 
-// Disable all Check EOL buttons (for manual check - prevent parallel execution)
+// Disable all Check EOL buttons and manual trigger button (for manual check - prevent parallel execution)
 function disableAllCheckEOLButtons() {
     isManualCheckRunning = true;
-    const checkButtons = document.querySelectorAll('.check-eol');
-    checkButtons.forEach(button => {
-        button.disabled = true;
+
+    // Set delete toggle to false if it is currently true
+    const toggle = document.getElementById('delete-toggle');
+    if (toggle.checked) {
+        toggle.checked = false;
+        toggleDeleteButtons();
+    }
+
+    document.querySelectorAll('button, input[type="checkbox"]').forEach(button => {
+        if (button.id === 'check-eol-button' || button.id === 'manual-trigger-btn' || button.id === 'delete-toggle') {
+            button.disabled = true;
+        };
     });
-    console.log('All Check EOL buttons disabled (manual check in progress)');
+    console.log('Check EOL buttons, manual trigger button and delete toggle disabled (manual check in progress)');
 }
 
-// Enable all Check EOL buttons (after manual check completes)
+// Enable all Check EOL buttons and manual trigger button (after manual check completes)
 function enableAllCheckEOLButtons() {
     isManualCheckRunning = false;
-    const checkButtons = document.querySelectorAll('.check-eol');
-    checkButtons.forEach(button => {
-        button.disabled = false;
-        button.textContent = 'Check EOL';
+    document.querySelectorAll('button, input[type="checkbox"]').forEach(button => {
+        if (button.id === 'check-eol-button') {
+            button.disabled = false;
+            button.textContent = 'Check EOL';
+        } else if (button.id === 'manual-trigger-btn' || button.id === 'delete-toggle') {
+            button.disabled = false;
+        }
     });
-    console.log('All Check EOL buttons re-enabled (manual check complete)');
+    console.log('Check EOL buttons, manual trigger button and delete toggle re-enabled (manual check complete)');
 }
 
 // ============================================================================
