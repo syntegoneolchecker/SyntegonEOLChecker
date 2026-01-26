@@ -205,7 +205,8 @@ function renderTableCell(cellContent) {
 
 // Render table action buttons
 function renderActionButtons(rowIndex) {
-    return `<td><button id="check-eol-button" class="check-eol" onclick="checkEOL(${rowIndex})">Check EOL</button><button class="delete" onclick="delRow(${rowIndex})">Delete</button></td>`;
+    const disabled = isManualCheckRunning ? 'disabled' : '';
+    return `<td><button id="check-eol-button" class="check-eol" onclick="checkEOL(${rowIndex})" ${disabled}>Check EOL</button><button class="delete" onclick="delRow(${rowIndex})">Delete</button></td>`;
 }
 
 // Update Check EOL button states after rendering
