@@ -1461,6 +1461,12 @@ async function clearDatabase() {
 
 // Disable/enable controls based on auto-check running state
 function setControlsDisabledForAutoCheck(disabled) {
+    // Set delete toggle to false if it is currently true
+    const toggle = document.getElementById('delete-toggle');
+    if (toggle.checked) {
+        toggle.checked = false;
+        toggleDeleteButtons();
+    }
     document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
         // Skip the auto-check toggle - users can still disable it to cancel
         if (el.id === 'auto-check-toggle' || el.id === 'logout-button' || el.id === 'view-logs-button') return;
@@ -1618,6 +1624,14 @@ function updateCheckEOLButtons(isRunning) {
 // Disable all Check EOL buttons and manual trigger button (for manual check - prevent parallel execution)
 function disableAllCheckEOLButtons() {
     isManualCheckRunning = true;
+
+    // Set delete toggle to false if it is currently true
+    const toggle = document.getElementById('delete-toggle');
+    if (toggle.checked) {
+        toggle.checked = false;
+        toggleDeleteButtons();
+    }
+
     document.querySelectorAll('button, input[type="checkbox"]').forEach(button => {
         if (button.id === 'check-eol-button' || button.id === 'manual-trigger-btn' || button.id === 'delete-toggle') {
             button.disabled = true;
