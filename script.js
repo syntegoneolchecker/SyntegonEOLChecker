@@ -1614,20 +1614,20 @@ function updateCheckEOLButtons(isRunning) {
     });
 }
 
-// Disable all Check EOL buttons (for manual check - prevent parallel execution)
+// Disable all Check EOL buttons and manual trigger button (for manual check - prevent parallel execution)
 function disableAllCheckEOLButtons() {
     isManualCheckRunning = true;
-    const checkButtons = document.querySelectorAll('.check-eol');
+    const checkButtons = document.querySelectorAll('.check-eol', 'manual-trigger-btn');
     checkButtons.forEach(button => {
         button.disabled = true;
     });
     console.log('All Check EOL buttons disabled (manual check in progress)');
 }
 
-// Enable all Check EOL buttons (after manual check completes)
+// Enable all Check EOL buttons and manual trigger button (after manual check completes)
 function enableAllCheckEOLButtons() {
     isManualCheckRunning = false;
-    const checkButtons = document.querySelectorAll('.check-eol');
+    const checkButtons = document.querySelectorAll('.check-eol', 'manual-trigger-btn');
     checkButtons.forEach(button => {
         button.disabled = false;
         button.textContent = 'Check EOL';
