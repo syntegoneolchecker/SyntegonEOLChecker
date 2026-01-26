@@ -18,7 +18,6 @@ function validateEnvironmentVariables() {
         'PORT', // Defaults to 3000 if not set
         'ALLOWED_ORIGINS', // Defaults to localhost if not set
         'NODE_ENV', // Development vs production
-        'NETLIFY_SITE_URL' // Required for centralized logging to Netlify
     ];
 
     const errors = [];
