@@ -1619,11 +1619,11 @@ function updateCheckEOLButtons(isRunning) {
 function disableAllCheckEOLButtons() {
     isManualCheckRunning = true;
     document.querySelectorAll('button, input[type="checkbox"]').forEach(button => {
-        if (button.id === 'check-eol-button' || button.id === 'manual-trigger-btn') {
+        if (button.id === 'check-eol-button' || button.id === 'manual-trigger-btn' || button.id === 'delete-toggle') {
             button.disabled = true;
         };
     });
-    console.log('Check EOL buttons and manual trigger button disabled (manual check in progress)');
+    console.log('Check EOL buttons, manual trigger button and delete toggle disabled (manual check in progress)');
 }
 
 // Enable all Check EOL buttons and manual trigger button (after manual check completes)
@@ -1633,11 +1633,11 @@ function enableAllCheckEOLButtons() {
         if (button.id === 'check-eol-button') {
             button.disabled = false;
             button.textContent = 'Check EOL';
-        } else if (button.id === 'manual-trigger-btn') {
+        } else if (button.id === 'manual-trigger-btn' || button.id === 'delete-toggle') {
             button.disabled = false;
         }
     });
-    console.log('Check EOL buttons and manual trigger button re-enabled (manual check complete)');
+    console.log('Check EOL buttons, manual trigger button and delete toggle re-enabled (manual check complete)');
 }
 
 // ============================================================================
