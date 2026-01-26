@@ -1,6 +1,5 @@
 // Functions in this file are called from HTML onclick handlers in index.html
 // ESLint's no-unused-vars is disabled for this file (see eslint.config.js)
-
 // ============================================================================
 // GLOBAL VARIABLES
 // ============================================================================
@@ -1105,8 +1104,8 @@ function processSuccessfulLoad(result, retry) {
     render();
 
     const successMessage = retry > 0
-        ? `✓ Database loaded successfully after ${retry + 1} attempts`
-        : '✓ Database loaded successfully from cloud storage';
+        ? `Database loaded successfully after ${retry + 1} attempts`
+        : 'Database loaded successfully from cloud storage';
 
     showStatus(successMessage);
 }
@@ -1328,6 +1327,7 @@ function updateRenderStatus(element, elapsed, data) {
 
 // Check Render scraping service health with retry logic
 async function checkRenderHealth() {
+    showStatus('Waiting for response from Render health check...');
     const renderStatusElement = document.getElementById('render-status');
     const renderServiceUrl = 'https://eolscrapingservice.onrender.com';
 
@@ -1344,6 +1344,7 @@ async function checkRenderHealth() {
         if (firstAttempt.success) {
             // Success on first attempt
             updateRenderStatus(renderStatusElement, firstAttempt.elapsed, firstAttempt.data);
+            showStatus('Render health check returned healthy.');
             return;
         }
 
@@ -1371,10 +1372,12 @@ async function checkRenderHealth() {
             renderStatusElement.textContent = `Ready after retry (${totalElapsed}s total)`;
             renderStatusElement.classList.remove('credits-medium');
             renderStatusElement.classList.add('credits-medium');
+            showStatus('Render health check returned healthy.');
             return;
         }
 
         // Both attempts failed
+        showStatus('Render health check returned no response, please reload the page.', 'error');
         console.error(`Render health check: Failed after 2 attempts (total: ${totalElapsed}s)`);
         renderStatusElement.textContent = `Offline after ${totalElapsed}s (${secondAttempt.error})`;
         renderStatusElement.classList.remove('credits-medium');
