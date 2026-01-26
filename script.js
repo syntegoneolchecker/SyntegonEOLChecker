@@ -1617,22 +1617,26 @@ function updateCheckEOLButtons(isRunning) {
 // Disable all Check EOL buttons and manual trigger button (for manual check - prevent parallel execution)
 function disableAllCheckEOLButtons() {
     isManualCheckRunning = true;
-    const checkButtons = document.querySelectorAll('.check-eol', 'manual-trigger-btn');
-    checkButtons.forEach(button => {
-        button.disabled = true;
+    document.querySelectorAll('button, input[type="checkbox"]').forEach(button => {
+        if (button.id === 'check-eol-button' || button.id === 'manual-trigger-btn') {
+            button.disabled = true;
+        };
     });
-    console.log('All Check EOL buttons disabled (manual check in progress)');
+    console.log('Check EOL buttons and manual trigger button disabled (manual check in progress)');
 }
 
 // Enable all Check EOL buttons and manual trigger button (after manual check completes)
 function enableAllCheckEOLButtons() {
     isManualCheckRunning = false;
-    const checkButtons = document.querySelectorAll('.check-eol', 'manual-trigger-btn');
-    checkButtons.forEach(button => {
-        button.disabled = false;
-        button.textContent = 'Check EOL';
+    document.querySelectorAll('button, input[type="checkbox"]').forEach(button => {
+        if (button.id === 'check-eol-button') {
+            button.disabled = false;
+            button.textContent = 'Check EOL';
+        } else if (button.id === 'manual-trigger-btn') {
+            button.disabled = false;
+        }
     });
-    console.log('All Check EOL buttons re-enabled (manual check complete)');
+    console.log('Check EOL buttons and manual trigger button re-enabled (manual check complete)');
 }
 
 // ============================================================================
