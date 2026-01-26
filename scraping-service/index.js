@@ -95,11 +95,11 @@ app.get("/status", (req, res) => {
 });
 
 // Middleware: API Key authentication for scraping endpoints
-const PROTECTED_ENDPOINTS = ["/scrape", "/scrape-keyence", "/scrape-batch"];
+const PROTECTED_ENDPOINTS = new Set(["/scrape", "/scrape-keyence", "/scrape-batch"]);
 
 app.use((req, res, next) => {
   // Only protect scraping endpoints, not health/status
-  if (!PROTECTED_ENDPOINTS.includes(req.path)) {
+  if (!PROTECTED_ENDPOINTS.has(req.path)) {
     return next();
   }
 
@@ -123,7 +123,7 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   if (
     getShutdownState() &&
-    PROTECTED_ENDPOINTS.includes(req.path)
+    PROTECTED_ENDPOINTS.has(req.path)
   ) {
     logger.info(`Rejecting ${req.path} request during shutdown`);
     return res.status(503).json({

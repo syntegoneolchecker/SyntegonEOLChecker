@@ -1,5 +1,3 @@
-const logger = require('./logger');
-
 // URL validation and SSRF protection utilities
 
 /**
