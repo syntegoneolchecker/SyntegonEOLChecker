@@ -80,7 +80,7 @@ function buildRowFromExcel(importedRow, headers, idIndex) {
         if (headerName === 'sap part number') {
             newRow.push(formattedID);
         } else {
-            const importColIndex = headers.findIndex(h => h && h.toString().toLowerCase().trim() === headerName);
+            const importColIndex = headers.findIndex(h => h?.toString().toLowerCase().trim() === headerName);
 
             if (importColIndex !== -1 && importedRow[importColIndex] !== undefined) {
                 newRow.push(importedRow[importColIndex].toString());

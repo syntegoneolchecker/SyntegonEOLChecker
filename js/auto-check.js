@@ -7,7 +7,7 @@ import {
 } from './state.js';
 import { showStatus, parseCreditsRemaining } from './utils.js';
 import { updateCheckEOLButtons } from './table.js';
-import { setControlsDisabledForAutoCheck, toggleDeleteButtons } from './ui.js';
+import { setControlsDisabledForAutoCheck} from './ui.js';
 
 /**
  * Load auto-check state and update UI

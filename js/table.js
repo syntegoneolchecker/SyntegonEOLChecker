@@ -51,9 +51,7 @@ async function updateButtonStates() {
         const autoCheckState = response.ok ? await response.json() : null;
 
         const shouldDisable = state.isManualCheckRunning || (autoCheckState?.isRunning) || !state.initComplete;
-        if (typeof updateCheckEOLButtons === 'function') {
-            updateCheckEOLButtons(shouldDisable);
-        }
+        updateCheckEOLButtons(shouldDisable);
     } catch (error) {
         console.warn('Failed to fetch auto-check state:', error);
         if (state.isManualCheckRunning) {
