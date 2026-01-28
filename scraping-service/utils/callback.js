@@ -56,13 +56,20 @@ function validateCallbackUrl(callbackUrl) {
 async function attemptCallback(callbackUrl, payload, attempt, maxRetries) {
     logger.info(`Sending callback (attempt ${attempt}/${maxRetries}): ${callbackUrl}`);
 
+    // Build headers with API key authentication
+    const headers = { 'Content-Type': 'application/json' };
+    const apiKey = process.env.SCRAPING_API_KEY;
+    if (apiKey) {
+        headers['X-API-Key'] = apiKey;
+    }
+
     // codeql[js/request-forgery] SSRF Justification: Callback URLs use strict whitelist validation via ALLOWED_ORIGINS.
     // Only trusted backend domains (configured in environment) are permitted for callbacks.
     // This is the result delivery mechanism - callbacks must go to configured backend servers.
     // Defense-in-depth: validation at endpoint level + immediate pre-fetch validation above.
     const response = await fetch(callbackUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload)
     });
 

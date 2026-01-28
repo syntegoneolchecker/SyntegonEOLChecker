@@ -102,6 +102,8 @@ module.exports = {
     // Default URLs (can be overridden by environment variables)
     DEFAULT_SCRAPING_SERVICE_URL: 'https://eolscrapingservice.onrender.com',
     DEFAULT_BROWSERQL_API_URL: 'https://production-sfo.browserless.io/stealth/bql',
+    DEFAULT_NETLIFY_SITE_URL: 'https://syntegoneolchecker.netlify.app',
+    DEVELOP_NETLIFY_SITE_URL: 'https://develop--syntegoneolchecker.netlify.app',
 
     // === FRONTEND POLLING ===
     FRONTEND_JOB_POLL_INTERVAL_MS: 2000,      // Frontend polls job status every 2s

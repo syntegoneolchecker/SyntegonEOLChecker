@@ -3,6 +3,7 @@ const nodemailer = require('nodemailer');
 const logger = require('./lib/logger');
 const { recordAttempt } = require('./lib/rate-limiter');
 const { validateAuthRequest } = require('./lib/auth-helpers');
+const { getCorsOrigin } = require('./lib/response-builder');
 
 /**
  * Construct base URL from request headers (works correctly for branch deploys)
@@ -54,7 +55,7 @@ exports.handler = async (event) => {
                 statusCode: 400,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify(result)
             };
@@ -76,7 +77,7 @@ exports.handler = async (event) => {
             statusCode: 201,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({
                 success: true,
@@ -93,7 +94,7 @@ exports.handler = async (event) => {
             statusCode: 500,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({
                 success: false,

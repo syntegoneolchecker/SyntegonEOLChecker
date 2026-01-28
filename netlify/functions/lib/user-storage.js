@@ -301,9 +301,14 @@ async function getFailedLoginCount(email) {
  * Normalize email address (lowercase, remove + aliases)
  * @param {string} email - Raw email
  * @returns {string} Normalized email
+ * @throws {Error} If email format is invalid (missing @ or multiple @)
  */
 function normalizeEmail(email) {
-    const [localPart, domain] = email.toLowerCase().split('@');
+    const parts = email.toLowerCase().split('@');
+    if (parts.length !== 2) {
+        throw new Error('Invalid email format: must contain exactly one @ symbol');
+    }
+    const [localPart, domain] = parts;
     // Remove plus addressing (e.g., user+test@domain.com -> user@domain.com)
     const cleanLocalPart = localPart.split('+')[0];
     return `${cleanLocalPart}@${domain}`;

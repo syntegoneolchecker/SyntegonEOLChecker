@@ -1,5 +1,6 @@
 const { getAuthenticatedUser } = require('./lib/auth-middleware');
 const logger = require('./lib/logger');
+const { getCorsOrigin } = require('./lib/response-builder');
 
 /**
  * Authentication Check Endpoint
@@ -24,7 +25,7 @@ exports.handler = async (event) => {
         return {
             statusCode: 204,
             headers: {
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': getCorsOrigin(),
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization',
                 'Access-Control-Allow-Methods': 'GET, OPTIONS'
             },
@@ -38,7 +39,7 @@ exports.handler = async (event) => {
             statusCode: 405,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({ error: 'Method not allowed' })
         };
@@ -52,7 +53,7 @@ exports.handler = async (event) => {
                 statusCode: 200,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify({ authenticated: false })
             };
@@ -62,7 +63,7 @@ exports.handler = async (event) => {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({ authenticated: true, user })
         };
@@ -73,7 +74,7 @@ exports.handler = async (event) => {
             statusCode: 500,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({ authenticated: false, error: 'Internal server error' })
         };

@@ -7,7 +7,7 @@ const pdfParse = require('pdf-parse');
 const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
-const { errorResponse, validationErrorResponse } = require('./lib/response-builder');
+const { getCorsOrigin, errorResponse, validationErrorResponse } = require('./lib/response-builder');
 
 /**
  * Check if URL is a PDF
@@ -450,7 +450,7 @@ function handlePreflightAndMethodValidation(event) {
         return {
             statusCode: 204,
             headers: {
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': getCorsOrigin(),
                 'Access-Control-Allow-Headers': 'Content-Type',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS'
             },
@@ -673,7 +673,7 @@ function createSuccessResponse(jobId, status, urlCount, strategy, additionalData
     const response = {
         statusCode: 200,
         headers: {
-            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Origin': getCorsOrigin(),
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
