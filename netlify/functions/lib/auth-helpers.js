@@ -1,5 +1,6 @@
 const logger = require('./logger');
 const { checkRateLimit, getClientIP } = require('./rate-limiter');
+const { getCorsOrigin } = require('./response-builder');
 
 /**
  * Shared authentication request validation
@@ -17,7 +18,7 @@ async function validateAuthRequest(event, action) {
             error: {
                 statusCode: 204,
                 headers: {
-                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Origin': getCorsOrigin(),
                     'Access-Control-Allow-Headers': 'Content-Type',
                     'Access-Control-Allow-Methods': 'POST, OPTIONS'
                 },
@@ -33,7 +34,7 @@ async function validateAuthRequest(event, action) {
                 statusCode: 405,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify({ error: 'Method not allowed' })
             }
@@ -52,7 +53,7 @@ async function validateAuthRequest(event, action) {
                 statusCode: 400,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify({
                     success: false,
@@ -68,7 +69,7 @@ async function validateAuthRequest(event, action) {
                 statusCode: 400,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify({
                     success: false,
@@ -89,7 +90,7 @@ async function validateAuthRequest(event, action) {
                 statusCode: 429,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Origin': getCorsOrigin(),
                     'Retry-After': rateLimit.retryAfter.toString()
                 },
                 body: JSON.stringify({

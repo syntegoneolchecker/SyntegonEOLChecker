@@ -1,5 +1,6 @@
 const { loginUser } = require('./lib/auth-manager');
 const { generateAuthCookie } = require('./lib/auth-middleware');
+const { getCorsOrigin } = require('./lib/response-builder');
 const logger = require('./lib/logger');
 const { recordAttempt, clearRateLimit } = require('./lib/rate-limiter');
 const { validateAuthRequest } = require('./lib/auth-helpers');
@@ -49,7 +50,7 @@ exports.handler = async (event) => {
                 statusCode: 401,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify({
                     success: false,
@@ -68,7 +69,7 @@ exports.handler = async (event) => {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': getCorsOrigin(),
                 'Set-Cookie': authCookie
             },
             body: JSON.stringify({

@@ -334,7 +334,7 @@ async function handleKeyenceInteractive(params) {
     logger.info(`Using KEYENCE interactive search for model: ${model}`);
 
     const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
-    const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
+    const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || config.DEFAULT_SCRAPING_SERVICE_URL;
 
     const keyencePayload = {
         model: model,
@@ -558,7 +558,7 @@ async function handleRenderDefault(params) {
     const { jobId, urlIndex, url, title, snippet, baseUrl } = params;
 
     const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
-    const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || 'https://eolscrapingservice.onrender.com';
+    const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || config.DEFAULT_SCRAPING_SERVICE_URL;
 
     logger.info('Checking Render service health...');
     const isHealthy = await checkRenderHealth(scrapingServiceUrl);

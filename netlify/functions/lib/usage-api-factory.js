@@ -1,9 +1,9 @@
 /**
  * Factory for creating usage API endpoint handlers
- * Consolidates common patterns across SerpAPI, Groq, and Tavily usage endpoints
+ * Consolidates common patterns across SerpAPI and Groq usage endpoints
  */
 const logger = require('./logger');
-const { errorResponse } = require('./response-builder');
+const { errorResponse, getCorsOrigin } = require('./response-builder');
 
 /**
  * Create a usage API handler for external API services
@@ -33,7 +33,7 @@ function createUsageApiHandler({ serviceName, fetchUsage, transformResponse, api
                     statusCode: response.status,
                     headers: {
                         'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*'
+                        'Access-Control-Allow-Origin': getCorsOrigin()
                     },
                     body: JSON.stringify({
                         error: `${serviceName} API failed: ${response.status}`,
@@ -49,7 +49,7 @@ function createUsageApiHandler({ serviceName, fetchUsage, transformResponse, api
                 statusCode: 200,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify(transformedData)
             };
@@ -73,24 +73,6 @@ const serpApiUsageHandler = createUsageApiHandler({
         limit: data.searches_per_month || 100,
         remaining: data.total_searches_left || 0,
         plan: data.plan_name || 'Unknown'
-    })
-});
-
-/**
- * Pre-configured handler for Tavily usage (legacy, kept for compatibility)
- */
-const tavilyUsageHandler = createUsageApiHandler({
-    serviceName: 'Tavily',
-    apiKeyEnvVar: 'TAVILY_API_KEY',
-    fetchUsage: (apiKey) => fetch('https://api.tavily.com/usage', {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${apiKey}` }
-    }),
-    transformResponse: (data) => ({
-        usage: data.key?.usage || 0,
-        limit: data.key?.limit || 1000,
-        remaining: (data.key?.limit || 1000) - (data.key?.usage || 0),
-        plan: data.account?.current_plan || 'Unknown'
     })
 });
 
@@ -137,7 +119,7 @@ const groqUsageHandler = async function(_event, _context) {
                 statusCode: response.status,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify({
                     error: `Groq API failed: ${response.status}`,
@@ -164,7 +146,7 @@ const groqUsageHandler = async function(_event, _context) {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({
                 remainingTokens: remainingTokens || '0',
@@ -182,6 +164,5 @@ const groqUsageHandler = async function(_event, _context) {
 module.exports = {
     createUsageApiHandler,
     serpApiUsageHandler,
-    tavilyUsageHandler,
     groqUsageHandler
 };

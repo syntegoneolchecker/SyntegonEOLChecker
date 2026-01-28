@@ -4,6 +4,38 @@
  */
 
 /**
+ * Get CORS origin header value based on ALLOWED_ORIGINS environment variable
+ * Falls back to '*' if ALLOWED_ORIGINS is not configured (development mode)
+ * @param {Object} event - Netlify function event (optional, used to match request origin)
+ * @returns {string} CORS origin value
+ */
+function getCorsOrigin(event = null) {
+    const allowedOrigins = process.env.ALLOWED_ORIGINS;
+
+    // If ALLOWED_ORIGINS not configured, allow all (development mode)
+    if (!allowedOrigins) {
+        return '*';
+    }
+
+    // Parse allowed origins
+    const origins = allowedOrigins.split(',').map(o => o.trim());
+
+    // If event provided, match against request origin
+    if (event?.headers?.origin) {
+        const requestOrigin = event.headers.origin;
+        if (origins.includes(requestOrigin)) {
+            return requestOrigin;
+        }
+        // Origin not in allowed list - return first allowed origin
+        // (browser will block the request if it doesn't match)
+        return origins[0];
+    }
+
+    // No event provided, return first allowed origin
+    return origins[0];
+}
+
+/**
  * Handle CORS preflight (OPTIONS) requests
  * @param {Object} event - Netlify function event
  * @param {string} allowedMethods - Comma-separated list of allowed HTTP methods (default: 'GET, POST, OPTIONS')
@@ -14,7 +46,7 @@ function handleCORSPreflight(event, allowedMethods = 'GET, POST, OPTIONS') {
         return {
             statusCode: 204,
             headers: {
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': getCorsOrigin(),
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization',
                 'Access-Control-Allow-Methods': allowedMethods
             },
@@ -34,7 +66,7 @@ function successResponse(data, statusCode = 200) {
     return {
         statusCode,
         headers: {
-            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Origin': getCorsOrigin(),
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -67,7 +99,7 @@ function errorResponse(message, details = null, statusCode = 500) {
     return {
         statusCode,
         headers: {
-            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Origin': getCorsOrigin(),
             'Content-Type': 'application/json'
         },
         body: JSON.stringify(errorBody)
@@ -101,7 +133,7 @@ function methodNotAllowedResponse(allowedMethods = 'POST') {
     return {
         statusCode: 405,
         headers: {
-            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Origin': getCorsOrigin(),
             'Content-Type': 'application/json',
             'Allow': allowedMethods
         },
@@ -117,6 +149,15 @@ function methodNotAllowedResponse(allowedMethods = 'POST') {
 }
 
 /**
+ * Build an unauthorized error response (401)
+ * @param {string} message - Error message
+ * @returns {Object} Netlify function response object
+ */
+function unauthorizedResponse(message = 'Unauthorized - invalid or missing API key') {
+    return errorResponse(message, null, 401);
+}
+
+/**
  * Build a rate limit error response (429)
  * @param {string} message - Rate limit message
  * @param {number} retryAfter - Seconds until rate limit resets (optional)
@@ -124,7 +165,7 @@ function methodNotAllowedResponse(allowedMethods = 'POST') {
  */
 function rateLimitResponse(message, retryAfter = null) {
     const headers = {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': getCorsOrigin(),
         'Content-Type': 'application/json'
     };
 
@@ -147,11 +188,13 @@ function rateLimitResponse(message, retryAfter = null) {
 }
 
 module.exports = {
+    getCorsOrigin,
     handleCORSPreflight,
     successResponse,
     errorResponse,
     validationErrorResponse,
     notFoundResponse,
     methodNotAllowedResponse,
+    unauthorizedResponse,
     rateLimitResponse
 };

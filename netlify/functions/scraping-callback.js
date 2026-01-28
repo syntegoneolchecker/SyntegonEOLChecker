@@ -1,8 +1,24 @@
 // Receive results from Render scraping service and save them
 const { saveUrlResult, getJob } = require('./lib/job-storage');
-const { errorResponse, methodNotAllowedResponse} = require('./lib/response-builder');
+const { errorResponse, methodNotAllowedResponse, unauthorizedResponse } = require('./lib/response-builder');
 const { triggerFetchUrl } = require('./lib/fire-and-forget');
 const logger = require('./lib/logger');
+
+/**
+ * Validate API key from Render service
+ * @param {Object} event - Netlify function event
+ * @returns {boolean} True if API key is valid
+ */
+function validateScrapingApiKey(event) {
+    const expectedKey = process.env.SCRAPING_API_KEY;
+    if (!expectedKey) {
+        logger.warn('SCRAPING_API_KEY not configured - callback authentication disabled');
+        return true; // Allow if not configured (for backwards compatibility during migration)
+    }
+
+    const providedKey = event.headers['x-api-key'];
+    return providedKey === expectedKey;
+}
 
 
 /**
@@ -101,6 +117,12 @@ async function triggerNextPendingUrl(job, jobId, baseUrl) {
 exports.handler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
         return methodNotAllowedResponse();
+    }
+
+    // Validate API key from Render service
+    if (!validateScrapingApiKey(event)) {
+        logger.warn('[CALLBACK] Unauthorized callback attempt - invalid or missing API key');
+        return unauthorizedResponse();
     }
 
     const startTime = Date.now();

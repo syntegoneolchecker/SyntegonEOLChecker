@@ -1,4 +1,5 @@
 const { validateAuthToken } = require('./auth-manager');
+const { getCorsOrigin } = require('./response-builder');
 
 /**
  * Authentication Middleware
@@ -45,7 +46,7 @@ function requireAuth(handler) {
                 statusCode: 401,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify({
                     error: 'Authentication required',
@@ -61,7 +62,7 @@ function requireAuth(handler) {
                 statusCode: 401,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify({
                     error: 'Invalid authentication',

@@ -1,5 +1,6 @@
 const { verifyEmail } = require('./lib/auth-manager');
 const logger = require('./lib/logger');
+const { getCorsOrigin } = require('./lib/response-builder');
 
 /**
  * Email Verification Endpoint
@@ -21,7 +22,7 @@ exports.handler = async (event) => {
         return {
             statusCode: 204,
             headers: {
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': getCorsOrigin(),
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization',
                 'Access-Control-Allow-Methods': 'GET, OPTIONS'
             },
@@ -35,7 +36,7 @@ exports.handler = async (event) => {
             statusCode: 405,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({
                 success: false,
@@ -52,7 +53,7 @@ exports.handler = async (event) => {
                 statusCode: 400,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify({
                     success: false,
@@ -68,7 +69,7 @@ exports.handler = async (event) => {
             statusCode: result.success ? 200 : 400,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify(result)
         };
@@ -79,7 +80,7 @@ exports.handler = async (event) => {
             statusCode: 500,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({
                 success: false,

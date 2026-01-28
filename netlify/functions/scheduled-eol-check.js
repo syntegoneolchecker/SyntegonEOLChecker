@@ -70,7 +70,7 @@ function getCurrentDeploymentUrl(event, context) {
     }
 
     // Priority 5: Default to production URL
-    const fallbackUrl = process.env.URL || 'https://syntegoneolchecker.netlify.app';
+    const fallbackUrl = process.env.URL || config.DEFAULT_NETLIFY_SITE_URL;
     logger.info(`Using fallback URL: ${fallbackUrl}`);
     return fallbackUrl;
 }

@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('node:crypto');
+const RE2 = require('re2');
 const {
     findUserByEmail,
     createUser,
@@ -16,6 +17,9 @@ const {
  * Authentication Manager
  * Handles password hashing, JWT generation, email verification, and login logic
  */
+
+// Pre-compiled regex patterns (module-level for efficiency)
+const EMAIL_REGEX = new RE2(String.raw`^[^\s@]+@[^\s@]+\.[^\s@]+$`);
 
 // Configuration from environment variables
 if (!process.env.JWT_SECRET) {
@@ -45,9 +49,12 @@ function isValidEmailDomain(email) {
  * @returns {boolean} True if email format is valid
  */
 function isValidEmailFormat(email) {
-    const RE2 = require('re2');
-    const emailRegex = new RE2(String.raw`^[^\s@]+@[^\s@]+\.[^\s@]+$`);
-    return emailRegex.test(email);
+    // Check for multiple @ symbols (invalid email format)
+    const atCount = (email.match(/@/g) || []).length;
+    if (atCount !== 1) {
+        return false;
+    }
+    return EMAIL_REGEX.test(email);
 }
 
 /**

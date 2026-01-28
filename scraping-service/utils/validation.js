@@ -2,7 +2,7 @@
 
 /**
  * Validates that a URL is safe for scraping (blocks private IPs, localhost, etc.)
- * Allows any public website - needed for dynamic search results from Tavily
+ * Allows any public website - needed for dynamic search results
  * @param {string} url - The URL to validate
  * @returns {{valid: boolean, reason?: string}} Validation result
  */

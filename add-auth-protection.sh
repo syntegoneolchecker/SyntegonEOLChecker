@@ -6,7 +6,6 @@
 ENDPOINTS=(
     "initialize-job.js"
     "job-status.js"
-    "get-tavily-usage.js"
     "get-groq-usage.js"
     "get-auto-check-state.js"
     "set-auto-check-state.js"

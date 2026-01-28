@@ -2,6 +2,7 @@ const { getStore } = require('@netlify/blobs');
 const { parseCSV } = require('./lib/csv-parser');
 const logger = require('./lib/logger');
 const { requireAuth } = require('./lib/auth-middleware');
+const { getCorsOrigin } = require('./lib/response-builder');
 
 const getCsvHandler = async function(_event, _context) {
     try {
@@ -24,7 +25,7 @@ const getCsvHandler = async function(_event, _context) {
                 statusCode: 200,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify({ data: defaultData })
             };
@@ -39,7 +40,7 @@ const getCsvHandler = async function(_event, _context) {
                 statusCode: 500,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': getCorsOrigin()
                 },
                 body: JSON.stringify({
                     error: 'CSV parsing failed',
@@ -57,7 +58,7 @@ const getCsvHandler = async function(_event, _context) {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({
                 data: parseResult.data,
@@ -70,7 +71,7 @@ const getCsvHandler = async function(_event, _context) {
             statusCode: 500,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({
                 error: 'Failed to read CSV data: ' + error.message
