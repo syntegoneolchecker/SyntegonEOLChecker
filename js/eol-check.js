@@ -2,7 +2,7 @@
 // EOL CHECKING FUNCTIONALITY
 // ============================================================================
 
-import { data, setIsManualCheckRunning } from './state.js';
+import { state, setIsManualCheckRunning } from './state.js';
 import { showStatus, isRenderServiceHealthy, updateRowInOriginalData, delay } from './utils.js';
 import { render } from './table.js';
 import { saveToServer } from './api.js';
@@ -73,7 +73,7 @@ async function initializeEOLJob(model, manufacturer) {
  * Update row with EOL results
  */
 async function updateRowWithEOLResults(rowIndex, result) {
-    const row = data[rowIndex];
+    const row = state.data[rowIndex];
 
     row[5] = result.status || 'UNKNOWN';
     row[6] = result.explanation || '';
@@ -132,7 +132,7 @@ export function enableAllCheckEOLButtons() {
  * Main EOL check function
  */
 export async function checkEOL(rowIndex) {
-    const row = data[rowIndex];
+    const row = state.data[rowIndex];
     const model = row[3];
     const manufacturer = row[4];
 

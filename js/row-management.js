@@ -2,7 +2,7 @@
 // ROW MANAGEMENT (ADD/DELETE)
 // ============================================================================
 
-import { data, originalData } from './state.js';
+import { state } from './state.js';
 import {
     showStatus, validateAndFormatSAPNumber, collectInputFields,
     clearInputFields, buildConfirmationMessage, findRowBySAPNumber
@@ -14,8 +14,8 @@ import { saveToServer } from './api.js';
  * Add new entry
  */
 async function addNewEntry(formattedID, row) {
-    data.push(row);
-    if (originalData) originalData.push(row);
+    state.data.push(row);
+    if (state.originalData) state.originalData.push(row);
     render();
     showStatus(`✓ New entry ${formattedID} added successfully`);
     await saveToServer();
@@ -26,8 +26,8 @@ async function addNewEntry(formattedID, row) {
  * Replace existing entry
  */
 async function replaceExistingEntry(existingIndex, formattedID, row) {
-    data[existingIndex] = row;
-    if (originalData) originalData[existingIndex] = row;
+    state.data[existingIndex] = row;
+    if (state.originalData) state.originalData[existingIndex] = row;
     render();
     showStatus(`✓ Entry ${formattedID} replaced successfully`);
     await saveToServer();
@@ -49,7 +49,7 @@ export async function addRow() {
     if (existingIndex === -1) {
         await addNewEntry(formattedID, row);
     } else {
-        const existingRow = data[existingIndex];
+        const existingRow = state.data[existingIndex];
         const confirmMessage = buildConfirmationMessage(formattedID, existingRow);
 
         if (confirm(confirmMessage)) {
@@ -64,17 +64,17 @@ export async function addRow() {
  * Delete a row from the table
  */
 export async function delRow(i) {
-    if (originalData) {
-        const rowToDelete = data[i];
+    if (state.originalData) {
+        const rowToDelete = state.data[i];
         const sapNumber = rowToDelete[0];
 
-        const originalIndex = originalData.findIndex(row => row[0] === sapNumber);
+        const originalIndex = state.originalData.findIndex(row => row[0] === sapNumber);
         if (originalIndex !== -1) {
-            originalData.splice(originalIndex, 1);
+            state.originalData.splice(originalIndex, 1);
         }
     }
 
-    data.splice(i, 1);
+    state.data.splice(i, 1);
     render();
     await saveToServer();
 }

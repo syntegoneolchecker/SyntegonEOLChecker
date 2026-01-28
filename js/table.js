@@ -3,8 +3,7 @@
 // ============================================================================
 
 import {
-    data, setData, originalData, setOriginalData,
-    currentSort, isManualCheckRunning, initComplete
+    state, setData, setOriginalData
 } from './state.js';
 
 // ============================================================================
@@ -17,10 +16,10 @@ import {
 function renderTableHeader(columnContent, columnIndex, sortableColumns) {
     const isSortable = sortableColumns.includes(columnIndex);
     let sortIndicator = '';
-    if (currentSort.column === columnIndex) {
-        if (currentSort.direction === 'asc') {
+    if (state.currentSort.column === columnIndex) {
+        if (state.currentSort.direction === 'asc') {
             sortIndicator = ' ▲';
-        } else if (currentSort.direction === 'desc') {
+        } else if (state.currentSort.direction === 'desc') {
             sortIndicator = ' ▼';
         }
     }
@@ -39,7 +38,7 @@ function renderTableCell(cellContent) {
  * Render table action buttons
  */
 function renderActionButtons(rowIndex) {
-    const disabled = isManualCheckRunning ? 'disabled' : '';
+    const disabled = state.isManualCheckRunning ? 'disabled' : '';
     return `<td><button id="check-eol-button" class="check-eol" onclick="checkEOL(${rowIndex})" ${disabled}>Check EOL</button><button class="delete" onclick="delRow(${rowIndex})">Delete</button></td>`;
 }
 
@@ -49,15 +48,15 @@ function renderActionButtons(rowIndex) {
 async function updateButtonStates() {
     try {
         const response = await fetch('/.netlify/functions/get-auto-check-state');
-        const state = response.ok ? await response.json() : null;
+        const autoCheckState = response.ok ? await response.json() : null;
 
-        const shouldDisable = isManualCheckRunning || (state?.isRunning) || !initComplete;
+        const shouldDisable = state.isManualCheckRunning || (autoCheckState?.isRunning) || !state.initComplete;
         if (typeof updateCheckEOLButtons === 'function') {
             updateCheckEOLButtons(shouldDisable);
         }
     } catch (error) {
         console.warn('Failed to fetch auto-check state:', error);
-        if (isManualCheckRunning) {
+        if (state.isManualCheckRunning) {
             updateCheckEOLButtons(true);
         }
     }
@@ -80,7 +79,7 @@ export function render() {
     const sortableColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
     const t = document.getElementById('table');
-    t.innerHTML = data.map((r, i) =>
+    t.innerHTML = state.data.map((r, i) =>
         `<tr id="row-${i}">${r.map((c, j) => {
             if (i === 0) {
                 return renderTableHeader(c, j, sortableColumns);
@@ -116,10 +115,10 @@ function compareValues(aVal, bVal, columnIndex, direction) {
  * Determine next sort state
  */
 function getNextSortState(columnIndex) {
-    if (currentSort.column === columnIndex) {
-        if (currentSort.direction === null) {
+    if (state.currentSort.column === columnIndex) {
+        if (state.currentSort.direction === null) {
             return 'asc';
-        } else if (currentSort.direction === 'asc') {
+        } else if (state.currentSort.direction === 'asc') {
             return 'desc';
         } else {
             return null;
@@ -133,27 +132,27 @@ function getNextSortState(columnIndex) {
  * Sort table by column
  */
 export function sortTable(columnIndex) {
-    if (originalData === null) {
-        setOriginalData(structuredClone(data));
+    if (state.originalData === null) {
+        setOriginalData(structuredClone(state.data));
     }
 
     const nextDirection = getNextSortState(columnIndex);
 
     if (nextDirection === null) {
-        currentSort.direction = null;
-        currentSort.column = null;
-        setData(structuredClone(originalData));
+        state.currentSort.direction = null;
+        state.currentSort.column = null;
+        setData(structuredClone(state.originalData));
         render();
         return;
     }
 
-    currentSort.column = columnIndex;
-    currentSort.direction = nextDirection;
+    state.currentSort.column = columnIndex;
+    state.currentSort.direction = nextDirection;
 
-    const header = data[0];
-    const rows = data.slice(1);
+    const header = state.data[0];
+    const rows = state.data.slice(1);
 
-    rows.sort((a, b) => compareValues(a[columnIndex], b[columnIndex], columnIndex, currentSort.direction));
+    rows.sort((a, b) => compareValues(a[columnIndex], b[columnIndex], columnIndex, state.currentSort.direction));
 
     setData([header, ...rows]);
     render();

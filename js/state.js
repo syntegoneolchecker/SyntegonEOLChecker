@@ -2,75 +2,79 @@
 // GLOBAL STATE MANAGEMENT
 // ============================================================================
 
-// Database state
-export let data = [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']];
+// All mutable state in a single const object
+// Properties can be modified, but the object reference cannot be reassigned
+export const state = {
+    // Database state
+    data: [['SAP Part Number', 'Legacy Part Number', 'Designation', 'Model', 'Manufacturer', 'Status', 'Status Comment', 'Successor Model', 'Successor Comment', 'Successor SAP Number', 'Stock', 'Information Date', 'Auto Check']],
+    originalData: null,
 
-// Sorting state
-export let originalData = null;
-export const currentSort = {
-    column: null,
-    direction: null
+    // Sorting state
+    currentSort: {
+        column: null,
+        direction: null
+    },
+
+    // Manual Check EOL state
+    isManualCheckRunning: false,
+
+    // Countdown interval for Groq rate limit reset
+    groqCountdownInterval: null,
+    groqResetTimestamp: null,
+
+    // Auto-check monitoring interval
+    autoCheckMonitoringInterval: null,
+    // Timestamp of last user toggle action
+    lastToggleTime: 0,
+    // Grace period in ms to skip syncs after user toggle
+    toggleSyncGracePeriod: 15000,
+
+    // Init completion flag
+    initComplete: false,
+
+    // User info
+    currentUser: {}
 };
-
-// Manual Check EOL state
-export let isManualCheckRunning = false;
-
-// Countdown interval for Groq rate limit reset
-export let groqCountdownInterval = null;
-export let groqResetTimestamp = null;
-
-// Auto-check monitoring interval
-export let _autoCheckMonitoringInterval = null;
-// Timestamp of last user toggle action
-export let _lastToggleTime = 0;
-// Grace period in ms to skip syncs after user toggle
-export const _toggleSyncGracePeriod = 15000;
-
-// Init completion flag
-export let initComplete = false;
-
-// User info
-export let currentUser = {};
 
 // State setters (for modules that need to modify state)
 export function setData(newData) {
-    data = newData;
+    state.data = newData;
 }
 
 export function setOriginalData(newOriginalData) {
-    originalData = newOriginalData;
+    state.originalData = newOriginalData;
 }
 
 export function setIsManualCheckRunning(value) {
-    isManualCheckRunning = value;
+    state.isManualCheckRunning = value;
 }
 
 export function setGroqCountdownInterval(interval) {
-    groqCountdownInterval = interval;
+    state.groqCountdownInterval = interval;
 }
 
 export function setGroqResetTimestamp(timestamp) {
-    groqResetTimestamp = timestamp;
+    state.groqResetTimestamp = timestamp;
 }
 
 export function setAutoCheckMonitoringInterval(interval) {
-    _autoCheckMonitoringInterval = interval;
+    state.autoCheckMonitoringInterval = interval;
 }
 
 export function setLastToggleTime(time) {
-    _lastToggleTime = time;
+    state.lastToggleTime = time;
 }
 
 export function setInitComplete(value) {
-    initComplete = value;
+    state.initComplete = value;
 }
 
 export function setCurrentUser(user) {
-    currentUser = user;
+    state.currentUser = user;
 }
 
 // Reset sorting state
 export function resetSortState() {
-    currentSort.column = null;
-    currentSort.direction = null;
+    state.currentSort.column = null;
+    state.currentSort.direction = null;
 }

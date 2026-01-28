@@ -3,8 +3,7 @@
 // ============================================================================
 
 import {
-    groqCountdownInterval, groqResetTimestamp,
-    setGroqCountdownInterval, setGroqResetTimestamp
+    state, setGroqCountdownInterval, setGroqResetTimestamp
 } from './state.js';
 import { showStatus } from './utils.js';
 
@@ -111,8 +110,8 @@ export function updateGroqRateLimits(rateLimits) {
  * Start Groq countdown timer
  */
 export function startGroqCountdown(resetSeconds) {
-    if (groqCountdownInterval) {
-        clearInterval(groqCountdownInterval);
+    if (state.groqCountdownInterval) {
+        clearInterval(state.groqCountdownInterval);
     }
 
     setGroqResetTimestamp(Date.now() + (resetSeconds * 1000));
@@ -129,18 +128,18 @@ export function startGroqCountdown(resetSeconds) {
 function updateCountdownDisplay() {
     const countdownElement = document.getElementById('groq-reset-countdown');
 
-    if (!groqResetTimestamp) {
+    if (!state.groqResetTimestamp) {
         countdownElement.textContent = 'N/A';
         return;
     }
 
     const now = Date.now();
-    const timeLeft = Math.max(0, groqResetTimestamp - now);
+    const timeLeft = Math.max(0, state.groqResetTimestamp - now);
 
     if (timeLeft <= 0) {
         countdownElement.textContent = 'Refreshing...';
-        if (groqCountdownInterval) {
-            clearInterval(groqCountdownInterval);
+        if (state.groqCountdownInterval) {
+            clearInterval(state.groqCountdownInterval);
             setGroqCountdownInterval(null);
         }
         loadGroqUsage();

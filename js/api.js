@@ -2,7 +2,7 @@
 // SERVER INTEGRATION (NETLIFY BLOBS)
 // ============================================================================
 
-import { data, setData, setOriginalData, resetSortState } from './state.js';
+import { state, setData, setOriginalData, resetSortState } from './state.js';
 import { showStatus, delay } from './utils.js';
 import { render } from './table.js';
 
@@ -16,7 +16,7 @@ export async function saveToServer() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ data: data })
+            body: JSON.stringify({ data: state.data })
         });
 
         const result = await response.json();
