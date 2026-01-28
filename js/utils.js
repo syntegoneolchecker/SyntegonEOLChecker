@@ -2,7 +2,7 @@
 // UTILITY FUNCTIONS
 // ============================================================================
 
-import { data, originalData } from './state.js';
+import { state } from './state.js';
 
 /**
  * Show status message in the UI
@@ -30,8 +30,8 @@ export function formatID(input) {
  * Find row by SAP Part Number
  */
 export function findRowBySAPNumber(sapNumber) {
-    for (let i = 1; i < data.length; i++) {
-        if (data[i][0] === sapNumber) {
+    for (let i = 1; i < state.data.length; i++) {
+        if (state.data[i][0] === sapNumber) {
             return i;
         }
     }
@@ -42,12 +42,12 @@ export function findRowBySAPNumber(sapNumber) {
  * Update row in originalData by SAP Part Number
  */
 export function updateRowInOriginalData(row) {
-    if (!originalData) return;
+    if (!state.originalData) return;
 
     const sapNumber = row[0];
-    const originalIndex = originalData.findIndex(r => r[0] === sapNumber);
+    const originalIndex = state.originalData.findIndex(r => r[0] === sapNumber);
     if (originalIndex !== -1) {
-        originalData[originalIndex] = [...row];
+        state.originalData[originalIndex] = [...row];
     }
 }
 

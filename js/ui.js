@@ -3,7 +3,7 @@
 // ============================================================================
 
 import {
-    data, setData, setOriginalData, resetSortState
+    setData, setOriginalData, resetSortState
 } from './state.js';
 import { showStatus } from './utils.js';
 import { render } from './table.js';

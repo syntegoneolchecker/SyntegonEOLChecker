@@ -3,8 +3,7 @@
 // ============================================================================
 
 import {
-    isManualCheckRunning, _lastToggleTime, _toggleSyncGracePeriod,
-    setLastToggleTime, setAutoCheckMonitoringInterval
+    state as appState, setLastToggleTime, setAutoCheckMonitoringInterval
 } from './state.js';
 import { showStatus, parseCreditsRemaining } from './utils.js';
 import { updateCheckEOLButtons } from './table.js';
@@ -30,7 +29,7 @@ export async function loadAutoCheckState() {
             toggle.checked = state.enabled;
         }
 
-        if (!isManualCheckRunning) {
+        if (!appState.isManualCheckRunning) {
             updateCheckEOLButtons(state.isRunning);
         }
 
@@ -153,8 +152,8 @@ export async function manualTriggerAutoCheck() {
  * Sync auto-check toggle with server state
  */
 function syncAutoCheckToggle(serverEnabled) {
-    const timeSinceToggle = Date.now() - _lastToggleTime;
-    if (timeSinceToggle < _toggleSyncGracePeriod) {
+    const timeSinceToggle = Date.now() - appState.lastToggleTime;
+    if (timeSinceToggle < appState.toggleSyncGracePeriod) {
         return;
     }
 
@@ -232,7 +231,7 @@ export function startAutoCheckMonitoring() {
 
             state = await detectAndRecoverStuckState(state);
 
-            if (!isManualCheckRunning) {
+            if (!appState.isManualCheckRunning) {
                 updateCheckEOLButtons(state.isRunning);
                 setControlsDisabledForAutoCheck(state.isRunning);
             }

@@ -3,7 +3,7 @@
 // ============================================================================
 
 import {
-    data, originalData, setOriginalData, resetSortState
+    state, setOriginalData, resetSortState
 } from './state.js';
 import { showStatus, formatID, findRowBySAPNumber } from './utils.js';
 import { render } from './table.js';
@@ -72,7 +72,7 @@ function buildRowFromExcel(importedRow, headers, idIndex) {
     }
 
     const newRow = [];
-    const ourHeaders = data[0];
+    const ourHeaders = state.data[0];
 
     for (const element of ourHeaders) {
         const headerName = element.toLowerCase().trim();
@@ -108,12 +108,12 @@ function processExcelRow(importedRow, headers, idIndex, stats) {
     const existingIndex = findRowBySAPNumber(formattedID);
 
     if (existingIndex === -1) {
-        data.push(newRow);
-        if (originalData) originalData.push(newRow);
+        state.data.push(newRow);
+        if (state.originalData) state.originalData.push(newRow);
         stats.newEntries++;
     } else {
-        data[existingIndex] = newRow;
-        if (originalData) originalData[existingIndex] = newRow;
+        state.data[existingIndex] = newRow;
+        if (state.originalData) state.originalData[existingIndex] = newRow;
         stats.updatedEntries++;
     }
 }
