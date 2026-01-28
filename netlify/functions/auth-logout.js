@@ -1,6 +1,6 @@
 const { generateLogoutCookie } = require('./lib/auth-middleware');
 const logger = require('./lib/logger');
-const { handleCORSPreflight, methodNotAllowedResponse, errorResponse } = require('./lib/response-builder');
+const { getCorsOrigin, handleCORSPreflight, methodNotAllowedResponse, errorResponse } = require('./lib/response-builder');
 
 /**
  * User Logout Endpoint
@@ -33,7 +33,7 @@ exports.handler = async (event) => {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': getCorsOrigin(),
                 'Set-Cookie': logoutCookie
             },
             body: JSON.stringify({

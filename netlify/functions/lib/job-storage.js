@@ -330,7 +330,7 @@ async function saveFinalResult(jobId, result, _context) {
 }
 
 /**
- * Replace all URLs in a job (used for Tavily fallback)
+ * Replace all URLs in a job
  */
 async function replaceJobUrls(jobId, newUrls, _context) {
     const store = getJobStore();

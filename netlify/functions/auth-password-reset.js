@@ -3,6 +3,7 @@ const nodemailer = require('nodemailer');
 const logger = require('./lib/logger');
 const { checkRateLimit, recordAttempt } = require('./lib/rate-limiter');
 const { findUserByEmail, storePasswordResetToken, normalizeEmail } = require('./lib/user-storage');
+const { getCorsOrigin } = require('./lib/response-builder');
 
 /**
  * Construct base URL from request headers (works correctly for branch deploys)
@@ -37,7 +38,7 @@ exports.handler = async (event) => {
         return {
             statusCode: 204,
             headers: {
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': getCorsOrigin(),
                 'Access-Control-Allow-Headers': 'Content-Type',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS'
             },
@@ -51,7 +52,7 @@ exports.handler = async (event) => {
             statusCode: 405,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({ error: 'Method not allowed' })
         };
@@ -67,7 +68,7 @@ exports.handler = async (event) => {
             statusCode: 400,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({
                 success: false,
@@ -81,7 +82,7 @@ exports.handler = async (event) => {
             statusCode: 400,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({
                 success: false,
@@ -102,7 +103,7 @@ exports.handler = async (event) => {
             statusCode: 429,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': getCorsOrigin(),
                 'Retry-After': rateLimit.retryAfter.toString()
             },
             body: JSON.stringify({
@@ -148,7 +149,7 @@ exports.handler = async (event) => {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({
                 success: true,
@@ -162,7 +163,7 @@ exports.handler = async (event) => {
             statusCode: 500,
             headers: {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
+                'Access-Control-Allow-Origin': getCorsOrigin()
             },
             body: JSON.stringify({
                 success: false,

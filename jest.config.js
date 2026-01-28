@@ -18,7 +18,7 @@ module.exports = {
   collectCoverageFrom: [
     'netlify/functions/**/*.js',
     'scraping-service/**/*.js',
-    'script.js',
+    'js/**/*.js',
     '!**/node_modules/**',
     '!**/coverage/**',
     '!netlify/functions/lib/csv-parser.js', // Excluded per sonar-project.properties
@@ -42,8 +42,7 @@ module.exports = {
   // Ignore patterns
   testPathIgnorePatterns: [
     '/node_modules/',
-    '/coverage/',
-    '/test.js$'  // Exclude old custom test file
+    '/coverage/'
   ],
 
   // Verbose output

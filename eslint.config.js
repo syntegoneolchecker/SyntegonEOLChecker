@@ -31,7 +31,7 @@ module.exports = [
                 URL: 'readonly',
                 Event: 'readonly',
                 crypto: 'readonly',
-                // Browser globals (for script.js)
+                // Browser globals
                 window: 'readonly',
                 document: 'readonly',
                 fetch: 'readonly',
@@ -83,12 +83,12 @@ module.exports = [
             }
         }
     },
-    // Frontend script.js - functions called from HTML onclick handlers
+    // Frontend modules - ES module files in js/ directory
     {
-        files: ['**/script.js', '**/public/script.js'],
+        files: ['**/js/**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
-            sourceType: 'module', // Enable ES modules to support top-level await
+            sourceType: 'module', // Enable ES modules
             globals: {
                 // Browser globals
                 window: 'readonly',
@@ -108,7 +108,7 @@ module.exports = [
             }
         },
         rules: {
-            // Disable unused vars check for script.js - functions are called from HTML
+            // Disable unused vars check for frontend - functions are called from HTML
             'no-unused-vars': 'off'
         }
     }

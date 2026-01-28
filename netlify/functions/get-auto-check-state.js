@@ -1,7 +1,7 @@
 // Get auto-check state from Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
-const { handleCORSPreflight, errorResponse } = require('./lib/response-builder');
+const { getCorsOrigin, handleCORSPreflight, errorResponse } = require('./lib/response-builder');
 
 exports.handler = async function(event, _context) {
     // Handle CORS
@@ -38,7 +38,7 @@ exports.handler = async function(event, _context) {
         return {
             statusCode: 200,
             headers: {
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': getCorsOrigin(),
                 'Content-Type': 'application/json',
                 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
                 'Pragma': 'no-cache',

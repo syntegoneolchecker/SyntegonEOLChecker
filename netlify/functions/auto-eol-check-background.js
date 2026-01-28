@@ -35,7 +35,8 @@ async function wakeRenderService() {
         try {
             logger.info(`Health check attempt ${attempt} (elapsed: ${((Date.now() - overallStartTime) / 1000).toFixed(1)}s)...`);
 
-            const response = await fetch('https://eolscrapingservice.onrender.com/health', {
+            const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || config.DEFAULT_SCRAPING_SERVICE_URL;
+            const response = await fetch(`${scrapingServiceUrl}/health`, {
                 signal: AbortSignal.timeout(healthCheckInterval)
             });
 
@@ -358,8 +359,8 @@ class JobPoller {
     }
 
     async performHealthCheck() {
-        const renderHealthUrl = 'https://eolscrapingservice.onrender.com/health';
-        const healthResponse = await fetch(renderHealthUrl, {
+        const scrapingServiceUrl = process.env.SCRAPING_SERVICE_URL || config.DEFAULT_SCRAPING_SERVICE_URL;
+        const healthResponse = await fetch(`${scrapingServiceUrl}/health`, {
             signal: AbortSignal.timeout(5000)
         });
 
@@ -763,7 +764,7 @@ async function initializeFromEvent(event) {
                    process.env.DEPLOY_PRIME_URL ||
                    process.env.DEPLOY_URL ||
                    process.env.URL ||
-                   'https://develop--syntegoneolchecker.netlify.app';
+                   config.DEVELOP_NETLIFY_SITE_URL;
 
     logger.info(`Site URL: ${siteUrl} (${passedSiteUrl ? 'passed from caller' : 'from environment'})`);
 
@@ -925,7 +926,7 @@ async function handleErrorState(event) {
                            process.env.DEPLOY_PRIME_URL ||
                            process.env.DEPLOY_URL ||
                            process.env.URL ||
-                           'https://develop--syntegoneolchecker.netlify.app';
+                           config.DEVELOP_NETLIFY_SITE_URL;
 
         await updateAutoCheckState(errorSiteUrl, { isRunning: false });
     } catch (e) {

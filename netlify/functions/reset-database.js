@@ -1,12 +1,13 @@
 // Reset database - clears all data from Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
+const { getCorsOrigin } = require('./lib/response-builder');
 
 exports.handler = async function(event, _context) {
     if (event.httpMethod !== 'POST') {
         return {
             statusCode: 405,
-            headers: { 'Access-Control-Allow-Origin': '*' },
+            headers: { 'Access-Control-Allow-Origin': getCorsOrigin() },
             body: JSON.stringify({ error: 'Method Not Allowed - use POST' })
         };
     }
@@ -25,7 +26,7 @@ exports.handler = async function(event, _context) {
 
         return {
             statusCode: 200,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+            headers: { 'Access-Control-Allow-Origin': getCorsOrigin(), 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 success: true,
                 message: 'Database cleared. Page will reload with empty database.'
@@ -35,7 +36,7 @@ exports.handler = async function(event, _context) {
         logger.error('Reset error:', error);
         return {
             statusCode: 500,
-            headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+            headers: { 'Access-Control-Allow-Origin': getCorsOrigin(), 'Content-Type': 'application/json' },
             body: JSON.stringify({ error: error.message })
         };
     }

@@ -245,7 +245,6 @@ User data is stored in Netlify Blobs in the `auth-data` store:
 
 - Small user base (<10) - Netlify Blobs suitable
 - No OAuth integration (Google/Microsoft)
-- No password reset flow (can be added)
 - No session revocation list (tokens valid until expiry)
 - Email verification relies on configured email service
 
@@ -341,12 +340,23 @@ exports.handler = async () => {
 };
 ```
 
-### Reset User Password
+### Password Reset (Account Deletion Flow)
 
-Currently not implemented.
-In the case of a forgotten password, delete the "users" file in the blob storage "auth-data".
-This will delete all existing accounts.
-Afterwards create a new account with an accessible syntegon mail address.
+Password reset is implemented as an account deletion flow. Since accounts only store login credentials and no user-specific data, deleting and re-creating an account is functionally equivalent to resetting a password.
+
+**How it works:**
+1. User clicks "Forgot your password?" on the login page
+2. Confirms they want to proceed (warned that their account will be deleted)
+3. System sends an email with an account deletion link (48-hour expiry)
+4. User clicks the link, which deletes their account
+5. User can immediately re-register with the same email and a new password
+
+**Rate limiting:** One password reset request per 15 minutes per email address.
+
+**Related endpoints:**
+- `auth-password-reset.js` - Sends the deletion link email
+- `auth-delete-account.js` - Validates token and deletes the account
+- `delete-account.html` - Confirmation page for account deletion
 
 ### View All Users
 
