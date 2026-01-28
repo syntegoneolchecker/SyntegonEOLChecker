@@ -31,7 +31,7 @@ module.exports = [
                 URL: 'readonly',
                 Event: 'readonly',
                 crypto: 'readonly',
-                // Browser globals (for script.js)
+                // Browser globals
                 window: 'readonly',
                 document: 'readonly',
                 fetch: 'readonly',
@@ -85,7 +85,7 @@ module.exports = [
     },
     // Frontend modules - ES module files in js/ directory
     {
-        files: ['**/js/**/*.js', '**/script.js', '**/public/script.js'],
+        files: ['**/js/**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
             sourceType: 'module', // Enable ES modules

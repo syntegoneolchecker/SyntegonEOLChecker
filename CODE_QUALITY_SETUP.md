@@ -84,10 +84,10 @@ Run ESLint locally to catch issues before pushing:
 
 ```bash
 # Check all files
-npx eslint netlify/functions/**/*.js scraping-service/**/*.js script.js test.js
+npx eslint netlify/functions/**/*.js scraping-service/**/*.js js/**/*.js
 
 # Auto-fix issues
-npx eslint --fix netlify/functions/**/*.js scraping-service/**/*.js script.js test.js
+npx eslint --fix netlify/functions/**/*.js scraping-service/**/*.js js/**/*.js
 
 # Check specific file
 npx eslint netlify/functions/fetch-url.js

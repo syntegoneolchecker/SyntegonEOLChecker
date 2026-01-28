@@ -22,8 +22,8 @@ jobs:
       run: npm install
 
     - name: Run ESLint
-      run: npx eslint netlify/functions/**/*.js scraping-service/**/*.js script.js test.js --max-warnings 50
+      run: npx eslint netlify/functions/**/*.js scraping-service/**/*.js js/**/*.js --max-warnings 50
       continue-on-error: true
 
     - name: Run tests
-      run: node test.js
+      run: npm test

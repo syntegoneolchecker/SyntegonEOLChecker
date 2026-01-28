@@ -42,8 +42,7 @@ module.exports = {
   // Ignore patterns
   testPathIgnorePatterns: [
     '/node_modules/',
-    '/coverage/',
-    '/test.js$'  // Exclude old custom test file
+    '/coverage/'
   ],
 
   // Verbose output
