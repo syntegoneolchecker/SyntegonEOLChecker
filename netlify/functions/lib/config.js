@@ -1,29 +1,16 @@
 /**
  * Configuration constants for EOL Checker application
- * Centralizes all magic numbers and limits for easier maintenance
+ * Centralizes all magic numbers and limits that are USED in code
  *
- * FREE TIER LIMITS (as of 2025):
- * - Netlify Functions: 30s timeout (regular), 15min timeout (background)
- * - Groq: 200,000 tokens/day, 8,000 tokens/minute (rolling window)
- * - SerpAPI: 250 searches/month (daily checks limited to 20 to accommodate)
- * - BrowserQL: 1,000 tokens/month (1 token = 30 seconds)
- * - Render: 512MB RAM, 750 hours/month
+ * Note: Free tier limit documentation is in ARCHITECTURE.md
  */
 
 module.exports = {
     // === JOB MANAGEMENT ===
     JOB_CLEANUP_DELAY_MINUTES: 1440,  // Delete completed jobs after 24 hours (1440 minutes)
-    JOB_POLL_MAX_ATTEMPTS: 60,     // Max polling attempts (60 × 2s = 2 min)
-    JOB_POLL_INTERVAL_MS: 2000,    // Poll interval between status checks
 
     // === LOG MANAGEMENT ===
     LOG_RETENTION_DAYS: 1,         // Delete logs older than 1 day
-
-    // === GROQ LLM LIMITS ===
-    GROQ_MIN_TOKENS_REQUIRED: 500,      // Min tokens needed before starting analysis
-    GROQ_DAILY_TOKEN_LIMIT: 200000,     // Daily token limit (rolling 24h window)
-    GROQ_MINUTE_TOKEN_LIMIT: 8000,      // Per-minute token limit (rolling window)
-    GROQ_MAX_RETRIES: 3,                 // Max retries for rate limit errors
 
     // === CONTENT TRUNCATION ===
     MAX_CONTENT_LENGTH_PER_URL: 6500,   // Max characters per scraped URL
@@ -64,39 +51,12 @@ module.exports = {
     // === RETRY LOGIC ===
     CALLBACK_MAX_RETRIES: 3,            // Max retries for scraping callbacks
     CALLBACK_RETRY_BASE_MS: 1000,       // Base delay for exponential backoff (2s, 4s, 8s)
-    BLOBS_OPERATION_MAX_RETRIES: 5,     // Max retries for Netlify Blobs operations
-    GIT_PUSH_MAX_RETRIES: 4,            // Max retries for git push (network errors)
 
     // === DATABASE SCHEMA ===
     CSV_COLUMN_COUNT: 13,               // Expected number of columns in CSV
-    CSV_COLUMNS: {
-        SAP_PART_NUMBER: 0,
-        LEGACY_PART_NUMBER: 1,
-        DESIGNATION: 2,
-        MODEL: 3,
-        MANUFACTURER: 4,
-        STATUS: 5,
-        STATUS_COMMENT: 6,
-        SUCCESSOR_MODEL: 7,
-        SUCCESSOR_COMMENT: 8,
-        SUCCESSOR_SAP_NUMBER: 9,
-        STOCK: 10,
-        INFORMATION_DATE: 11,
-        AUTO_CHECK: 12
-    },
-
-    // === VALIDATION ===
-    MAX_MODEL_NAME_LENGTH: 200,         // Max length for model names
-    MAX_MAKER_NAME_LENGTH: 200,         // Max length for manufacturer names
-    SAP_NUMBER_DIGIT_COUNT: 10,         // Expected digits in SAP part number
-    MAX_STRING_LENGTH: 1000,            // Generic max string length for sanitization
 
     // === NETWORK TIMEOUTS ===
-    HEALTH_CHECK_TIMEOUT_MS: 5000,      // Timeout for health check requests
-    NETLIFY_FUNCTION_TIMEOUT_MS: 30000, // Netlify function timeout (30s)
-    NETLIFY_BACKGROUND_TIMEOUT_MS: 900000, // Background function timeout (15min)
     FIRE_AND_FORGET_TIMEOUT_MS: 10000,  // Timeout for fire-and-forget operations
-    RENDER_SERVICE_CALL_TIMEOUT_MS: 30000, // Timeout for Render service calls (increased for PDF processing and cold starts)
 
     // === SERVICE URLs ===
     // Default URLs (can be overridden by environment variables)
@@ -104,14 +64,6 @@ module.exports = {
     DEFAULT_BROWSERQL_API_URL: 'https://production-sfo.browserless.io/stealth/bql',
     DEFAULT_NETLIFY_SITE_URL: 'https://syntegoneolchecker.netlify.app',
     DEVELOP_NETLIFY_SITE_URL: 'https://develop--syntegoneolchecker.netlify.app',
-
-    // === FRONTEND POLLING ===
-    FRONTEND_JOB_POLL_INTERVAL_MS: 2000,      // Frontend polls job status every 2s
-    FRONTEND_AUTO_CHECK_MONITOR_MS: 10000,    // Frontend monitors auto-check every 10s
-
-    // === AUTO-CHECK BACKGROUND ===
-    AUTO_CHECK_RENDER_WAKE_MAX_MS: 120000,    // Max time to wait for Render wake (2 min)
-    AUTO_CHECK_RENDER_WAKE_INTERVAL_MS: 30000, // Check Render health every 30s during wake
 
     // === FIRE-AND-FORGET RETRY ===
     FIRE_AND_FORGET_MAX_RETRIES: 2,           // Max retries for fire-and-forget operations
