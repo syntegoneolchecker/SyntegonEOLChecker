@@ -426,7 +426,7 @@ exports.handler = async function(event, context) {
         logger.info('Creating job for:', { maker, model });
 
         // Create job (this also triggers job cleanup internally)
-        // Note: Log cleanup is now handled by scheduled-log-cleanup.js
+        // Note: Log cleanup is handled by Supabase pg_cron (see SUPABASE_LOGGING_SETUP.md)
         const jobId = await createJob(maker, model, context);
 
         // Process manufacturer strategy or fall back to search
