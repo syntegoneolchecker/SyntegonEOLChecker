@@ -105,6 +105,16 @@ function isAutoCheckEnabled(row) {
     return (autoCheckValue !== 'NO');
 }
 
+// Helper: Check if product has a final EOL status that won't change
+// DISCONTINUED products should not be re-checked as their status is permanent
+function hasFinalEOLStatus(row) {
+    const eolStatus = (row[5] || '').trim().toUpperCase();
+
+    // EOL Status column (column 5):
+    // - "DISCONTINUED": product is discontinued, status won't change
+    return (eolStatus === 'DISCONTINUED');
+}
+
 // Helper: Find next product to check
 async function findNextProduct() {
     try {
@@ -150,19 +160,29 @@ async function findNextProduct() {
             return null;
         }
 
-        logger.info(`Total products: ${rows.length}, Auto Check enabled: ${autoCheckEnabledRows.length}, Auto Check disabled: ${rows.length - autoCheckEnabledRows.length}`);
+        // Filter out products with final EOL status (DISCONTINUED)
+        // These products have a permanent status that won't change
+        const checkableRows = autoCheckEnabledRows.filter(row => !hasFinalEOLStatus(row));
+        const discontinuedCount = autoCheckEnabledRows.length - checkableRows.length;
+
+        if (checkableRows.length === 0) {
+            logger.info('No products to check (all are either Auto Check disabled or DISCONTINUED)');
+            return null;
+        }
+
+        logger.info(`Total products: ${rows.length}, Auto Check enabled: ${autoCheckEnabledRows.length}, DISCONTINUED (skipped): ${discontinuedCount}, Checkable: ${checkableRows.length}`);
 
         // Priority 1: Products with empty Information Date (column 11)
-        const unchecked = autoCheckEnabledRows.filter(row => !row[11] || row[11].trim() === '');
+        const unchecked = checkableRows.filter(row => !row[11] || row[11].trim() === '');
         if (unchecked.length > 0) {
-            logger.info(`Found ${unchecked.length} unchecked products (with Auto Check enabled), selecting first`);
+            logger.info(`Found ${unchecked.length} unchecked products (checkable), selecting first`);
             return unchecked[0];
         }
 
         // Priority 2: Product with oldest Information Date
-        const checked = autoCheckEnabledRows.filter(row => row[11] && row[11].trim() !== '');
+        const checked = checkableRows.filter(row => row[11] && row[11].trim() !== '');
         if (checked.length === 0) {
-            logger.info('All products checked, no oldest found');
+            logger.info('All checkable products checked, no oldest found');
             return null;
         }
 
@@ -173,7 +193,7 @@ async function findNextProduct() {
             return dateA - dateB;
         });
 
-        logger.info(`Found ${checked.length} checked products (with Auto Check enabled), selecting oldest: ${checked[0][11]}`);
+        logger.info(`Found ${checked.length} checked products (checkable), selecting oldest: ${checked[0][11]}`);
         return checked[0];
 
     } catch (error) {
