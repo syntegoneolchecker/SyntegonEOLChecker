@@ -9,9 +9,6 @@ module.exports = {
     // === JOB MANAGEMENT ===
     JOB_CLEANUP_DELAY_MINUTES: 1440,  // Delete completed jobs after 24 hours (1440 minutes)
 
-    // === LOG MANAGEMENT ===
-    LOG_RETENTION_DAYS: 1,         // Delete logs older than 1 day
-
     // === CONTENT TRUNCATION ===
     MAX_CONTENT_LENGTH_PER_URL: 6500,   // Max characters per scraped URL
     MAX_TOTAL_CONTENT_LENGTH: 13000,    // Max total content (2 URLs × 6500)

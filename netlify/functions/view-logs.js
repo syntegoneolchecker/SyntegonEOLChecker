@@ -19,7 +19,6 @@ const parseParams = (params) => ({
     source: params.source,
     level: params.level,
     search: params.search,
-    days: Math.max(1, Number.parseInt(params.days) || 1),
     format: params.format === "json" ? "json" : "html",
     offset: Math.max(0, Number.parseInt(params.offset) || 0),
     limit: Math.min(1000, Math.max(1, Number.parseInt(params.limit) || 100)),
@@ -29,7 +28,7 @@ const parseParams = (params) => ({
  * Fetch logs from Supabase with filters
  */
 const fetchLogsFromSupabase = async (filters) => {
-    const { date, source, level, search, days, offset, limit } = filters;
+    const { date, source, level, search, offset, limit } = filters;
 
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_API_KEY) {
         throw new Error('Supabase not configured. Set SUPABASE_URL and SUPABASE_API_KEY environment variables.');
@@ -45,17 +44,11 @@ const fetchLogsFromSupabase = async (filters) => {
     params.set('limit', limit.toString());
     params.set('offset', offset.toString());
 
-    // Date filter
+    // Date filter (specific date only)
     if (date) {
-        // Specific date - use 'and' for range query
         const startOfDay = `${date}T00:00:00.000Z`;
         const endOfDay = `${date}T23:59:59.999Z`;
         params.set('and', `(timestamp.gte.${startOfDay},timestamp.lte.${endOfDay})`);
-    } else if (days) {
-        // Last N days - only need lower bound
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
-        params.set('timestamp', `gte.${startDate.toISOString()}`);
     }
 
     // Level filter - INCLUSIVE hierarchy (shows selected level and higher)
@@ -167,10 +160,10 @@ const errorResponse = (error) => {
 const viewLogsHandler = async (event) => {
     try {
         const params = event.queryStringParameters || {};
-        const { date, source, level, search, days, format, offset, limit } =
+        const { date, source, level, search, format, offset, limit } =
             parseParams(params);
 
-        const filters = { date, source, level, search, days, offset, limit };
+        const filters = { date, source, level, search, offset, limit };
 
         // Fetch from Supabase
         const { logs, totalCount } = await fetchLogsFromSupabase(filters);
@@ -187,7 +180,7 @@ const viewLogsHandler = async (event) => {
             hasMore,
         };
 
-        return formatResponse(paginatedData, { source, level, search, days }, format);
+        return formatResponse(paginatedData, { source, level, search }, format);
     } catch (error) {
         return errorResponse(error);
     }
@@ -232,7 +225,6 @@ function formatMessage(log) {
 
 function buildQueryString(filters, offset, limit) {
     const params = new URLSearchParams();
-    if (filters.days) params.set("days", filters.days);
     if (filters.source) params.set("source", filters.source);
     if (filters.level) params.set("level", filters.level);
     if (filters.search) params.set("search", filters.search);
@@ -266,7 +258,6 @@ function getFilterInfo(filters) {
     if (filters.source) filterInfo.push(`Source: ${filters.source}`);
     if (filters.level) filterInfo.push(`Level: ${filters.level}`);
     if (filters.search) filterInfo.push(`Search: "${filters.search}"`);
-    if (filters.days > 1) filterInfo.push(`Last ${filters.days} days`);
     return filterInfo;
 }
 
@@ -654,12 +645,6 @@ function generateHTMLTemplate(data) {
 
 function generateFilterControls(filters) {
     return `
-        <div class="filter-group">
-          <label>Days</label>
-          <input type="number" name="days" value="${
-              filters.days || 1
-          }" min="1" max="30">
-        </div>
         <div class="filter-group">
           <label>Source</label>
           <input type="text" name="source" value="${
