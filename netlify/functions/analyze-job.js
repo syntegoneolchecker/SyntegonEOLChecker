@@ -295,7 +295,17 @@ function buildResultSection(urlInfo, result, processedContent, index) {
 }
 
 function formatResults(job, truncationLevel = 0) {
-    const { maxContentLength, maxTotalChars } = calculateContentLimits(truncationLevel);
+    let { maxContentLength, maxTotalChars } = calculateContentLimits(truncationLevel);
+
+    // Single-URL jobs can use more of the total budget since there's no second URL
+    // Reserve TOTAL_CONTENT_BUFFER for headers/formatting overhead
+    if (job.urls.length === 1) {
+        const singleUrlLimit = maxTotalChars - config.TOTAL_CONTENT_BUFFER;
+        if (singleUrlLimit > maxContentLength) {
+            logger.info(`Single URL job: increasing content limit from ${maxContentLength} to ${singleUrlLimit} chars`);
+            maxContentLength = singleUrlLimit;
+        }
+    }
 
     if (truncationLevel > 0) {
         logger.info(`Progressive truncation level ${truncationLevel}: max ${maxContentLength} chars/URL, ${maxTotalChars} total`);

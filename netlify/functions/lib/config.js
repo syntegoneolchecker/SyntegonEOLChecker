@@ -22,6 +22,9 @@ module.exports = {
     // TOTAL LIMIT: maxTotalChars = maxContentLength * MULTIPLIER + BUFFER
     //   Level 0: 6000 * 2 + 1000 = 13000 chars across all URLs
     //
+    // SINGLE-URL OPTIMIZATION: When only 1 URL exists, maxContentLength increases to
+    //   maxTotalChars - BUFFER (e.g., 13000 - 1000 = 12000 chars) to use the full budget
+    //
     BASE_CONTENT_LENGTH: 6000,            // Max chars per URL at truncation level 0
     TRUNCATION_REDUCTION_PER_LEVEL: 1500, // Chars subtracted per level (level 1 = -1500, level 2 = -3000)
     MIN_CONTENT_LENGTH: 1500,             // Floor value - truncation levels can't go below this
