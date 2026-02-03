@@ -79,7 +79,8 @@ module.exports = {
     // === AUTO-CHECK LIMITS ===
     MAX_AUTO_CHECKS_PER_DAY: 20,        // Daily auto-check limit (reduced for SerpAPI)
     MIN_SERPAPI_CREDITS_FOR_AUTO: 30,   // Min SerpAPI credits to enable auto-check
-    AUTO_CHECK_SCHEDULE_CRON: '0 12 * * *', // Daily at 21:00 GMT+9 (12:00 UTC)
+    // The cron expression must be present in the scheduled function to avoid build errors on Netlify
+    //AUTO_CHECK_SCHEDULE_CRON: '0 12 * * *', // Daily at 21:00 GMT+9 (12:00 UTC)
 
     // === RETRY LOGIC ===
     CALLBACK_MAX_RETRIES: 3,            // Max retries for scraping callbacks
