@@ -4,6 +4,7 @@ const { errorResponse, methodNotAllowedResponse, notFoundResponse } = require('.
 const { processTablesInContent, filterIrrelevantTables, smartTruncate } = require('./lib/content-truncator');
 const RE2 = require('re2');
 const logger = require('./lib/logger');
+const config = require('./lib/config');
 
 // Check Groq API token availability before making request
 async function checkGroqTokenAvailability() {
@@ -227,15 +228,11 @@ exports.handler = async function(event, context) {
  * Calculate content length limits based on truncation level
  */
 function calculateContentLimits(truncationLevel) {
-    const BASE_CONTENT_LENGTH = 6000;
-    const TRUNCATION_REDUCTION = 1500;
-    const MIN_CONTENT_LENGTH = 1500;
-
     const maxContentLength = Math.max(
-        MIN_CONTENT_LENGTH,
-        BASE_CONTENT_LENGTH - (truncationLevel * TRUNCATION_REDUCTION)
+        config.MIN_CONTENT_LENGTH,
+        config.BASE_CONTENT_LENGTH - (truncationLevel * config.TRUNCATION_REDUCTION_PER_LEVEL)
     );
-    const maxTotalChars = maxContentLength * 2 + 1000;
+    const maxTotalChars = maxContentLength * config.TOTAL_CONTENT_MULTIPLIER + config.TOTAL_CONTENT_BUFFER;
 
     return { maxContentLength, maxTotalChars };
 }
@@ -255,7 +252,7 @@ function processUrlContent(content, maxContentLength, model, urlIndex) {
         processedContent = processTablesInContent(processedContent);
     }
 
-    const filteringThreshold = maxContentLength / 2;
+    const filteringThreshold = maxContentLength * config.TABLE_FILTERING_THRESHOLD_RATIO;
     if (processedContent.length <= filteringThreshold) {
         return processedContent;
     }

@@ -10,11 +10,21 @@ module.exports = {
     JOB_CLEANUP_DELAY_MINUTES: 1440,  // Delete completed jobs after 24 hours (1440 minutes)
 
     // === CONTENT TRUNCATION ===
-    MAX_CONTENT_LENGTH_PER_URL: 6500,   // Max characters per scraped URL
-    MAX_TOTAL_CONTENT_LENGTH: 13000,    // Max total content (2 URLs × 6500)
-    PRODUCT_MENTION_CONTEXT_CHARS: 250, // Characters around product mentions
+    // Progressive truncation: level 0 = base, level 1 = base - reduction, level 2 = base - 2*reduction
+    BASE_CONTENT_LENGTH: 6000,          // Base max characters per scraped URL (level 0)
+    TRUNCATION_REDUCTION_PER_LEVEL: 1500, // Characters reduced per truncation level
+    MIN_CONTENT_LENGTH: 1500,           // Minimum content length (floor for truncation)
+    TOTAL_CONTENT_MULTIPLIER: 2,        // Multiplier for total content (number of URLs)
+    TOTAL_CONTENT_BUFFER: 1000,         // Extra buffer for total content limit
     TABLE_CONTEXT_ROWS_BEFORE: 3,       // Rows to keep before product mention in tables
     TABLE_CONTEXT_ROWS_AFTER: 3,        // Rows to keep after product mention in tables
+    ADJACENT_TABLE_THRESHOLD: 200,      // Chars between tables to consider them adjacent
+    TABLE_FILTERING_THRESHOLD_RATIO: 0.5, // Filter tables when content exceeds this ratio of limit
+    // Zone extraction settings
+    ZONE_RADIUS_MIN: 400,               // Minimum chars around important positions
+    ZONE_RADIUS_MAX: 2000,              // Maximum chars around important positions
+    KEYWORD_MAX_OCCURRENCES: 3,         // Max occurrences per keyword to track
+    KEYWORD_MAX_TOTAL: 20,              // Max total keyword positions to track
 
     // === SERPAPI SEARCH ===
     SERPAPI_MAX_RESULTS: 10,            // Search results to fetch from SerpAPI (organic_results limit)

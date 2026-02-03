@@ -156,14 +156,13 @@ function removeTablesFromContent(content, tablesToRemove) {
 function filterIrrelevantTables(content, productModel) {
     if (!content || !productModel) return content;
 
-    const ADJACENT_TABLE_THRESHOLD = 200;
     const allTables = findAllTables(content, productModel);
 
     if (allTables.length === 0) {
         return content;
     }
 
-    const tablesToKeep = determineTablesToKeep(allTables, ADJACENT_TABLE_THRESHOLD);
+    const tablesToKeep = determineTablesToKeep(allTables, config.ADJACENT_TABLE_THRESHOLD);
     const tablesToRemove = allTables.filter((_, index) => !tablesToKeep.has(index));
 
     if (tablesToRemove.length === 0) {
@@ -438,7 +437,9 @@ function findProductPositions(contentLower, productLower) {
 /**
  * Find keyword positions with frequency limiting
  */
-function findKeywordPositions(contentLower, maxOccurrences = 3, maxTotal = 20) {
+function findKeywordPositions(contentLower) {
+    const maxOccurrences = config.KEYWORD_MAX_OCCURRENCES;
+    const maxTotal = config.KEYWORD_MAX_TOTAL;
     const positions = [];
     let totalCount = 0;
 
@@ -466,7 +467,7 @@ function calculateZoneRadius(positionCount, maxLength) {
     const availableSpace = maxLength - separatorOverhead - 100;
     const idealZoneSize = availableSpace / estimatedMergedZones;
     return {
-        radius: Math.max(400, Math.min(2000, Math.floor(idealZoneSize / 2))),
+        radius: Math.max(config.ZONE_RADIUS_MIN, Math.min(config.ZONE_RADIUS_MAX, Math.floor(idealZoneSize / 2))),
         estimatedZones: estimatedMergedZones
     };
 }
