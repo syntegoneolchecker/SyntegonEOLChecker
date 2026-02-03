@@ -7,7 +7,7 @@ import {
 } from './state.js';
 import { showStatus, parseCreditsRemaining } from './utils.js';
 import { updateCheckEOLButtons } from './table.js';
-import { setControlsDisabledForAutoCheck} from './ui.js';
+import { setControlsDisabledForAutoCheck, setDeleteToggleDisabled} from './ui.js';
 
 /**
  * Load auto-check state and update UI
@@ -94,6 +94,7 @@ export async function setAutoCheckState(stateUpdate) {
 
     const newState = await response.json();
     setControlsDisabledForAutoCheck(newState.isRunning);
+    setDeleteToggleDisabled();
 
     return await newState;
 }
@@ -118,6 +119,7 @@ export async function manualTriggerAutoCheck() {
 
         await setAutoCheckState({ isRunning: true });
         setControlsDisabledForAutoCheck(true);
+        setDeleteToggleDisabled();
 
         const siteUrl = globalThis.location.origin;
         const response = await fetch('/.netlify/functions/auto-eol-check-background', {

@@ -81,13 +81,19 @@ export function setControlsDisabled(disabled) {
  * Disable/enable controls based on auto-check running state
  */
 export function setControlsDisabledForAutoCheck(disabled) {
+    document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
+        if (el.id === 'auto-check-toggle' || el.id === 'logout-button' || el.id === 'view-logs-button') return;
+        el.disabled = disabled;
+    });
+}
+
+/**
+ * Turn delete toggle off
+ */
+export function setDeleteToggleDisabled() {
     const toggle = document.getElementById('delete-toggle');
     if (toggle.checked) {
         toggle.checked = false;
         toggleDeleteButtons();
     }
-    document.querySelectorAll('button, input[type="checkbox"]').forEach(el => {
-        if (el.id === 'auto-check-toggle' || el.id === 'logout-button' || el.id === 'view-logs-button') return;
-        el.disabled = disabled;
-    });
 }

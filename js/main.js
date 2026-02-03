@@ -7,7 +7,7 @@ import { loadFromServer, manualSaveDatabase } from './api.js';
 import { sortTable } from './table.js';
 import { loadSerpAPICredits, loadGroqUsage, checkRenderHealth } from './credits.js';
 import { loadAutoCheckState, toggleAutoCheck, manualTriggerAutoCheck, startAutoCheckMonitoring } from './auto-check.js';
-import { setControlsDisabled, setControlsDisabledForAutoCheck, toggleDeleteButtons, clearDatabase } from './ui.js';
+import { setControlsDisabled, setControlsDisabledForAutoCheck, toggleDeleteButtons, clearDatabase, setDeleteToggleDisabled } from './ui.js';
 import { addRow, delRow } from './row-management.js';
 import { checkEOL } from './eol-check.js';
 import { downloadExcel, loadExcel } from './excel.js';
@@ -38,6 +38,7 @@ export async function init() {
         setControlsDisabled(false);
         if (autoCheckRunning) {
             setControlsDisabledForAutoCheck(true);
+            setDeleteToggleDisabled();
         }
         setInitComplete(true);
     }
