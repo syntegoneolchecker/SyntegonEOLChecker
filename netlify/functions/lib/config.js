@@ -10,11 +10,41 @@ module.exports = {
     JOB_CLEANUP_DELAY_MINUTES: 1440,  // Delete completed jobs after 24 hours (1440 minutes)
 
     // === CONTENT TRUNCATION ===
-    MAX_CONTENT_LENGTH_PER_URL: 6500,   // Max characters per scraped URL
-    MAX_TOTAL_CONTENT_LENGTH: 13000,    // Max total content (2 URLs × 6500)
-    PRODUCT_MENTION_CONTEXT_CHARS: 250, // Characters around product mentions
-    TABLE_CONTEXT_ROWS_BEFORE: 3,       // Rows to keep before product mention in tables
-    TABLE_CONTEXT_ROWS_AFTER: 3,        // Rows to keep after product mention in tables
+    // Scraped URL content is truncated before being sent to the LLM to fit within token limits.
+    // If the LLM returns "prompt too large", truncation level increases and content is re-processed.
+    //
+    // PROGRESSIVE TRUNCATION LEVELS:
+    //   Level 0: maxContentLength = BASE_CONTENT_LENGTH (6000 chars/URL)
+    //   Level 1: maxContentLength = BASE - REDUCTION (4500 chars/URL)
+    //   Level 2: maxContentLength = BASE - 2*REDUCTION (3000 chars/URL)
+    //   Formula: max(MIN_CONTENT_LENGTH, BASE - level * REDUCTION)
+    //
+    // TOTAL LIMIT: maxTotalChars = maxContentLength * MULTIPLIER + BUFFER
+    //   Level 0: 6000 * 2 + 1000 = 13000 chars across all URLs
+    //
+    BASE_CONTENT_LENGTH: 6000,            // Max chars per URL at truncation level 0
+    TRUNCATION_REDUCTION_PER_LEVEL: 1500, // Chars subtracted per level (level 1 = -1500, level 2 = -3000)
+    MIN_CONTENT_LENGTH: 1500,             // Floor value - truncation levels can't go below this
+    TOTAL_CONTENT_MULTIPLIER: 2,          // URLs combined (maxContentLength * 2)
+    TOTAL_CONTENT_BUFFER: 1000,           // Extra chars for headers/formatting in combined output
+
+    // TABLE HANDLING:
+    // Tables are detected by lines with 2+ pipe characters and wrapped with === TABLE START/END ===
+    // Tables not containing the product name are removed, EXCEPT adjacent tables (may have related info)
+    //
+    TABLE_CONTEXT_ROWS_BEFORE: 3,       // When truncating tables, keep N rows before product mention
+    TABLE_CONTEXT_ROWS_AFTER: 3,        // When truncating tables, keep N rows after product mention
+    ADJACENT_TABLE_THRESHOLD: 200,      // Tables within N chars of a product-containing table are kept
+    TABLE_FILTERING_THRESHOLD_RATIO: 1.0, // Only filter tables when content > maxContentLength * ratio
+
+    // ZONE EXTRACTION (last resort truncation):
+    // Keeps only content near product mentions and EOL-related keywords (e.g., "discontinued", "生産終了")
+    // Everything between zones is replaced with [...] separators
+    //
+    ZONE_RADIUS_MIN: 400,               // Minimum chars to keep around each important position
+    ZONE_RADIUS_MAX: 2000,              // Maximum chars to keep (adaptive based on available space)
+    KEYWORD_MAX_OCCURRENCES: 3,         // Track max N occurrences of each EOL keyword
+    KEYWORD_MAX_TOTAL: 20,              // Track max N keyword positions total (prevents keyword spam)
 
     // === SERPAPI SEARCH ===
     SERPAPI_MAX_RESULTS: 10,            // Search results to fetch from SerpAPI (organic_results limit)
