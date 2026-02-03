@@ -149,7 +149,7 @@ const handler = async (event, context) => {
         const serpapiResponse = await fetch(`${siteUrl}/.netlify/functions/get-serpapi-usage`);
         if (serpapiResponse.ok) {
             const serpapiData = await serpapiResponse.json();
-            if (serpapiData.remaining <= 50) {
+            if (serpapiData.remaining <= config.MIN_SERPAPI_CREDITS_FOR_AUTO) {
                 logger.info(`SerpAPI credits too low (${serpapiData.remaining}), disabling auto-check`);
                 // Use set-auto-check-state to avoid race condition
                 await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
@@ -212,4 +212,4 @@ const handler = async (event, context) => {
 };
 
 // Schedule to run daily at 12:00 UTC (21:00 GMT+9)
-exports.handler = schedule('0 12 * * *', handler);
+exports.handler = schedule(config.AUTO_CHECK_SCHEDULE_CRON, handler);

@@ -877,7 +877,7 @@ async function processNextProduct(state, siteUrl, store) {
         isRunning: true  // Explicitly maintain running state during chain
     });
 
-    logger.info(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${newCounter}/10`);
+    logger.info(`Check ${success ? 'succeeded' : 'failed'}, counter now: ${newCounter}/${config.MAX_AUTO_CHECKS_PER_DAY}`);
 
     return {
         shouldStopChain: false,
