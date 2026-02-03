@@ -297,13 +297,18 @@ function buildResultSection(urlInfo, result, processedContent, index) {
 function formatResults(job, truncationLevel = 0) {
     let { maxContentLength, maxTotalChars } = calculateContentLimits(truncationLevel);
 
-    // Single-URL jobs can use more of the total budget since there's no second URL
-    // Reserve TOTAL_CONTENT_BUFFER for headers/formatting overhead
-    if (job.urls.length === 1) {
-        const singleUrlLimit = maxTotalChars - config.TOTAL_CONTENT_BUFFER;
-        if (singleUrlLimit > maxContentLength) {
-            logger.info(`Single URL job: increasing content limit from ${maxContentLength} to ${singleUrlLimit} chars`);
-            maxContentLength = singleUrlLimit;
+    // Dynamically adjust per-URL budget based on actual URL count
+    // This ensures all URLs are included (with less content each if needed)
+    // If total still exceeds limit, progressive truncation will handle it
+    const urlCount = job.urls.length;
+    const availableBudget = maxTotalChars - config.TOTAL_CONTENT_BUFFER;
+    const perUrlBudget = Math.floor(availableBudget / urlCount);
+
+    if (perUrlBudget !== maxContentLength) {
+        const adjustedLimit = Math.max(config.MIN_CONTENT_LENGTH, Math.min(maxContentLength, perUrlBudget));
+        if (adjustedLimit !== maxContentLength) {
+            logger.info(`Adjusting content limit for ${urlCount} URLs: ${maxContentLength} -> ${adjustedLimit} chars/URL`);
+            maxContentLength = adjustedLimit;
         }
     }
 
@@ -314,19 +319,10 @@ function formatResults(job, truncationLevel = 0) {
     let formatted = '';
     let totalChars = 0;
 
-    for (let index = 0; index < job.urls.length; index++) {
-        const urlInfo = job.urls[index];
+    for (const [index, urlInfo] of job.urls.entries()) {
         const result = job.urlResults[urlInfo.index];
         const processedContent = processUrlContent(result?.fullContent, maxContentLength, job.model, index);
         const resultSection = buildResultSection(urlInfo, result, processedContent, index);
-
-        // Only apply URL omission for 3+ URLs. For ≤2 URLs, include all and let
-        // progressive truncation handle size issues (better than losing half the context)
-        if (job.urls.length > 2 && totalChars + resultSection.length > maxTotalChars) {
-            logger.info(`Stopping at URL #${index + 1} - total char limit (${maxTotalChars}) would be exceeded`);
-            formatted += `\n[Note: Remaining URLs omitted to stay within token limits]\n`;
-            break;
-        }
 
         formatted += resultSection;
         totalChars += resultSection.length;
