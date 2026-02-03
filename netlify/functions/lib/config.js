@@ -19,7 +19,7 @@ module.exports = {
     TABLE_CONTEXT_ROWS_BEFORE: 3,       // Rows to keep before product mention in tables
     TABLE_CONTEXT_ROWS_AFTER: 3,        // Rows to keep after product mention in tables
     ADJACENT_TABLE_THRESHOLD: 200,      // Chars between tables to consider them adjacent
-    TABLE_FILTERING_THRESHOLD_RATIO: 0.5, // Filter tables when content exceeds this ratio of limit
+    TABLE_FILTERING_THRESHOLD_RATIO: 1.0, // Filter tables when content exceeds this ratio of limit
     // Zone extraction settings
     ZONE_RADIUS_MIN: 400,               // Minimum chars around important positions
     ZONE_RADIUS_MAX: 2000,              // Maximum chars around important positions
