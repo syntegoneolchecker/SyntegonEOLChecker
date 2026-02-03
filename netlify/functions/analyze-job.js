@@ -4,6 +4,7 @@ const { errorResponse, methodNotAllowedResponse, notFoundResponse } = require('.
 const { processTablesInContent, filterIrrelevantTables, smartTruncate } = require('./lib/content-truncator');
 const RE2 = require('re2');
 const logger = require('./lib/logger');
+const config = require('./lib/config');
 
 // Check Groq API token availability before making request
 async function checkGroqTokenAvailability() {
@@ -227,15 +228,11 @@ exports.handler = async function(event, context) {
  * Calculate content length limits based on truncation level
  */
 function calculateContentLimits(truncationLevel) {
-    const BASE_CONTENT_LENGTH = 6000;
-    const TRUNCATION_REDUCTION = 1500;
-    const MIN_CONTENT_LENGTH = 1500;
-
     const maxContentLength = Math.max(
-        MIN_CONTENT_LENGTH,
-        BASE_CONTENT_LENGTH - (truncationLevel * TRUNCATION_REDUCTION)
+        config.MIN_CONTENT_LENGTH,
+        config.BASE_CONTENT_LENGTH - (truncationLevel * config.TRUNCATION_REDUCTION_PER_LEVEL)
     );
-    const maxTotalChars = maxContentLength * 2 + 1000;
+    const maxTotalChars = maxContentLength * config.TOTAL_CONTENT_MULTIPLIER + config.TOTAL_CONTENT_BUFFER;
 
     return { maxContentLength, maxTotalChars };
 }
@@ -255,7 +252,7 @@ function processUrlContent(content, maxContentLength, model, urlIndex) {
         processedContent = processTablesInContent(processedContent);
     }
 
-    const filteringThreshold = maxContentLength / 2;
+    const filteringThreshold = maxContentLength * config.TABLE_FILTERING_THRESHOLD_RATIO;
     if (processedContent.length <= filteringThreshold) {
         return processedContent;
     }
@@ -298,7 +295,22 @@ function buildResultSection(urlInfo, result, processedContent, index) {
 }
 
 function formatResults(job, truncationLevel = 0) {
-    const { maxContentLength, maxTotalChars } = calculateContentLimits(truncationLevel);
+    let { maxContentLength, maxTotalChars } = calculateContentLimits(truncationLevel);
+
+    // Dynamically adjust per-URL budget based on actual URL count
+    // This ensures all URLs are included (with less content each if needed)
+    // If total still exceeds limit, progressive truncation will handle it
+    const urlCount = job.urls.length;
+    const availableBudget = maxTotalChars - config.TOTAL_CONTENT_BUFFER;
+    const perUrlBudget = Math.floor(availableBudget / urlCount);
+
+    if (perUrlBudget !== maxContentLength) {
+        const adjustedLimit = Math.max(config.MIN_CONTENT_LENGTH, Math.min(maxContentLength, perUrlBudget));
+        if (adjustedLimit !== maxContentLength) {
+            logger.info(`Adjusting content limit for ${urlCount} URLs: ${maxContentLength} -> ${adjustedLimit} chars/URL`);
+            maxContentLength = adjustedLimit;
+        }
+    }
 
     if (truncationLevel > 0) {
         logger.info(`Progressive truncation level ${truncationLevel}: max ${maxContentLength} chars/URL, ${maxTotalChars} total`);
@@ -307,17 +319,10 @@ function formatResults(job, truncationLevel = 0) {
     let formatted = '';
     let totalChars = 0;
 
-    for (let index = 0; index < job.urls.length; index++) {
-        const urlInfo = job.urls[index];
+    for (const [index, urlInfo] of job.urls.entries()) {
         const result = job.urlResults[urlInfo.index];
         const processedContent = processUrlContent(result?.fullContent, maxContentLength, job.model, index);
         const resultSection = buildResultSection(urlInfo, result, processedContent, index);
-
-        if (totalChars + resultSection.length > maxTotalChars) {
-            logger.info(`Stopping at URL #${index + 1} - total char limit (${maxTotalChars}) would be exceeded`);
-            formatted += `\n[Note: Remaining URLs omitted to stay within token limits]\n`;
-            break;
-        }
 
         formatted += resultSection;
         totalChars += resultSection.length;
