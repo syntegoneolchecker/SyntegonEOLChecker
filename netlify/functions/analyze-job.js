@@ -320,7 +320,9 @@ function formatResults(job, truncationLevel = 0) {
         const processedContent = processUrlContent(result?.fullContent, maxContentLength, job.model, index);
         const resultSection = buildResultSection(urlInfo, result, processedContent, index);
 
-        if (totalChars + resultSection.length > maxTotalChars) {
+        // Only apply URL omission for 3+ URLs. For ≤2 URLs, include all and let
+        // progressive truncation handle size issues (better than losing half the context)
+        if (job.urls.length > 2 && totalChars + resultSection.length > maxTotalChars) {
             logger.info(`Stopping at URL #${index + 1} - total char limit (${maxTotalChars}) would be exceeded`);
             formatted += `\n[Note: Remaining URLs omitted to stay within token limits]\n`;
             break;
