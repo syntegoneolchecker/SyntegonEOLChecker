@@ -6,13 +6,13 @@ The EOL Checker includes a secure email-domain-based authentication system that 
 
 ## Security Features
 
-✅ **Email Domain Validation** - Only @syntegon.com (configurable) emails can register
-✅ **Email Verification** - Confirmation link required to activate accounts
-✅ **Password Hashing** - bcrypt with cost factor 12
-✅ **JWT Sessions** - Secure, httpOnly cookies with 7-day expiration
-✅ **Account Lockout** - 5 failed login attempts = 15 minute lock
-✅ **Protected Endpoints** - All user-facing APIs require authentication
-✅ **HTTPS Only** - Secure cookies in production
+- ✅ **Email Domain Validation** - Only @syntegon.com (configurable) emails can register
+- ✅ **Email Verification** - Confirmation link required to activate accounts
+- ✅ **Password Hashing** - bcrypt with cost factor 12
+- ✅ **JWT Sessions** - Secure, httpOnly cookies with 7-day expiration
+- ✅ **Account Lockout** - 5 failed login attempts = 15 minute lock
+- ✅ **Protected Endpoints** - All user-facing APIs require authentication
+- ✅ **HTTPS Only** - Secure cookies in production
 
 ## IMPORTANT - READ FIRST
 **The Syntegon mail system puts the mails with the confirmation link in quarantine due to fishing/spam protection measures.**
