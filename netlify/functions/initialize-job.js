@@ -8,6 +8,7 @@ const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
 const { getCorsOrigin, errorResponse, validationErrorResponse } = require('./lib/response-builder');
+const { requireHybridAuth } = require('./lib/auth-middleware');
 
 /**
  * Check if URL is a PDF
@@ -403,7 +404,7 @@ function extractTakigenProductUrl(html) {
     }
 }
 
-exports.handler = async function(event, context) {
+const initializeJobHandler = async function(event, context) {
     logger.info('Initialize job request');
 
     // Handle preflight and method validation first
@@ -776,3 +777,6 @@ async function handleNoSearchResults(maker, model, jobId, context) {
     return createSuccessResponse(jobId, 'complete', 0, 'no_results',
         { message: 'No search results found' });
 }
+
+// Protect with hybrid authentication (JWT or internal API key)
+exports.handler = requireHybridAuth(initializeJobHandler);

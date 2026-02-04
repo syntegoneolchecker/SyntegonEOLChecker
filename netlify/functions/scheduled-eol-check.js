@@ -5,6 +5,15 @@ const { schedule } = require('@netlify/functions');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
 
+// Helper: Get internal API key header for authenticated internal calls
+function getInternalAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.INTERNAL_API_KEY) {
+        headers['x-internal-key'] = process.env.INTERNAL_API_KEY;
+    }
+    return headers;
+}
+
 // Helper: Get current date in GMT+9 timezone
 function getGMT9Date() {
     const now = new Date();
@@ -126,7 +135,7 @@ const handler = async (event, context) => {
             // Use set-auto-check-state to avoid race condition
             const resetResponse = await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getInternalAuthHeaders(),
                 body: JSON.stringify({ dailyCounter: 0, lastResetDate: currentDate })
             });
             if (!resetResponse.ok) {
@@ -146,7 +155,9 @@ const handler = async (event, context) => {
         }
 
         // Check SerpAPI credits
-        const serpapiResponse = await fetch(`${siteUrl}/.netlify/functions/get-serpapi-usage`);
+        const serpapiResponse = await fetch(`${siteUrl}/.netlify/functions/get-serpapi-usage`, {
+            headers: getInternalAuthHeaders()
+        });
         if (serpapiResponse.ok) {
             const serpapiData = await serpapiResponse.json();
             if (serpapiData.remaining <= config.MIN_SERPAPI_CREDITS_FOR_AUTO) {
@@ -154,7 +165,7 @@ const handler = async (event, context) => {
                 // Use set-auto-check-state to avoid race condition
                 await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getInternalAuthHeaders(),
                     body: JSON.stringify({ enabled: false })
                 });
                 return {
@@ -170,7 +181,7 @@ const handler = async (event, context) => {
         // Mark as running - use set-auto-check-state to avoid race condition
         await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getInternalAuthHeaders(),
             body: JSON.stringify({ isRunning: true })
         });
 

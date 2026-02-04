@@ -5,6 +5,15 @@ const { parseCSV, toCSV } = require('./lib/csv-parser');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
 
+// Helper: Get internal API key header for authenticated internal calls
+function getInternalAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.INTERNAL_API_KEY) {
+        headers['x-internal-key'] = process.env.INTERNAL_API_KEY;
+    }
+    return headers;
+}
+
 // Helper: Get current date in GMT+9 timezone
 function getGMT9Date() {
     const now = new Date();
@@ -70,7 +79,9 @@ async function wakeRenderService() {
 // Helper: Check if Groq tokens are ready (N/A means fully reset)
 async function waitForGroqTokens(siteUrl) {
     try {
-        const response = await fetch(`${siteUrl}/.netlify/functions/get-groq-usage`);
+        const response = await fetch(`${siteUrl}/.netlify/functions/get-groq-usage`, {
+            headers: getInternalAuthHeaders()
+        });
         if (!response.ok) return; // Assume OK if can't check
 
         const data = await response.json();
@@ -230,7 +241,7 @@ async function executeEOLCheck(product, siteUrl) {
 
         const initResponse = await fetch(initUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getInternalAuthHeaders(),
             body: JSON.stringify({ model, maker: manufacturer })
         });
 
@@ -903,7 +914,7 @@ async function determineChainContinuation(siteUrl, store) {
 async function updateAutoCheckState(siteUrl, updates) {
     return fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getInternalAuthHeaders(),
         body: JSON.stringify(updates)
     });
 }

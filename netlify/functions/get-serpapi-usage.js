@@ -3,5 +3,7 @@
  * Returns current search usage and limits
  */
 const { serpApiUsageHandler } = require('./lib/usage-api-factory');
+const { requireHybridAuth } = require('./lib/auth-middleware');
 
-exports.handler = serpApiUsageHandler;
+// Protect with hybrid authentication (JWT or internal API key)
+exports.handler = requireHybridAuth(serpApiUsageHandler);
