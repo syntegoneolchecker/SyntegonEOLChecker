@@ -41,41 +41,6 @@ Scrape a single URL.
 }
 ```
 
-### `POST /scrape-batch`
-Scrape multiple URLs.
-
-**Request:**
-```json
-{
-  "urls": [
-    "https://example.com/page1",
-    "https://example.com/page2"
-  ]
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "results": [
-    {
-      "success": true,
-      "url": "https://example.com/page1",
-      "title": "Page 1",
-      "content": "Content...",
-      "contentLength": 5000
-    },
-    {
-      "success": false,
-      "url": "https://example.com/page2",
-      "error": "Timeout"
-    }
-  ],
-  "timestamp": "2025-12-01T10:00:00.000Z"
-}
-```
-
 ## Deployment to Render.com
 
 See main documentation for deployment steps.

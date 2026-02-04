@@ -53,7 +53,7 @@ Located in `scraping-service/utils/validation.js`
 Located in `scraping-service/index.js`
 
 **Bearer-style authentication** - requires valid API key for all scraping endpoints:
-- ✅ `X-API-Key` header required for `/scrape`, `/scrape-keyence`, `/scrape-batch`
+- ✅ `X-API-Key` header required for `/scrape`, `/scrape-keyence`
 - ✅ Key validated against `SCRAPING_API_KEY` environment variable
 - ✅ Health/status endpoints remain public for monitoring
 - ✅ Requests without valid key receive 401 Unauthorized
