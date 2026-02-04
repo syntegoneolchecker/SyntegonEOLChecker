@@ -248,7 +248,7 @@ User data is stored in Netlify Blobs in the `auth-data` store:
 - No session revocation list (tokens valid until expiry)
 - Email verification relies on configured email service
 
-### 🔐 Best Practices
+### Best Practices
 
 1. **Never commit secrets** - Use Netlify environment variables
 2. **Regular JWT_SECRET rotation** - Change periodically
