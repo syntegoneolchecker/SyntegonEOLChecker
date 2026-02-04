@@ -52,7 +52,8 @@ Set these in your Netlify dashboard under Site Settings > Environment Variables:
 | `EMAIL_PASSWORD` | Gmail app password for SMTP | `xxxx xxxx xxxx xxxx` | Secret |
 | `EMAIL_USER` | Gmail account for sending emails | `your-account@gmail.com` | Public |
 | `GROQ_API_KEY` | Groq LLM API key | `gsk_abc123...` | Secret |
-| `JWT_SECRET` | Secret key for JWT tokens (REQUIRED) | `your-random-64-char-hex` | Secret |
+| `INTERNAL_API_KEY` | Internal API key to protect backend endpoints | `your-secret-key` | Secret |
+| `JWT_SECRET` | Secret key for JWT tokens | `your-random-64-char-hex` | Secret |
 | `LOG_LEVEL` | Logging level | `info` | Public |
 | `NETLIFY_TOKEN` | Token for Netlify Blobs access | Provided by Netlify | Secret |
 | `SCRAPING_API_KEY` | API key for authenticating with Render scraping service | `your-secret-key` | Secret |
