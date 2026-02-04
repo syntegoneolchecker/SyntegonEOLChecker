@@ -24,8 +24,9 @@ The EOL Checker includes a secure email-domain-based authentication system that 
 ### Frontend
 - **`/auth.html`** - Login & Registration page
 - **`/verify.html`** - Email verification page
+- **`/delete-account.html`** - Account deletion confirmation page
 - **`/index.html`** - Main app (protected, requires login)
-- **`/script.js`** - Auth check on page load, logout function
+- **`/js/main.js`** - Main app entry point (modular structure under `/js/`)
 
 ### Backend Functions
 #### Auth Endpoints (Public)
@@ -35,12 +36,19 @@ The EOL Checker includes a secure email-domain-based authentication system that 
 - **`auth-check.js`** - Check if authenticated
 - **`auth-logout.js`** - Logout
 
-#### Protected Endpoints
+#### Protected Endpoints (JWT Only)
 - `get-csv.js` - ✅ Protected
 - `save-csv.js` - ✅ Protected
 - `view-logs.js` - ✅ Protected
 - `job-status.js` - ✅ Protected
-- Additional endpoints pending
+
+#### Protected Endpoints (Hybrid: JWT or Internal API Key)
+These endpoints accept either JWT authentication (frontend) or `INTERNAL_API_KEY` (background functions):
+- `initialize-job.js` - ✅ Protected (creates EOL check jobs)
+- `set-auto-check-state.js` - ✅ Protected (modifies auto-check state)
+- `get-auto-check-state.js` - ✅ Protected (reads auto-check state)
+- `get-groq-usage.js` - ✅ Protected (reads Groq API usage)
+- `get-serpapi-usage.js` - ✅ Protected (reads SerpAPI usage)
 
 ### Libraries
 - **`lib/user-storage.js`** - User CRUD operations in Netlify Blobs
@@ -56,9 +64,20 @@ Add these to your Netlify site configuration:
 JWT_SECRET=your-random-secret-key-min-32-characters
 ALLOWED_EMAIL_DOMAIN=syntegon.com
 
+# REQUIRED - Internal API Authentication
+# Used for server-to-server calls between background functions
+INTERNAL_API_KEY=your-random-internal-api-key-min-32-characters
+
 # OPTIONAL - Email Verification (Gmail SMTP)
 EMAIL_USER=your-gmail-account@gmail.com
 EMAIL_PASSWORD=your-app-specific-password
+```
+
+### Generating INTERNAL_API_KEY
+
+```bash
+# Generate a secure random secret
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 ### Generating JWT_SECRET
@@ -107,12 +126,13 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 - 500 emails/day - Perfect for small teams
 - No time limit - Free forever
 
-### Manual Mode (Development Only)
+### No Email Service Configured
 
 If no email service is configured:
-- Registration returns verification URL in response (dev mode only)
-- Copy the URL and manually send it to users
-- Production mode won't expose the verification URL
+- Registration will succeed but the verification email won't be sent
+- User will see message: "Account created, but verification email could not be sent"
+- Administrator must manually verify the user or configure email service
+- **Note:** The verification URL is never exposed in the API response for security reasons
 
 ## User Flow
 
@@ -197,15 +217,59 @@ const myFunctionHandler = async (event, context) => {
 exports.handler = requireAuth(myFunctionHandler);
 ```
 
+## Protecting Endpoints with Hybrid Authentication
+
+For endpoints called by both the frontend AND background functions, use `requireHybridAuth`:
+
+```javascript
+// my-hybrid-function.js
+const { requireHybridAuth } = require('./lib/auth-middleware');
+
+const myHybridHandler = async (event, context) => {
+    // Check if this is an internal call (background function)
+    if (event.isInternalCall) {
+        // No user object available for internal calls
+        console.log('Called by background function');
+    } else {
+        // User is available for frontend calls
+        const userEmail = event.user.email;
+        console.log('Called by user:', userEmail);
+    }
+
+    // Your function logic here
+    return {
+        statusCode: 200,
+        body: JSON.stringify({ message: 'Success' })
+    };
+};
+
+// Protect with hybrid authentication (JWT or internal API key)
+exports.handler = requireHybridAuth(myHybridHandler);
+```
+
+Background functions must include the `x-internal-key` header:
+
+```javascript
+// In background function
+const response = await fetch(`${siteUrl}/.netlify/functions/my-hybrid-function`, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'x-internal-key': process.env.INTERNAL_API_KEY
+    },
+    body: JSON.stringify({ /* data */ })
+});
+```
+
 ## Endpoints That Should NOT Be Protected
 
-These endpoints are called by external services and use different security mechanisms:
+These endpoints are called by external services or Netlify infrastructure and use different security mechanisms:
 
-- **`scraping-callback.js`** - Called by Render scraping service
-- **`analyze-job.js`** - Internal job processing
-- **`fetch-url.js`** - Internal job processing
-- **`auto-eol-check-background.js`** - Background job
-- **`scheduled-eol-check.js`** - Netlify cron trigger
+- **`scraping-callback.js`** - Called by Render scraping service (uses `SCRAPING_API_KEY`)
+- **`analyze-job.js`** - Internal job processing (called within background function context)
+- **`fetch-url.js`** - Internal job processing (called within background function context)
+- **`auto-eol-check-background.js`** - Netlify background function (triggered internally)
+- **`scheduled-eol-check.js`** - Netlify scheduled function (cron trigger)
 
 ## Storage
 

@@ -2,8 +2,9 @@
 const { getStore } = require('@netlify/blobs');
 const logger = require('./lib/logger');
 const { handleCORSPreflight, successResponse, errorResponse, methodNotAllowedResponse } = require('./lib/response-builder');
+const { requireHybridAuth } = require('./lib/auth-middleware');
 
-exports.handler = async function(event, context) {
+const setAutoCheckStateHandler = async function(event, context) {
     // Handle CORS
     const corsResponse = handleCORSPreflight(event, 'POST, OPTIONS');
     if (corsResponse) return corsResponse;
@@ -83,3 +84,6 @@ exports.handler = async function(event, context) {
         return errorResponse('Failed to set auto-check state', { details: error.message });
     }
 };
+
+// Protect with hybrid authentication (JWT or internal API key)
+exports.handler = requireHybridAuth(setAutoCheckStateHandler);

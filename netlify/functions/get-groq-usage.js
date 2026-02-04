@@ -3,5 +3,7 @@
  * Returns current token usage and rate limits
  */
 const { groqUsageHandler } = require('./lib/usage-api-factory');
+const { requireHybridAuth } = require('./lib/auth-middleware');
 
-exports.handler = groqUsageHandler;
+// Protect with hybrid authentication (JWT or internal API key)
+exports.handler = requireHybridAuth(groqUsageHandler);
