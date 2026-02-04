@@ -5,7 +5,7 @@ An automated End-of-Life (EOL) status checker for industrial products. The syste
 Why is the repository public? 
   -> In order to use SonarCloud for free, the repository must be public.
 
-## 🔒 Security Notice
+## Security Notice
 
 **This repository is safe to be public.** All sensitive data is properly secured:
 
