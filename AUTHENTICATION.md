@@ -2,7 +2,7 @@
 
 ## Overview
 
-The EOL Checker now includes a secure email-domain-based authentication system that restricts access to employees with company email addresses.
+The EOL Checker includes a secure email-domain-based authentication system that restricts access to employees with company email addresses.
 
 ## Security Features
 
