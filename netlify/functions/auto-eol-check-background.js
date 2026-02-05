@@ -4,7 +4,7 @@ const { getStore } = require('@netlify/blobs');
 const { parseCSV, toCSV } = require('./lib/csv-parser');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
-const { requireInternalAuth } = require('./lib/auth-middleware');
+const { requireHybridAuth } = require('./lib/auth-middleware');
 
 // Helper: Get internal API key header for authenticated internal calls
 function getInternalAuthHeaders() {
@@ -480,7 +480,7 @@ class JobPoller {
         // Fire-and-forget
         fetch(fetchUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getInternalAuthHeaders(),
             body: JSON.stringify(payload)
         }).catch(err => {
             logger.error(`Failed to trigger fetch-url: ${err.message}`);
@@ -539,7 +539,7 @@ class JobPoller {
         const analyzeUrl = `${this.siteUrl}/.netlify/functions/analyze-job`;
         const analyzeResponse = await fetch(analyzeUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getInternalAuthHeaders(),
             body: JSON.stringify({ jobId: this.jobId }),
             signal: AbortSignal.timeout(25000)
         });
@@ -966,5 +966,5 @@ async function handleErrorState(event) {
     }
 }
 
-// Protect with internal API key authentication (background functions only)
-exports.handler = requireInternalAuth(autoEolCheckBackgroundHandler);
+// Protect with hybrid authentication (JWT for frontend, API key for backend)
+exports.handler = requireHybridAuth(autoEolCheckBackgroundHandler);
