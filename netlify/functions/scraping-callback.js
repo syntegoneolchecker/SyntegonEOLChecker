@@ -12,8 +12,8 @@ const logger = require('./lib/logger');
 function validateScrapingApiKey(event) {
     const expectedKey = process.env.SCRAPING_API_KEY;
     if (!expectedKey) {
-        logger.warn('SCRAPING_API_KEY not configured - callback authentication disabled');
-        return true; // Allow if not configured (for backwards compatibility during migration)
+        logger.error('SCRAPING_API_KEY not configured - rejecting callback');
+        return false; // Reject if not configured
     }
 
     const providedKey = event.headers['x-api-key'];
