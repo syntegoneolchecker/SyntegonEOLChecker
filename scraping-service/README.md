@@ -56,5 +56,6 @@ Test with curl:
 ```bash
 curl -X POST http://localhost:3000/scrape \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key-here" \
   -d '{"url":"https://example.com"}'
 ```
