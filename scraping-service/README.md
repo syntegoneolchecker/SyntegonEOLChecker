@@ -56,6 +56,11 @@ Test with curl:
 ```bash
 curl -X POST http://localhost:3000/scrape \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: your-api-key-here" \
-  -d '{"url":"https://example.com"}'
+  -H "X-API-Key: your-scraping-api-key" \
+  -d '{
+    "url": "https://example.com",
+    "callbackUrl": "http://localhost:8888/.netlify/functions/scraping-callback",
+    "jobId": "test-123",
+    "urlIndex": 0
+  }'
 ```
