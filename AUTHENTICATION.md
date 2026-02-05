@@ -50,6 +50,12 @@ These endpoints accept either JWT authentication (frontend) or `INTERNAL_API_KEY
 - `get-groq-usage.js` - ✅ Protected (reads Groq API usage)
 - `get-serpapi-usage.js` - ✅ Protected (reads SerpAPI usage)
 
+#### Protected Endpoints (Internal API Key Only)
+These endpoints are ONLY called by internal background functions (no frontend access):
+- `analyze-job.js` - ✅ Protected (LLM analysis processing)
+- `fetch-url.js` - ✅ Protected (URL scraping orchestration)
+- `auto-eol-check-background.js` - ✅ Protected (background EOL checking)
+
 ### Libraries
 - **`lib/user-storage.js`** - User CRUD operations in Netlify Blobs
 - **`lib/auth-manager.js`** - Password hashing, JWT, registration logic
@@ -263,13 +269,10 @@ const response = await fetch(`${siteUrl}/.netlify/functions/my-hybrid-function`,
 
 ## Endpoints That Should NOT Be Protected
 
-These endpoints are called by external services or Netlify infrastructure and use different security mechanisms:
+These endpoints use different security mechanisms or cannot be protected:
 
-- **`scraping-callback.js`** - Called by Render scraping service (uses `SCRAPING_API_KEY`)
-- **`analyze-job.js`** - Internal job processing (called within background function context)
-- **`fetch-url.js`** - Internal job processing (called within background function context)
-- **`auto-eol-check-background.js`** - Netlify background function (triggered internally)
-- **`scheduled-eol-check.js`** - Netlify scheduled function (cron trigger)
+- **`scraping-callback.js`** - Called by Render scraping service (uses separate `SCRAPING_API_KEY` via `x-api-key` header)
+- **`scheduled-eol-check.js`** - Netlify scheduled function (invoked directly by Netlify cron scheduler, not via HTTP)
 
 ## Storage
 

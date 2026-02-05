@@ -2,6 +2,7 @@
 const { getJob, saveFinalResult, updateJobStatus } = require('./lib/job-storage');
 const { errorResponse, methodNotAllowedResponse, notFoundResponse } = require('./lib/response-builder');
 const { processTablesInContent, filterIrrelevantTables, smartTruncate } = require('./lib/content-truncator');
+const { requireInternalAuth } = require('./lib/auth-middleware');
 const RE2 = require('re2');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
@@ -177,7 +178,7 @@ async function handleAnalysisError(error, eventBody, context) {
     return errorResponse(error.message);
 }
 
-exports.handler = async function(event, context) {
+const analyzeJobHandler = async function(event, context) {
     if (event.httpMethod !== 'POST') {
         return methodNotAllowedResponse();
     }
@@ -644,3 +645,6 @@ async function analyzeWithGroq(maker, model, searchContext) {
     const analyzer = new GroqAnalyzer();
     return analyzer.analyze(maker, model, searchContext);
 }
+
+// Protect with internal API key authentication (background functions only)
+exports.handler = requireInternalAuth(analyzeJobHandler);

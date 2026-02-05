@@ -4,6 +4,7 @@ const { getStore } = require('@netlify/blobs');
 const { parseCSV, toCSV } = require('./lib/csv-parser');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
+const { requireInternalAuth } = require('./lib/auth-middleware');
 
 // Helper: Get internal API key header for authenticated internal calls
 function getInternalAuthHeaders() {
@@ -718,7 +719,7 @@ async function disableAutoCheckForMissingData(sapNumber, missingField) {
 }
 
 // Main handler
-exports.handler = async function(event, _context) {
+const autoEolCheckBackgroundHandler = async function(event, _context) {
     logger.info('='.repeat(60));
     logger.info('Background EOL check started:', new Date().toISOString());
     logger.info('='.repeat(60));
@@ -927,7 +928,7 @@ async function triggerNextCheck(siteUrl) {
         // Fire and forget - don't wait for response
         fetch(nextCheckUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getInternalAuthHeaders(),
             body: JSON.stringify({
                 triggeredBy: 'chain',
                 siteUrl: siteUrl
@@ -964,3 +965,6 @@ async function handleErrorState(event) {
         logger.error('Failed to update state on error:', e);
     }
 }
+
+// Protect with internal API key authentication (background functions only)
+exports.handler = requireInternalAuth(autoEolCheckBackgroundHandler);
