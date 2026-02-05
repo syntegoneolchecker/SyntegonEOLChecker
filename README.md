@@ -181,11 +181,12 @@ npm start
 curl https://your-service.onrender.com/health
 
 # Test scraping
-curl -X POST https://your-service.onrender.com/scrape \
+curl -X POST http://localhost:3000/scrape \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-scraping-api-key" \
   -d '{
     "url": "https://example.com",
-    "callbackUrl": "https://your-site.netlify.app/.netlify/functions/scraping-callback",
+    "callbackUrl": "http://localhost:8888/.netlify/functions/scraping-callback",
     "jobId": "test-123",
     "urlIndex": 0
   }'
