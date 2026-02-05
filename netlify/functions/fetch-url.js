@@ -4,7 +4,7 @@ const { errorResponse, methodNotAllowedResponse} = require('./lib/response-build
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { retryWithBackoff } = require('./lib/retry-helpers');
 const { triggerFetchUrl, triggerAnalyzeJob } = require('./lib/fire-and-forget');
-const { requireInternalAuth } = require('./lib/auth-middleware');
+const { requireHybridAuth } = require('./lib/auth-middleware');
 const config = require('./lib/config');
 const logger = require('./lib/logger');
 
@@ -639,5 +639,5 @@ async function triggerAnalysis(jobId, baseUrl) {
     logger.debug(`[TRIGGER] triggerAnalyzeJob completed for job ${jobId}`);
 }
 
-// Protect with internal API key authentication (background functions only)
-exports.handler = requireInternalAuth(fetchUrlHandler);
+// Protect with hybrid authentication (JWT for frontend, API key for backend)
+exports.handler = requireHybridAuth(fetchUrlHandler);
