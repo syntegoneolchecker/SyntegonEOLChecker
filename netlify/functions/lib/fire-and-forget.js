@@ -7,6 +7,15 @@ const appConfig = require('./config');
 const logger = require('./logger');
 const { getJob } = require('./job-storage');
 
+// Helper: Get internal API key header for authenticated internal calls
+function getInternalAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.INTERNAL_API_KEY) {
+        headers['x-internal-key'] = process.env.INTERNAL_API_KEY;
+    }
+    return headers;
+}
+
 /**
  * Fire-and-forget fetch with retry logic
  * @param {string} url - URL to fetch
@@ -102,7 +111,7 @@ async function triggerFetchUrl(baseUrl, payload) {
 
     await fireAndForgetFetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getInternalAuthHeaders(),
         body: JSON.stringify(payload)
     }, {
         operationName: `fetch-url for job ${payload.jobId}, URL ${payload.urlIndex}`,
@@ -121,7 +130,7 @@ async function triggerAnalyzeJob(baseUrl, jobId) {
 
     await fireAndForgetFetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getInternalAuthHeaders(),
         body: JSON.stringify({ jobId })
     }, {
         operationName: `analyze-job for job ${jobId}`,

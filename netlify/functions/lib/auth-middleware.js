@@ -199,10 +199,38 @@ function requireHybridAuth(handler) {
     };
 }
 
+/**
+ * Require internal API key authentication only (no JWT)
+ * Use for endpoints that should ONLY be called by internal background functions
+ * @param {Function} handler - Function handler to protect
+ * @returns {Function} Protected handler
+ */
+function requireInternalAuth(handler) {
+    return async (event, context) => {
+        if (!validateInternalApiKey(event)) {
+            return {
+                statusCode: 401,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': getCorsOrigin()
+                },
+                body: JSON.stringify({
+                    error: 'Internal authentication required',
+                    message: 'This endpoint requires internal API key authentication'
+                })
+            };
+        }
+
+        event.isInternalCall = true;
+        return await handler(event, context);
+    };
+}
+
 module.exports = {
     extractToken,
     requireAuth,
     requireHybridAuth,
+    requireInternalAuth,
     validateInternalApiKey,
     generateAuthCookie,
     generateLogoutCookie,
