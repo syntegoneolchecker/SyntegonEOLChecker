@@ -195,8 +195,6 @@ Uses **whitelist approach** - only allows configured backend domains:
 
 **Documented in:** `scraping-service/SECURITY.md`
 
-**Limitation:** DNS rebinding attacks are theoretically possible, though the impact is limited since no sensitive data is processed.
-
 ---
 
 ## 6. Session Management
