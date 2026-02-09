@@ -52,9 +52,13 @@ describe("isValidEmailDomain", () => {
         jest.resetModules();
         delete process.env.ALLOWED_EMAIL_DOMAIN;
 
+        const {
+            isValidEmailDomain,
+        } = require("../netlify/functions/lib/auth-manager");
         expect(isValidEmailDomain("test@syntegon.com")).toBe(true);
 
         // Restore for other tests
+        process.env.ALLOWED_EMAIL_DOMAIN = "syntegon.com";
         process.env.JWT_SECRET = "test_secret";
     });
 });
@@ -457,6 +461,7 @@ describe("JWT_SECRET requirement", () => {
         }).toThrow("JWT_SECRET environment variable is required but not set");
 
         // Restore for other tests
+        process.env.ALLOWED_EMAIL_DOMAIN = "syntegon.com";
         process.env.JWT_SECRET = "test_secret";
     });
 });
