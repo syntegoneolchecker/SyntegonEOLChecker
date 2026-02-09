@@ -48,6 +48,15 @@ describe("isValidEmailDomain", () => {
     it("should reject wrong case", () => {
         expect(isValidEmailDomain("test@SyNtEgOn.CoM")).toBe(false);
     });
+    it("should work with the fallback if environment variable is not set", () => {
+        jest.resetModules();
+        delete process.env.ALLOWED_EMAIL_DOMAIN;
+
+        expect(isValidEmailDomain("test@syntegon.com")).toBe(true);
+
+        // Restore for other tests
+        process.env.JWT_SECRET = "test_secret";
+    });
 });
 
 describe("isValidEmailFormat", () => {
@@ -140,9 +149,8 @@ describe("generateJWT / verifyJWT", () => {
     it("should return null when verifying invalid token", () => {
         expect(verifyJWT("Some_Invalid_Token")).toBeNull();
     });
-
-    const jwt = require("jsonwebtoken");
-    test("rejects token signed with a different secret", () => {
+    it("should reject a token signed with a different secret", () => {
+        const jwt = require("jsonwebtoken");
         // prettier-ignore
         const token = jwt.sign( // NOSONAR
             { email: "user.name@syntegon.com", userId: "123" },
@@ -436,5 +444,19 @@ describe("validateAuthToken", () => {
                 email: email,
             },
         });
+    });
+});
+
+describe("JWT_SECRET requirement", () => {
+    it("should throw if JWT_SECRET is not set", () => {
+        jest.resetModules();
+        delete process.env.JWT_SECRET;
+
+        expect(() => {
+            require("../netlify/functions/lib/auth-manager");
+        }).toThrow("JWT_SECRET environment variable is required but not set");
+
+        // Restore for other tests
+        process.env.JWT_SECRET = "test_secret";
     });
 });
