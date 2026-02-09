@@ -648,3 +648,14 @@ async function analyzeWithGroq(maker, model, searchContext) {
 
 // Protect with hybrid authentication (JWT for frontend, API key for backend)
 exports.handler = requireHybridAuth(analyzeJobHandler);
+
+// Export internal helpers for testing
+exports._internal = {
+    estimateTokenCount,
+    parseTimeToSeconds,
+    calculateContentLimits,
+    processUrlContent,
+    buildResultSection,
+    formatResults,
+    GroqAnalyzer
+};
