@@ -1,7 +1,7 @@
 // Content extraction utilities
 const RE2 = require('re2');
 const pdfParse = require('pdf-parse');
-const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+const { loadPdfjs } = require('./pdfjs-loader');
 const { decodeWithProperEncoding } = require('./encoding');
 const { isSafePublicUrl } = require('./validation');
 const logger = require('./logger');
@@ -187,6 +187,7 @@ function isErrorPage(text) {
 async function extractWithPdfjsDist(pdfBuffer, url) {
     logger.info(`Trying pdfjs-dist extraction for ${url}`);
 
+    const pdfjsLib = await loadPdfjs();
     const loadingTask = pdfjsLib.getDocument({ data: pdfBuffer });
     const doc = await loadingTask.promise;
 
