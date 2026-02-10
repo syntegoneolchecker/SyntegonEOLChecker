@@ -160,8 +160,8 @@ async function setupResourceBlocking(page, options = {}) {
 async function performExtraction(page) {
 	const extractedContent = await page.evaluate(() => {
 		// Helper function to extract and escape cell text
-		function getCellText(cell) {
-			// NOSONAR - getCellText must be inside page.evaluate (browser context)
+		// prettier-ignore
+		function getCellText(cell) { // NOSONAR - getCellText must be inside page.evaluate (browser context)
 			let text = cell.innerText || cell.textContent || "";
 			text = text.replaceAll(/\s+/g, " ").trim();
 			text = text.replaceAll("\\", "\\\\");
