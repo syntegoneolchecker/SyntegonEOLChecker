@@ -9,6 +9,13 @@ const {
 	toCSV
 } = require("../netlify/functions/lib/csv-parser");
 
+jest.mock("../netlify/functions/lib/logger", () => ({
+	warn: jest.fn(),
+	error: jest.fn()
+}));
+
+const logger = require("../netlify/functions/lib/logger");
+
 describe("parseLine", () => {
 	test("parses simple comma-separated values", () => {
 		const { cells, hasUnclosedQuote } = parseLine("a,b,c");
@@ -167,6 +174,16 @@ describe("parseCSV", () => {
 		expect(result.success).toBe(true);
 		expect(result.error).toContain("Unclosed quote");
 		expect(result.error).toContain("Column count mismatch");
+	});
+
+	test("catches error during execution", () => {
+		logger.warn.mockImplementationOnce(() => {
+			throw new Error("logger failure");
+		});
+
+		const result = parseCSV('"unclosed');
+		expect(result.success).toBe(false);
+		expect(result.error).toContain("CSV parsing failed");
 	});
 });
 

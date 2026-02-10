@@ -400,7 +400,7 @@ describe("validateAuthToken", () => {
 			message: "Invalid or expired token"
 		});
 	});
-	it("should reject a valid token of an user that does not exist", async () => {
+	it("should reject a valid token of a user that does not exist", async () => {
 		const payload = { email: "user.name@syntegon.com", userId: "123" };
 		const token = generateJWT(payload);
 
