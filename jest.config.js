@@ -18,7 +18,6 @@ module.exports = {
 		"shared/**/*.js",
 		"!**/node_modules/**",
 		"!**/coverage/**",
-		"!netlify/functions/lib/csv-parser.js", // Excluded per sonar-project.properties
 		"!**/*.test.js",
 		"!**/*.spec.js"
 	],
