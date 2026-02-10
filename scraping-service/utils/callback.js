@@ -1,7 +1,7 @@
 // Callback handling utilities
-const { isValidCallbackUrl } = require('./validation');
-const { getShutdownState } = require('./memory');
-const logger = require('./logger');
+const { isValidCallbackUrl } = require("./validation");
+const { getShutdownState } = require("./memory");
+const logger = require("./logger");
 
 /**
  * Send callback unconditionally (with retry logic and response validation)
@@ -11,25 +11,25 @@ const logger = require('./logger');
  * @returns {Promise<void>}
  */
 async function sendCallback(callbackUrl, payload, maxRetries = 3) {
-    if (!callbackUrl) return;
+	if (!callbackUrl) return;
 
-    validateCallbackUrl(callbackUrl);
+	validateCallbackUrl(callbackUrl);
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            await attemptCallback(callbackUrl, payload, attempt, maxRetries);
-            return; // Success - exit function
-        } catch (error) {
-            const isLastAttempt = attempt === maxRetries;
+	for (let attempt = 1; attempt <= maxRetries; attempt++) {
+		try {
+			await attemptCallback(callbackUrl, payload, attempt, maxRetries);
+			return; // Success - exit function
+		} catch (error) {
+			const isLastAttempt = attempt === maxRetries;
 
-            if (isLastAttempt) {
-                logger.error(`❌ All ${maxRetries} callback attempts failed - callback lost`);
-                throw error; // Propagate error so scraping endpoint can handle it
-            }
+			if (isLastAttempt) {
+				logger.error(`❌ All ${maxRetries} callback attempts failed - callback lost`);
+				throw error; // Propagate error so scraping endpoint can handle it
+			}
 
-            await handleRetry(error, attempt);
-        }
-    }
+			await handleRetry(error, attempt);
+		}
+	}
 }
 
 /**
@@ -38,11 +38,13 @@ async function sendCallback(callbackUrl, payload, maxRetries = 3) {
  * @throws {Error} if URL is invalid
  */
 function validateCallbackUrl(callbackUrl) {
-    const callbackValidation = isValidCallbackUrl(callbackUrl);
-    if (!callbackValidation.valid) {
-        logger.error(`SSRF protection: Blocked unsafe callback URL in sendCallback: ${callbackUrl} - ${callbackValidation.reason}`);
-        throw new Error(`Invalid callback URL: ${callbackValidation.reason}`);
-    }
+	const callbackValidation = isValidCallbackUrl(callbackUrl);
+	if (!callbackValidation.valid) {
+		logger.error(
+			`SSRF protection: Blocked unsafe callback URL in sendCallback: ${callbackUrl} - ${callbackValidation.reason}`
+		);
+		throw new Error(`Invalid callback URL: ${callbackValidation.reason}`);
+	}
 }
 
 /**
@@ -54,31 +56,31 @@ function validateCallbackUrl(callbackUrl) {
  * @returns {Promise<void>}
  */
 async function attemptCallback(callbackUrl, payload, attempt, maxRetries) {
-    logger.info(`Sending callback (attempt ${attempt}/${maxRetries}): ${callbackUrl}`);
+	logger.info(`Sending callback (attempt ${attempt}/${maxRetries}): ${callbackUrl}`);
 
-    // Build headers with API key authentication
-    const headers = { 'Content-Type': 'application/json' };
-    const apiKey = process.env.SCRAPING_API_KEY;
-    if (apiKey) {
-        headers['X-API-Key'] = apiKey;
-    }
+	// Build headers with API key authentication
+	const headers = { "Content-Type": "application/json" };
+	const apiKey = process.env.SCRAPING_API_KEY;
+	if (apiKey) {
+		headers["X-API-Key"] = apiKey;
+	}
 
-    // codeql[js/request-forgery] SSRF Justification: Callback URLs use strict whitelist validation via ALLOWED_ORIGINS.
-    // Only trusted backend domains (configured in environment) are permitted for callbacks.
-    // This is the result delivery mechanism - callbacks must go to configured backend servers.
-    // Defense-in-depth: validation at endpoint level + immediate pre-fetch validation above.
-    const response = await fetch(callbackUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload)
-    });
+	// codeql[js/request-forgery] SSRF Justification: Callback URLs use strict whitelist validation via ALLOWED_ORIGINS.
+	// Only trusted backend domains (configured in environment) are permitted for callbacks.
+	// This is the result delivery mechanism - callbacks must go to configured backend servers.
+	// Defense-in-depth: validation at endpoint level + immediate pre-fetch validation above.
+	const response = await fetch(callbackUrl, {
+		method: "POST",
+		headers,
+		body: JSON.stringify(payload)
+	});
 
-    if (!response.ok) {
-        await handleFailedResponse(response, attempt, maxRetries);
-    }
+	if (!response.ok) {
+		await handleFailedResponse(response, attempt, maxRetries);
+	}
 
-    // Success!
-    logger.info(`✓ Callback successful (HTTP ${response.status})`);
+	// Success!
+	logger.info(`✓ Callback successful (HTTP ${response.status})`);
 }
 
 /**
@@ -89,17 +91,22 @@ async function attemptCallback(callbackUrl, payload, attempt, maxRetries) {
  * @throws {Error} with appropriate message
  */
 async function handleFailedResponse(response, attempt, maxRetries) {
-    const errorText = await response.text().catch(() => 'Could not read response body');
-    logger.error(`Callback returned HTTP ${response.status} on attempt ${attempt}/${maxRetries}:`, errorText);
+	const errorText = await response.text().catch(() => "Could not read response body");
+	logger.error(
+		`Callback returned HTTP ${response.status} on attempt ${attempt}/${maxRetries}:`,
+		errorText
+	);
 
-    if (attempt < maxRetries) {
-        const backoffMs = calculateBackoff(attempt);
-        logger.info(`Retrying callback in ${backoffMs}ms${getShutdownState() ? ' (restart pending)' : ''}...`);
-        await delay(backoffMs);
-        throw new Error(`Retry after HTTP ${response.status}`); // Trigger retry loop
-    } else {
-        throw new Error(`Callback failed with HTTP ${response.status}: ${errorText}`);
-    }
+	if (attempt < maxRetries) {
+		const backoffMs = calculateBackoff(attempt);
+		logger.info(
+			`Retrying callback in ${backoffMs}ms${getShutdownState() ? " (restart pending)" : ""}...`
+		);
+		await delay(backoffMs);
+		throw new Error(`Retry after HTTP ${response.status}`); // Trigger retry loop
+	} else {
+		throw new Error(`Callback failed with HTTP ${response.status}: ${errorText}`);
+	}
 }
 
 /**
@@ -109,11 +116,13 @@ async function handleFailedResponse(response, attempt, maxRetries) {
  * @returns {Promise<void>}
  */
 async function handleRetry(error, attempt) {
-    logger.error(`Callback attempt ${attempt} failed:`, error.message);
+	logger.error(`Callback attempt ${attempt} failed:`, error.message);
 
-    const backoffMs = calculateBackoff(attempt);
-    logger.info(`Retrying callback in ${backoffMs}ms${getShutdownState() ? ' (restart pending)' : ''}...`);
-    await delay(backoffMs);
+	const backoffMs = calculateBackoff(attempt);
+	logger.info(
+		`Retrying callback in ${backoffMs}ms${getShutdownState() ? " (restart pending)" : ""}...`
+	);
+	await delay(backoffMs);
 }
 
 /**
@@ -122,8 +131,8 @@ async function handleRetry(error, attempt) {
  * @returns {number} Backoff time in milliseconds
  */
 function calculateBackoff(attempt) {
-    const baseBackoffMs = 1000 * Math.pow(2, attempt); // 2s, 4s, 8s
-    return getShutdownState() ? baseBackoffMs + 3000 : baseBackoffMs; // Add 3s during shutdown
+	const baseBackoffMs = 1000 * Math.pow(2, attempt); // 2s, 4s, 8s
+	return getShutdownState() ? baseBackoffMs + 3000 : baseBackoffMs; // Add 3s during shutdown
 }
 
 /**
@@ -132,9 +141,9 @@ function calculateBackoff(attempt) {
  * @returns {Promise<void>}
  */
 function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 module.exports = {
-    sendCallback
+	sendCallback
 };

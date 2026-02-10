@@ -1,9 +1,9 @@
-const { registerUser } = require('./lib/auth-manager');
-const nodemailer = require('nodemailer');
-const logger = require('./lib/logger');
-const { recordAttempt } = require('./lib/rate-limiter');
-const { validateAuthRequest } = require('./lib/auth-helpers');
-const { getCorsOrigin } = require('./lib/response-builder');
+const { registerUser } = require("./lib/auth-manager");
+const nodemailer = require("nodemailer");
+const logger = require("./lib/logger");
+const { recordAttempt } = require("./lib/rate-limiter");
+const { validateAuthRequest } = require("./lib/auth-helpers");
+const { getCorsOrigin } = require("./lib/response-builder");
 
 /**
  * Construct base URL from request headers (works correctly for branch deploys)
@@ -11,9 +11,9 @@ const { getCorsOrigin } = require('./lib/response-builder');
  * @returns {string} Base URL
  */
 function constructBaseUrl(headers) {
-    const protocol = headers['x-forwarded-proto'] || 'https';
-    const host = headers['host'];
-    return `${protocol}://${host}`;
+	const protocol = headers["x-forwarded-proto"] || "https";
+	const host = headers["host"];
+	return `${protocol}://${host}`;
 }
 
 /**
@@ -35,73 +35,72 @@ function constructBaseUrl(headers) {
  */
 
 exports.handler = async (event) => {
-    // Validate request and handle common errors
-    const validation = await validateAuthRequest(event, 'register');
-    if (validation.error) {
-        return validation.error;
-    }
+	// Validate request and handle common errors
+	const validation = await validateAuthRequest(event, "register");
+	if (validation.error) {
+		return validation.error;
+	}
 
-    const { email, password, clientIP } = validation;
+	const { email, password, clientIP } = validation;
 
-    try {
-        // Register user
-        const result = await registerUser(email, password);
+	try {
+		// Register user
+		const result = await registerUser(email, password);
 
-        if (!result.success) {
-            // Record failed attempt for rate limiting
-            await recordAttempt('register', clientIP);
+		if (!result.success) {
+			// Record failed attempt for rate limiting
+			await recordAttempt("register", clientIP);
 
-            return {
-                statusCode: 400,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': getCorsOrigin()
-                },
-                body: JSON.stringify(result)
-            };
-        }
+			return {
+				statusCode: 400,
+				headers: {
+					"Content-Type": "application/json",
+					"Access-Control-Allow-Origin": getCorsOrigin()
+				},
+				body: JSON.stringify(result)
+			};
+		}
 
-        // Generate verification URL from request headers (works correctly for branch deploys)
-        const siteUrl = constructBaseUrl(event.headers);
-        const verificationUrl = `${siteUrl}/verify.html?token=${result.verificationToken}`;
+		// Generate verification URL from request headers (works correctly for branch deploys)
+		const siteUrl = constructBaseUrl(event.headers);
+		const verificationUrl = `${siteUrl}/verify.html?token=${result.verificationToken}`;
 
-        // Send verification email via Gmail SMTP
-        const emailSent = await sendVerificationEmail(email, verificationUrl);
+		// Send verification email via Gmail SMTP
+		const emailSent = await sendVerificationEmail(email, verificationUrl);
 
-        // Inform user about email delivery status
-        const message = emailSent
-            ? result.message
-            : 'Account created, but verification email could not be sent. Please contact administrator.';
+		// Inform user about email delivery status
+		const message = emailSent
+			? result.message
+			: "Account created, but verification email could not be sent. Please contact administrator.";
 
-        return {
-            statusCode: 201,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin()
-            },
-            body: JSON.stringify({
-                success: true,
-                message,
-                emailSent,
-                // SECURITY: Never expose verification URL in response
-                // User must receive it via email only
-            })
-        };
-
-    } catch (error) {
-        logger.error('Registration error:', error);
-        return {
-            statusCode: 500,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin()
-            },
-            body: JSON.stringify({
-                success: false,
-                message: 'Internal server error during registration'
-            })
-        };
-    }
+		return {
+			statusCode: 201,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin()
+			},
+			body: JSON.stringify({
+				success: true,
+				message,
+				emailSent
+				// SECURITY: Never expose verification URL in response
+				// User must receive it via email only
+			})
+		};
+	} catch (error) {
+		logger.error("Registration error:", error);
+		return {
+			statusCode: 500,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin()
+			},
+			body: JSON.stringify({
+				success: false,
+				message: "Internal server error during registration"
+			})
+		};
+	}
 };
 
 /**
@@ -110,7 +109,7 @@ exports.handler = async (event) => {
  * @returns {string} HTML email content
  */
 function getVerificationEmailHtml(verificationUrl) {
-    return `
+	return `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #333;">Welcome to Syntegon EOL Checker</h2>
             <p>Please verify your email address by clicking the button below:</p>
@@ -140,38 +139,38 @@ function getVerificationEmailHtml(verificationUrl) {
  * @returns {Promise<boolean>} True if email was sent
  */
 async function sendVerificationEmail(email, verificationUrl) {
-    const user = process.env.EMAIL_USER;
-    const pass = process.env.EMAIL_PASSWORD;
+	const user = process.env.EMAIL_USER;
+	const pass = process.env.EMAIL_PASSWORD;
 
-    if (!user || !pass) {
-        logger.error('Gmail credentials not configured:', {
-            EMAIL_USER: user ? 'set' : 'MISSING',
-            EMAIL_PASSWORD: pass ? 'set' : 'MISSING'
-        });
-        return false;
-    }
+	if (!user || !pass) {
+		logger.error("Gmail credentials not configured:", {
+			EMAIL_USER: user ? "set" : "MISSING",
+			EMAIL_PASSWORD: pass ? "set" : "MISSING"
+		});
+		return false;
+	}
 
-    try {
-        const transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 587,
-            secure: false, // Use STARTTLS
-            requireTLS: true, // Enforce TLS upgrade - reject if TLS fails
-            auth: { user, pass }
-        });
+	try {
+		const transporter = nodemailer.createTransport({
+			host: "smtp.gmail.com",
+			port: 587,
+			secure: false, // Use STARTTLS
+			requireTLS: true, // Enforce TLS upgrade - reject if TLS fails
+			auth: { user, pass }
+		});
 
-        const mailOptions = {
-            from: process.env.FROM_EMAIL || user,
-            to: email,
-            subject: 'Verify your EOL Checker account',
-            html: getVerificationEmailHtml(verificationUrl)
-        };
+		const mailOptions = {
+			from: process.env.FROM_EMAIL || user,
+			to: email,
+			subject: "Verify your EOL Checker account",
+			html: getVerificationEmailHtml(verificationUrl)
+		};
 
-        await transporter.sendMail(mailOptions);
-        logger.info(`Verification email sent successfully to ${email} via Gmail SMTP`);
-        return true;
-    } catch (error) {
-        logger.error('Failed to send email via Gmail SMTP:', error);
-        return false;
-    }
+		await transporter.sendMail(mailOptions);
+		logger.info(`Verification email sent successfully to ${email} via Gmail SMTP`);
+		return true;
+	} catch (error) {
+		logger.error("Failed to send email via Gmail SMTP:", error);
+		return false;
+	}
 }

@@ -9,35 +9,40 @@ This service handles dynamic website scraping for general websites, PDFs and Jav
 ## Endpoints
 
 ### `GET /health`
+
 Health check endpoint.
 
 **Response:**
+
 ```json
 {
-  "status": "ok",
-  "timestamp": "2025-12-01T10:00:00.000Z"
+	"status": "ok",
+	"timestamp": "2025-12-01T10:00:00.000Z"
 }
 ```
 
 ### `POST /scrape`
+
 Scrape a single URL.
 
 **Request:**
+
 ```json
 {
-  "url": "https://example.com/product-page"
+	"url": "https://example.com/product-page"
 }
 ```
 
 **Response:**
+
 ```json
 {
-  "success": true,
-  "url": "https://example.com/product-page",
-  "title": "Product Page Title",
-  "content": "Full page text content...",
-  "contentLength": 12345,
-  "timestamp": "2025-12-01T10:00:00.000Z"
+	"success": true,
+	"url": "https://example.com/product-page",
+	"title": "Product Page Title",
+	"content": "Full page text content...",
+	"contentLength": 12345,
+	"timestamp": "2025-12-01T10:00:00.000Z"
 }
 ```
 
@@ -53,6 +58,7 @@ npm start
 ```
 
 Test with curl:
+
 ```bash
 curl -X POST http://localhost:3000/scrape \
   -H "Content-Type: application/json" \

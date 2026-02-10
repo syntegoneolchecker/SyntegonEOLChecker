@@ -1,26 +1,26 @@
-const { getStore } = require('@netlify/blobs');
+const { getStore } = require("@netlify/blobs");
 
 /**
  * Rate Limiter using Netlify Blobs
  * Tracks request attempts per IP address with time windows
  */
 
-const RATE_LIMIT_BLOB_KEY = 'rate-limits';
+const RATE_LIMIT_BLOB_KEY = "rate-limits";
 
 // Rate limit configurations
 const RATE_LIMITS = {
-    login: {
-        maxAttempts: 5,
-        windowMs: 15 * 60 * 1000  // 15 minutes
-    },
-    register: {
-        maxAttempts: 3,
-        windowMs: 60 * 60 * 1000  // 1 hour
-    },
-    'password-reset': {
-        maxAttempts: 1,
-        windowMs: 15 * 60 * 1000  // 15 minutes cooldown between requests
-    }
+	login: {
+		maxAttempts: 5,
+		windowMs: 15 * 60 * 1000 // 15 minutes
+	},
+	register: {
+		maxAttempts: 3,
+		windowMs: 60 * 60 * 1000 // 1 hour
+	},
+	"password-reset": {
+		maxAttempts: 1,
+		windowMs: 15 * 60 * 1000 // 15 minutes cooldown between requests
+	}
 };
 
 /**
@@ -28,11 +28,11 @@ const RATE_LIMITS = {
  * @returns {Object} Netlify Blobs store instance
  */
 function getRateLimitStore() {
-    return getStore({
-        name: 'auth-data',
-        siteID: process.env.SITE_ID,
-        token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
-    });
+	return getStore({
+		name: "auth-data",
+		siteID: process.env.SITE_ID,
+		token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+	});
 }
 
 /**
@@ -41,14 +41,15 @@ function getRateLimitStore() {
  * @returns {string} Client IP address
  */
 function getClientIP(event) {
-    // Try various headers that might contain the real IP
-    const ip = event.headers['x-forwarded-for']
-        || event.headers['x-real-ip']
-        || event.headers['client-ip']
-        || 'unknown';
+	// Try various headers that might contain the real IP
+	const ip =
+		event.headers["x-forwarded-for"] ||
+		event.headers["x-real-ip"] ||
+		event.headers["client-ip"] ||
+		"unknown";
 
-    // x-forwarded-for can be a comma-separated list, take the first one
-    return ip.split(',')[0].trim();
+	// x-forwarded-for can be a comma-separated list, take the first one
+	return ip.split(",")[0].trim();
 }
 
 /**
@@ -58,36 +59,36 @@ function getClientIP(event) {
  * @returns {Promise<Object>} { allowed: boolean, retryAfter?: number }
  */
 async function checkRateLimit(endpoint, ip) {
-    const config = RATE_LIMITS[endpoint];
-    if (!config) {
-        throw new Error(`Unknown rate limit endpoint: ${endpoint}`);
-    }
+	const config = RATE_LIMITS[endpoint];
+	if (!config) {
+		throw new Error(`Unknown rate limit endpoint: ${endpoint}`);
+	}
 
-    const store = getRateLimitStore();
-    const rateLimits = await store.get(RATE_LIMIT_BLOB_KEY, { type: 'json' }) || {};
+	const store = getRateLimitStore();
+	const rateLimits = (await store.get(RATE_LIMIT_BLOB_KEY, { type: "json" })) || {};
 
-    const key = `${endpoint}:${ip}`;
-    const now = Date.now();
-    const record = rateLimits[key];
+	const key = `${endpoint}:${ip}`;
+	const now = Date.now();
+	const record = rateLimits[key];
 
-    // No previous attempts or window expired
-    if (!record || now - record.firstAttempt > config.windowMs) {
-        return { allowed: true };
-    }
+	// No previous attempts or window expired
+	if (!record || now - record.firstAttempt > config.windowMs) {
+		return { allowed: true };
+	}
 
-    // Check if limit exceeded
-    if (record.count >= config.maxAttempts) {
-        const timeRemaining = config.windowMs - (now - record.firstAttempt);
-        const retryAfterSeconds = Math.ceil(timeRemaining / 1000);
+	// Check if limit exceeded
+	if (record.count >= config.maxAttempts) {
+		const timeRemaining = config.windowMs - (now - record.firstAttempt);
+		const retryAfterSeconds = Math.ceil(timeRemaining / 1000);
 
-        return {
-            allowed: false,
-            retryAfter: retryAfterSeconds,
-            message: `Too many attempts. Please try again in ${Math.ceil(retryAfterSeconds / 60)} minute(s).`
-        };
-    }
+		return {
+			allowed: false,
+			retryAfter: retryAfterSeconds,
+			message: `Too many attempts. Please try again in ${Math.ceil(retryAfterSeconds / 60)} minute(s).`
+		};
+	}
 
-    return { allowed: true };
+	return { allowed: true };
 }
 
 /**
@@ -97,31 +98,31 @@ async function checkRateLimit(endpoint, ip) {
  * @returns {Promise<void>}
  */
 async function recordAttempt(endpoint, ip) {
-    const config = RATE_LIMITS[endpoint];
-    if (!config) {
-        throw new Error(`Unknown rate limit endpoint: ${endpoint}`);
-    }
+	const config = RATE_LIMITS[endpoint];
+	if (!config) {
+		throw new Error(`Unknown rate limit endpoint: ${endpoint}`);
+	}
 
-    const store = getRateLimitStore();
-    const rateLimits = await store.get(RATE_LIMIT_BLOB_KEY, { type: 'json' }) || {};
+	const store = getRateLimitStore();
+	const rateLimits = (await store.get(RATE_LIMIT_BLOB_KEY, { type: "json" })) || {};
 
-    const key = `${endpoint}:${ip}`;
-    const now = Date.now();
-    const record = rateLimits[key];
+	const key = `${endpoint}:${ip}`;
+	const now = Date.now();
+	const record = rateLimits[key];
 
-    // Create new record or update existing
-    if (!record || now - record.firstAttempt > config.windowMs) {
-        rateLimits[key] = {
-            count: 1,
-            firstAttempt: now,
-            lastAttempt: now
-        };
-    } else {
-        rateLimits[key].count++;
-        rateLimits[key].lastAttempt = now;
-    }
+	// Create new record or update existing
+	if (!record || now - record.firstAttempt > config.windowMs) {
+		rateLimits[key] = {
+			count: 1,
+			firstAttempt: now,
+			lastAttempt: now
+		};
+	} else {
+		rateLimits[key].count++;
+		rateLimits[key].lastAttempt = now;
+	}
 
-    await store.setJSON(RATE_LIMIT_BLOB_KEY, rateLimits);
+	await store.setJSON(RATE_LIMIT_BLOB_KEY, rateLimits);
 }
 
 /**
@@ -131,13 +132,13 @@ async function recordAttempt(endpoint, ip) {
  * @returns {Promise<void>}
  */
 async function clearRateLimit(endpoint, ip) {
-    const store = getRateLimitStore();
-    const rateLimits = await store.get(RATE_LIMIT_BLOB_KEY, { type: 'json' }) || {};
+	const store = getRateLimitStore();
+	const rateLimits = (await store.get(RATE_LIMIT_BLOB_KEY, { type: "json" })) || {};
 
-    const key = `${endpoint}:${ip}`;
-    delete rateLimits[key];
+	const key = `${endpoint}:${ip}`;
+	delete rateLimits[key];
 
-    await store.setJSON(RATE_LIMIT_BLOB_KEY, rateLimits);
+	await store.setJSON(RATE_LIMIT_BLOB_KEY, rateLimits);
 }
 
 /**
@@ -145,33 +146,33 @@ async function clearRateLimit(endpoint, ip) {
  * @returns {Promise<number>} Number of records removed
  */
 async function cleanupExpiredRecords() {
-    const store = getRateLimitStore();
-    const rateLimits = await store.get(RATE_LIMIT_BLOB_KEY, { type: 'json' }) || {};
+	const store = getRateLimitStore();
+	const rateLimits = (await store.get(RATE_LIMIT_BLOB_KEY, { type: "json" })) || {};
 
-    const now = Date.now();
-    let removedCount = 0;
+	const now = Date.now();
+	let removedCount = 0;
 
-    for (const [key, record] of Object.entries(rateLimits)) {
-        const [endpoint] = key.split(':');
-        const config = RATE_LIMITS[endpoint];
+	for (const [key, record] of Object.entries(rateLimits)) {
+		const [endpoint] = key.split(":");
+		const config = RATE_LIMITS[endpoint];
 
-        if (config && now - record.firstAttempt > config.windowMs) {
-            delete rateLimits[key];
-            removedCount++;
-        }
-    }
+		if (config && now - record.firstAttempt > config.windowMs) {
+			delete rateLimits[key];
+			removedCount++;
+		}
+	}
 
-    if (removedCount > 0) {
-        await store.setJSON(RATE_LIMIT_BLOB_KEY, rateLimits);
-    }
+	if (removedCount > 0) {
+		await store.setJSON(RATE_LIMIT_BLOB_KEY, rateLimits);
+	}
 
-    return removedCount;
+	return removedCount;
 }
 
 module.exports = {
-    checkRateLimit,
-    recordAttempt,
-    clearRateLimit,
-    cleanupExpiredRecords,
-    getClientIP
+	checkRateLimit,
+	recordAttempt,
+	clearRateLimit,
+	cleanupExpiredRecords,
+	getClientIP
 };

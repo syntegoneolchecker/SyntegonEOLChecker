@@ -1,11 +1,11 @@
-const logger = require('./logger');
+const logger = require("./logger");
 
 /**
  * Retry helpers for network operations with exponential backoff
  * Eliminates 150+ lines of duplicate retry logic across the codebase
  */
 
-const config = require('./config');
+const config = require("./config");
 
 /**
  * Execute an async operation with retry logic and exponential backoff
@@ -43,154 +43,159 @@ const config = require('./config');
  * }
  */
 async function retryWithBackoff(options) {
-    const {
-        operation,
-        operationName,
-        maxRetries = config.CALLBACK_MAX_RETRIES || 3,
-        timeoutMs = 10000,
-        onError = null,
-        onSuccess = null,
-        breakOnTimeout = true
-    } = options;
+	const {
+		operation,
+		operationName,
+		maxRetries = config.CALLBACK_MAX_RETRIES || 3,
+		timeoutMs = 10000,
+		onError = null,
+		onSuccess = null,
+		breakOnTimeout = true
+	} = options;
 
-    let lastError = null;
-    let isRenderRestarting = false;
+	let lastError = null;
+	let isRenderRestarting = false;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        logger.info(`${operationName} attempt ${attempt}/${maxRetries}`);
+	for (let attempt = 1; attempt <= maxRetries; attempt++) {
+		logger.info(`${operationName} attempt ${attempt}/${maxRetries}`);
 
-        const result = await executeOperationWithTimeout(
-            operation, operationName, timeoutMs, breakOnTimeout
-        );
+		const result = await executeOperationWithTimeout(
+			operation,
+			operationName,
+			timeoutMs,
+			breakOnTimeout
+		);
 
-        if (result.timedOut && breakOnTimeout) {
-            return { success: false, result: null, error: null, timedOut: true };
-        }
+		if (result.timedOut && breakOnTimeout) {
+			return { success: false, result: null, error: null, timedOut: true };
+		}
 
-        if (result.success) {
-            return handleSuccess(result.data, operationName, attempt, onSuccess);
-        }
+		if (result.success) {
+			return handleSuccess(result.data, operationName, attempt, onSuccess);
+		}
 
-        const errorResult = await handleOperationError(
-            result, operationName, attempt, onError
-        );
+		const errorResult = await handleOperationError(result, operationName, attempt, onError);
 
-        lastError = errorResult.lastError;
-        isRenderRestarting = errorResult.isRenderRestarting;
+		lastError = errorResult.lastError;
+		isRenderRestarting = errorResult.isRenderRestarting;
 
-        if (errorResult.shouldStop) {
-            break;
-        }
+		if (errorResult.shouldStop) {
+			break;
+		}
 
-        if (attempt < maxRetries) {
-            await backoffBeforeRetry(
-                attempt, operationName, isRenderRestarting, maxRetries
-            );
-        }
-    }
+		if (attempt < maxRetries) {
+			await backoffBeforeRetry(attempt, operationName, isRenderRestarting, maxRetries);
+		}
+	}
 
-    logger.error(`All ${maxRetries} ${operationName} attempts failed`);
-    return { success: false, result: null, error: lastError, timedOut: false };
+	logger.error(`All ${maxRetries} ${operationName} attempts failed`);
+	return { success: false, result: null, error: lastError, timedOut: false };
 }
 
 async function executeOperationWithTimeout(operation, operationName, timeoutMs, breakOnTimeout) {
-    const timeoutPromise = new Promise((resolve) =>
-        setTimeout(() => resolve({ timedOut: true }), timeoutMs)
-    );
+	const timeoutPromise = new Promise((resolve) =>
+		setTimeout(() => resolve({ timedOut: true }), timeoutMs)
+	);
 
-    const operationPromise = operation();
+	const operationPromise = operation();
 
-    try {
-        const result = await Promise.race([operationPromise, timeoutPromise]);
+	try {
+		const result = await Promise.race([operationPromise, timeoutPromise]);
 
-        if (result?.timedOut) {
-            logger.info(`${operationName} - timeout after ${timeoutMs}ms${breakOnTimeout ? ' (assuming background processing)' : ''}`);
-            return { timedOut: true, success: false };
-        }
+		if (result?.timedOut) {
+			logger.info(
+				`${operationName} - timeout after ${timeoutMs}ms${breakOnTimeout ? " (assuming background processing)" : ""}`
+			);
+			return { timedOut: true, success: false };
+		}
 
-        return { data: result, timedOut: false, success: true };
-    } catch (error) {
-        return { error, timedOut: false, success: false };
-    }
+		return { data: result, timedOut: false, success: true };
+	} catch (error) {
+		return { error, timedOut: false, success: false };
+	}
 }
 
 function handleSuccess(result, operationName, attempt, onSuccess) {
-    logger.info(`${operationName} succeeded on attempt ${attempt}`);
+	logger.info(`${operationName} succeeded on attempt ${attempt}`);
 
-    if (onSuccess) {
-        onSuccess(attempt);
-    }
+	if (onSuccess) {
+		onSuccess(attempt);
+	}
 
-    return { success: true, result, error: null, timedOut: false };
+	return { success: true, result, error: null, timedOut: false };
 }
 
 async function handleOperationError(result, operationName, attempt, onError) {
-    const response = {
-        lastError: null,
-        isRenderRestarting: false,
-        shouldStop: false
-    };
+	const response = {
+		lastError: null,
+		isRenderRestarting: false,
+		shouldStop: false
+	};
 
-    if (result.timedOut) {
-        response.lastError = new Error(`${operationName} operation timed out`);
-        return response;
-    }
+	if (result.timedOut) {
+		response.lastError = new Error(`${operationName} operation timed out`);
+		return response;
+	}
 
-    if (result.error) {
-        return handleExceptionError(result.error, operationName, attempt, onError);
-    }
+	if (result.error) {
+		return handleExceptionError(result.error, operationName, attempt, onError);
+	}
 
-    return handleHttpResponseError(result.data, operationName, attempt);
+	return handleHttpResponseError(result.data, operationName, attempt);
 }
 
 function handleExceptionError(error, operationName, attempt, onError) {
-    logger.error(`${operationName} failed on attempt ${attempt}:`, error.message);
+	logger.error(`${operationName} failed on attempt ${attempt}:`, error.message);
 
-    if (onError) {
-        onError(error, attempt);
-    }
+	if (onError) {
+		onError(error, attempt);
+	}
 
-    return {
-        lastError: error,
-        isRenderRestarting: false,
-        shouldStop: false
-    };
+	return {
+		lastError: error,
+		isRenderRestarting: false,
+		shouldStop: false
+	};
 }
 
 async function handleHttpResponseError(httpResponse, operationName, attempt) {
-    logger.info(`${operationName} responded with status: ${httpResponse.status}`);
+	logger.info(`${operationName} responded with status: ${httpResponse.status}`);
 
-    if (httpResponse.ok) {
-        throw new Error('HTTP response should not be OK in error handler');
-    }
+	if (httpResponse.ok) {
+		throw new Error("HTTP response should not be OK in error handler");
+	}
 
-    const text = await httpResponse.text();
-    logger.error(`${operationName} error response on attempt ${attempt}: ${httpResponse.status} - ${text}`);
+	const text = await httpResponse.text();
+	logger.error(
+		`${operationName} error response on attempt ${attempt}: ${httpResponse.status} - ${text}`
+	);
 
-    const isRenderRestarting = httpResponse.status === 503;
-    if (isRenderRestarting) {
-        logger.warn(`⚠️  Render service is restarting (503 response)`);
-    }
+	const isRenderRestarting = httpResponse.status === 503;
+	if (isRenderRestarting) {
+		logger.warn(`⚠️  Render service is restarting (503 response)`);
+	}
 
-    return {
-        lastError: new Error(`${operationName} returned error: ${httpResponse.status} - ${text}`),
-        isRenderRestarting,
-        shouldStop: false
-    };
+	return {
+		lastError: new Error(`${operationName} returned error: ${httpResponse.status} - ${text}`),
+		isRenderRestarting,
+		shouldStop: false
+	};
 }
 
 async function backoffBeforeRetry(attempt, operationName, isRenderRestarting, _maxRetries) {
-    let backoffMs;
+	let backoffMs;
 
-    if (isRenderRestarting) {
-        backoffMs = attempt === 1 ? 15000 : 30000;
-        logger.info(`Render is restarting, using longer backoff: ${backoffMs}ms (attempt ${attempt})`);
-    } else {
-        backoffMs = Math.pow(2, attempt) * (config.CALLBACK_RETRY_BASE_MS || 1000);
-    }
+	if (isRenderRestarting) {
+		backoffMs = attempt === 1 ? 15000 : 30000;
+		logger.info(
+			`Render is restarting, using longer backoff: ${backoffMs}ms (attempt ${attempt})`
+		);
+	} else {
+		backoffMs = Math.pow(2, attempt) * (config.CALLBACK_RETRY_BASE_MS || 1000);
+	}
 
-    logger.info(`Retrying ${operationName} in ${backoffMs}ms...`);
-    await new Promise(resolve => setTimeout(resolve, backoffMs));
+	logger.info(`Retrying ${operationName} in ${backoffMs}ms...`);
+	await new Promise((resolve) => setTimeout(resolve, backoffMs));
 }
 
 /**
@@ -203,31 +208,34 @@ async function backoffBeforeRetry(attempt, operationName, isRenderRestarting, _m
  * @throws {Error} - Last error if all retries fail
  */
 async function simpleRetry(operation, maxRetries, operationName) {
-    let lastError = null;
+	let lastError = null;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            const result = await operation();
-            if (attempt > 1) {
-                logger.info(`${operationName} succeeded on attempt ${attempt}`);
-            }
-            return result;
-        } catch (error) {
-            lastError = error;
-            logger.error(`${operationName} failed on attempt ${attempt}/${maxRetries}:`, error.message);
+	for (let attempt = 1; attempt <= maxRetries; attempt++) {
+		try {
+			const result = await operation();
+			if (attempt > 1) {
+				logger.info(`${operationName} succeeded on attempt ${attempt}`);
+			}
+			return result;
+		} catch (error) {
+			lastError = error;
+			logger.error(
+				`${operationName} failed on attempt ${attempt}/${maxRetries}:`,
+				error.message
+			);
 
-            if (attempt < maxRetries) {
-                const backoffMs = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
-                logger.info(`Retrying ${operationName} in ${backoffMs}ms...`);
-                await new Promise(resolve => setTimeout(resolve, backoffMs));
-            }
-        }
-    }
+			if (attempt < maxRetries) {
+				const backoffMs = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+				logger.info(`Retrying ${operationName} in ${backoffMs}ms...`);
+				await new Promise((resolve) => setTimeout(resolve, backoffMs));
+			}
+		}
+	}
 
-    throw lastError;
+	throw lastError;
 }
 
 module.exports = {
-    retryWithBackoff,
-    simpleRetry
+	retryWithBackoff,
+	simpleRetry
 };

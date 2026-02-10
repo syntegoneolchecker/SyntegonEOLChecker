@@ -7,6 +7,7 @@
 📖 **For setup instructions, see [SUPABASE_LOGGING_SETUP.md](./SUPABASE_LOGGING_SETUP.md)**
 
 **Benefits of Supabase:**
+
 - ✅ **100x faster**: Single SQL query vs hundreds of blob fetches
 - ✅ **No crashes**: Handles millions of rows without browser crashes
 - ✅ **Better search**: PostgreSQL full-text search
@@ -75,10 +76,10 @@ This application has a centralized logging system that aggregates logs from both
 
 Both Netlify and Render require these environment variables:
 
-| Variable | Value | Description |
-|----------|-------|-------------|
-| `SUPABASE_URL` | `https://xxxxx.supabase.co` | Your Supabase project URL |
-| `SUPABASE_API_KEY` | `eyJhbGci...` | Supabase publishable API key (anon key) |
+| Variable           | Value                       | Description                             |
+| ------------------ | --------------------------- | --------------------------------------- |
+| `SUPABASE_URL`     | `https://xxxxx.supabase.co` | Your Supabase project URL               |
+| `SUPABASE_API_KEY` | `eyJhbGci...`               | Supabase publishable API key (anon key) |
 
 ### Netlify Setup
 
@@ -114,49 +115,57 @@ https://your-site.netlify.app/.netlify/functions/view-logs
 Use query parameters to filter logs:
 
 - **`days`**: Number of days to fetch (default: 1)
-  ```
-  ?days=7
-  ```
+
+    ```
+    ?days=7
+    ```
 
 - **`source`**: Filter by source (e.g., 'netlify', 'render', or specific function)
-  ```
-  ?source=render
-  ?source=netlify/initialize-job
-  ```
+
+    ```
+    ?source=render
+    ?source=netlify/initialize-job
+    ```
 
 - **`level`**: Filter by log level (DEBUG, INFO, WARN, ERROR)
-  ```
-  ?level=ERROR
-  ```
+
+    ```
+    ?level=ERROR
+    ```
 
 - **`search`**: Search for text in logs
-  ```
-  ?search=timeout
-  ```
+
+    ```
+    ?search=timeout
+    ```
 
 - **`format`**: Output format ('html' or 'json', default: 'html')
-  ```
-  ?format=json
-  ```
+    ```
+    ?format=json
+    ```
 
 #### Example Queries
 
 View all errors from the last 3 days:
+
 ```
 /.netlify/functions/view-logs?days=3&level=ERROR
 ```
 
 View all Render service logs from today:
+
 ```
 /.netlify/functions/view-logs?source=render
 ```
 
 Search for "Groq" across all logs:
+
 ```
 /.netlify/functions/view-logs?search=Groq&days=7
 ```
 
 Export today's logs as JSON:
+
 ```
 /.netlify/functions/view-logs?format=json
 ```
@@ -170,6 +179,7 @@ curl "https://your-site.netlify.app/.netlify/functions/view-logs?format=json&day
 ```
 
 Response format:
+
 ```json
 {
   "count": 150,
@@ -195,14 +205,14 @@ Each log entry contains:
 
 ```json
 {
-  "timestamp": "ISO 8601 timestamp",
-  "level": "DEBUG | INFO | WARN | ERROR",
-  "source": "Source identifier (e.g., 'netlify/initialize-job', 'render/scraping-service')",
-  "message": "Log message (string)",
-  "context": {
-    "optional": "context data",
-    "key": "value"
-  }
+	"timestamp": "ISO 8601 timestamp",
+	"level": "DEBUG | INFO | WARN | ERROR",
+	"source": "Source identifier (e.g., 'netlify/initialize-job', 'render/scraping-service')",
+	"message": "Log message (string)",
+	"context": {
+		"optional": "context data",
+		"key": "value"
+	}
 }
 ```
 
@@ -217,10 +227,12 @@ Control log verbosity with the `LOG_LEVEL` environment variable:
 - **NONE**: Silent (not recommended)
 
 **Set in Netlify:**
+
 1. Site settings → Environment variables
 2. Add `LOG_LEVEL=INFO`
 
 **Set in Render:**
+
 1. Service → Environment
 2. Add `LOG_LEVEL=INFO`
 
@@ -235,17 +247,20 @@ Control log verbosity with the `LOG_LEVEL` environment variable:
 ### Managing Storage
 
 **Automatic Cleanup** (Recommended):
+
 - Runs daily at 2 AM UTC via pg_cron
 - Deletes logs older than 7 days
 - Configurable retention period
 
 **Manual Cleanup**:
+
 ```sql
 -- Delete logs older than 7 days
 DELETE FROM logs WHERE timestamp < NOW() - INTERVAL '7 days';
 ```
 
 **Check Storage Usage**:
+
 ```sql
 -- Get table size
 SELECT pg_size_pretty(pg_total_relation_size('logs')) AS table_size;
@@ -255,6 +270,7 @@ SELECT COUNT(*) FROM logs;
 ```
 
 **Via Application**:
+
 - Use the "Clear Logs" button in the log viewer UI
 - Calls `/.netlify/functions/clear-logs` (POST)
 
@@ -265,6 +281,7 @@ SELECT COUNT(*) FROM logs;
 **Problem**: Render service logs aren't showing in the centralized viewer
 
 **Solutions**:
+
 1. Check `SUPABASE_URL` and `SUPABASE_API_KEY` are set correctly in Render environment variables
 2. Verify Supabase connection is working by checking Render service logs
 3. Check Render service logs for any network errors
@@ -274,6 +291,7 @@ SELECT COUNT(*) FROM logs;
 **Problem**: Netlify function logs aren't showing in the viewer
 
 **Solutions**:
+
 1. Check the logger is imported: `const logger = require('./lib/logger');`
 2. Verify logs are using logger methods: `logger.info()`, not `console.log()`
 3. Check Netlify function logs for errors
@@ -283,6 +301,7 @@ SELECT COUNT(*) FROM logs;
 **Problem**: Logs not being written to Supabase
 
 **Solutions**:
+
 1. Check Supabase storage quota (500MB free tier)
 2. Verify `SUPABASE_URL` and `SUPABASE_API_KEY` environment variables are set
 3. Check function logs for specific error messages
@@ -292,6 +311,7 @@ SELECT COUNT(*) FROM logs;
 **Problem**: Logging is slow or causes timeouts
 
 **Solutions**:
+
 1. Logging is fire-and-forget and non-blocking
 2. If issues persist, check network latency between Render and Netlify
 3. Consider adjusting `LOG_LEVEL` to reduce volume
@@ -301,6 +321,7 @@ SELECT COUNT(*) FROM logs;
 ### Local Development
 
 When running locally (e.g., `netlify dev`):
+
 - Set `SUPABASE_URL` and `SUPABASE_API_KEY` environment variables
 - Logs will appear in both your terminal (console) and Supabase
 - If Supabase variables are not set, logs will only appear in console
@@ -320,10 +341,10 @@ Include context objects for better debugging:
 
 ```javascript
 // Good - includes context
-logger.info('Job created', { jobId: 'abc123', maker: 'SMC', model: 'XYZ' });
+logger.info("Job created", { jobId: "abc123", maker: "SMC", model: "XYZ" });
 
 // Bad - only string message
-logger.info('Job created abc123');
+logger.info("Job created abc123");
 ```
 
 The context object will be displayed in a collapsible section in the web UI.
@@ -336,6 +357,7 @@ The context object will be displayed in a collapsible section in the web UI.
 **Render**: `/scraping-service/utils/logger.js`
 
 Both loggers:
+
 - Send logs to console (for immediate debugging)
 - POST logs to central endpoint (for aggregation)
 - Extract structured context from arguments
@@ -344,11 +366,13 @@ Both loggers:
 ### Core Functions
 
 **Log Viewer**: `/netlify/functions/view-logs.js`
+
 - Queries logs from Supabase PostgreSQL
 - Filters and sorts logs with efficient SQL queries
 - Provides HTML UI and JSON API
 
 **Logger Factory**: `/shared/logger-factory.js`
+
 - Creates logger instances for all services
 - Sends logs directly to Supabase (fire-and-forget)
 - Falls back to console logging if Supabase is unavailable
@@ -363,6 +387,7 @@ Both loggers:
 ## Questions?
 
 For issues or questions about the logging system, check:
+
 1. Your Netlify function logs (individual function pages)
 2. Your Render service logs (Render dashboard → Logs)
 3. The centralized log viewer for aggregated view

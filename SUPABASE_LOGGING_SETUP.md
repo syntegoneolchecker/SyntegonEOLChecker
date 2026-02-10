@@ -5,6 +5,7 @@ This guide walks you through setting up Supabase PostgreSQL as your centralized 
 ## Why Supabase?
 
 **Benefits over Netlify Blobs:**
+
 - ✅ **100x faster**: Single SQL query vs hundreds of blob fetches
 - ✅ **No crashes**: Handles millions of rows without browser crashes
 - ✅ **Real database**: PostgreSQL with indexes, transactions, constraints
@@ -28,10 +29,10 @@ This guide walks you through setting up Supabase PostgreSQL as your centralized 
 
 1. Click "New Project" in your organization
 2. Fill in:
-   - **Name**: `eol-checker-logs` (or your preference)
-   - **Database Password**: Generate a strong password (you won't need this often)
-   - **Region**: Choose closest to your Netlify deployment (e.g., US East for better performance)
-   - **Pricing Plan**: **Free** (500MB database, plenty for logs)
+    - **Name**: `eol-checker-logs` (or your preference)
+    - **Database Password**: Generate a strong password (you won't need this often)
+    - **Region**: Choose closest to your Netlify deployment (e.g., US East for better performance)
+    - **Pricing Plan**: **Free** (500MB database, plenty for logs)
 3. Click "Create new project"
 4. Wait 1-2 minutes for project to initialize
 
@@ -71,6 +72,7 @@ COMMENT ON TABLE logs IS 'Centralized application logs from Netlify Functions an
 ```
 
 **What this does:**
+
 - Creates a `logs` table with columns for timestamp, level, source, message, and context
 - Adds indexes to make queries fast (critical for log viewing performance)
 - Uses `BIGSERIAL` for `id` to handle millions of rows
@@ -171,11 +173,12 @@ You should see your `daily-log-cleanup` job listed.
 1. Still in **Settings** → **API Keys**
 2. Click **Create new API Keys** if you haven't already
 3. Copy the **Secret key** (starts with `sb_secret_...`)
-   - ⚠️ **Important**: This is a server-side only key - never expose it in client-side code
-   - The secret key bypasses Row Level Security (RLS) and is intended for backend use
-   - If you don't have the new key format yet, you can use the legacy `service_role` key instead
+    - ⚠️ **Important**: This is a server-side only key - never expose it in client-side code
+    - The secret key bypasses Row Level Security (RLS) and is intended for backend use
+    - If you don't have the new key format yet, you can use the legacy `service_role` key instead
 
 **Example keys:**
+
 ```
 Project URL: https://abcdefghij.supabase.co
 Secret API Key: sb_secret_abc123...
@@ -195,9 +198,9 @@ Secret API Key: sb_secret_abc123...
 3. Click **Add a variable**
 4. Add these two variables:
 
-| Key | Value | Scopes |
-|-----|-------|--------|
-| `SUPABASE_URL` | `https://xxxxx.supabase.co` | All scopes |
+| Key                | Value                             | Scopes     |
+| ------------------ | --------------------------------- | ---------- |
+| `SUPABASE_URL`     | `https://xxxxx.supabase.co`       | All scopes |
 | `SUPABASE_API_KEY` | `sb_secret_...` (your secret key) | All scopes |
 
 5. Click **Save**
@@ -209,9 +212,9 @@ Secret API Key: sb_secret_abc123...
 3. Click **Environment** tab
 4. Add these environment variables:
 
-| Key | Value |
-|-----|-------|
-| `SUPABASE_URL` | `https://xxxxx.supabase.co` |
+| Key                | Value                             |
+| ------------------ | --------------------------------- |
+| `SUPABASE_URL`     | `https://xxxxx.supabase.co`       |
 | `SUPABASE_API_KEY` | `sb_secret_...` (your secret key) |
 
 5. Click **Save Changes**
@@ -231,11 +234,12 @@ The code changes have already been implemented in your repository. The following
 ### 6.1 Trigger Netlify Deployment
 
 1. Commit and push your changes:
-   ```bash
-   git add .
-   git commit -m "feat: Migrate logging from Netlify Blobs to Supabase PostgreSQL"
-   git push
-   ```
+
+    ```bash
+    git add .
+    git commit -m "feat: Migrate logging from Netlify Blobs to Supabase PostgreSQL"
+    git push
+    ```
 
 2. Netlify will automatically deploy the changes
 
@@ -263,15 +267,16 @@ The code changes have already been implemented in your repository. The following
 3. You should see rows appearing with log entries
 
 **Example log entry:**
+
 ```json
 {
-  "id": 1,
-  "timestamp": "2026-01-09T10:30:00.000Z",
-  "level": "INFO",
-  "source": "netlify/initialize-job",
-  "message": "Creating job for: SMC ABC123",
-  "context": {"maker": "SMC", "model": "ABC123"},
-  "created_at": "2026-01-09T10:30:00.123Z"
+	"id": 1,
+	"timestamp": "2026-01-09T10:30:00.000Z",
+	"level": "INFO",
+	"source": "netlify/initialize-job",
+	"message": "Creating job for: SMC ABC123",
+	"context": { "maker": "SMC", "model": "ABC123" },
+	"created_at": "2026-01-09T10:30:00.123Z"
 }
 ```
 
@@ -322,11 +327,11 @@ netlify blobs:delete logs "logs-*" --all
 
 ### Environment Variables
 
-| Variable | Required | Where | Description |
-|----------|----------|-------|-------------|
-| `SUPABASE_URL` | ✅ Yes | Netlify + Render | Your Supabase project URL |
-| `SUPABASE_API_KEY` | ✅ Yes | Netlify + Render | Publishable API key (`anon` key) |
-| `LOG_LEVEL` | ❌ No | Netlify + Render | Filter log level: DEBUG, INFO, WARN, ERROR (default: INFO) |
+| Variable           | Required | Where            | Description                                                |
+| ------------------ | -------- | ---------------- | ---------------------------------------------------------- |
+| `SUPABASE_URL`     | ✅ Yes   | Netlify + Render | Your Supabase project URL                                  |
+| `SUPABASE_API_KEY` | ✅ Yes   | Netlify + Render | Publishable API key (`anon` key)                           |
+| `LOG_LEVEL`        | ❌ No    | Netlify + Render | Filter log level: DEBUG, INFO, WARN, ERROR (default: INFO) |
 
 ### Supabase Table Schema
 
@@ -344,23 +349,23 @@ CREATE TABLE logs (
 
 ### API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/.netlify/functions/view-logs` | GET | View and filter logs (HTML UI) |
-| `/.netlify/functions/view-logs?format=json` | GET | Get logs as JSON |
-| `/.netlify/functions/clear-logs` | POST | Delete all logs |
+| Endpoint                                    | Method | Description                    |
+| ------------------------------------------- | ------ | ------------------------------ |
+| `/.netlify/functions/view-logs`             | GET    | View and filter logs (HTML UI) |
+| `/.netlify/functions/view-logs?format=json` | GET    | Get logs as JSON               |
+| `/.netlify/functions/clear-logs`            | POST   | Delete all logs                |
 
 ### Query Parameters for view-logs
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `days` | number | 1 | Number of days to show |
-| `level` | string | (all) | Filter by level: DEBUG, INFO, WARN, ERROR |
-| `source` | string | (all) | Filter by source (partial match) |
-| `search` | string | (all) | Search in message text |
-| `limit` | number | 100 | Logs per page (max 1000) |
-| `offset` | number | 0 | Pagination offset |
-| `format` | string | html | Output format: html or json |
+| Parameter | Type   | Default | Description                               |
+| --------- | ------ | ------- | ----------------------------------------- |
+| `days`    | number | 1       | Number of days to show                    |
+| `level`   | string | (all)   | Filter by level: DEBUG, INFO, WARN, ERROR |
+| `source`  | string | (all)   | Filter by source (partial match)          |
+| `search`  | string | (all)   | Search in message text                    |
+| `limit`   | number | 100     | Logs per page (max 1000)                  |
+| `offset`  | number | 0       | Pagination offset                         |
+| `format`  | string | html    | Output format: html or json               |
 
 ---
 
@@ -371,6 +376,7 @@ CREATE TABLE logs (
 **Problem**: Logs aren't showing up in Supabase
 
 **Solutions**:
+
 1. Check environment variables are set correctly in Netlify and Render
 2. Verify `SUPABASE_URL` doesn't have trailing slash
 3. Verify you're using the `anon` (publishable) key, not `service_role` key
@@ -383,6 +389,7 @@ CREATE TABLE logs (
 **Problem**: view-logs page shows "Supabase not configured" error
 
 **Solutions**:
+
 1. Environment variables are missing - add them in Netlify dashboard
 2. Trigger a new deployment after adding environment variables
 3. Verify variable names are exactly `SUPABASE_URL` and `SUPABASE_API_KEY` (case-sensitive)
@@ -392,11 +399,12 @@ CREATE TABLE logs (
 **Problem**: Log queries are slow or timing out
 
 **Solutions**:
+
 1. Verify indexes exist:
-   ```sql
-   SELECT indexname FROM pg_indexes WHERE tablename = 'logs';
-   ```
-   Should show: `logs_pkey`, `idx_logs_timestamp`, `idx_logs_level`, `idx_logs_source`
+    ```sql
+    SELECT indexname FROM pg_indexes WHERE tablename = 'logs';
+    ```
+    Should show: `logs_pkey`, `idx_logs_timestamp`, `idx_logs_level`, `idx_logs_source`
 2. If indexes are missing, recreate them (see Step 2.2)
 3. Consider reducing retention period (delete older logs more frequently)
 
@@ -405,26 +413,28 @@ CREATE TABLE logs (
 **Problem**: "permission denied for table logs" or similar errors
 
 **Solutions**:
+
 1. Verify you created the table while logged in to your Supabase project
 2. Verify you're using a secret key (`sb_secret_...`) or `service_role` key, not the `anon` key
-   - The secret key bypasses RLS and has full access
-   - Check your `SUPABASE_API_KEY` environment variable in Netlify and Render
+    - The secret key bypasses RLS and has full access
+    - Check your `SUPABASE_API_KEY` environment variable in Netlify and Render
 3. RLS should be enabled on the `logs` table (for security compliance):
-   ```sql
-   ALTER TABLE logs ENABLE ROW LEVEL SECURITY;
-   ```
-   The secret key bypasses RLS, so no policies are needed
+    ```sql
+    ALTER TABLE logs ENABLE ROW LEVEL SECURITY;
+    ```
+    The secret key bypasses RLS, so no policies are needed
 
 ### Storage Limit Reached
 
 **Problem**: "storage limit exceeded" in Supabase dashboard
 
 **Solutions**:
+
 1. Free tier has 500MB limit - check current usage in dashboard
 2. Run manual cleanup:
-   ```sql
-   DELETE FROM logs WHERE timestamp < NOW() - INTERVAL '3 days';
-   ```
+    ```sql
+    DELETE FROM logs WHERE timestamp < NOW() - INTERVAL '3 days';
+    ```
 3. Reduce retention period in cleanup function (change `7 days` to `3 days`)
 
 ---

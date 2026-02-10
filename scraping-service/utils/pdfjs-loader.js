@@ -5,10 +5,10 @@
 let pdfjsModule = null;
 
 async function loadPdfjs() {
-    if (!pdfjsModule) {
-        pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.mjs');
-    }
-    return pdfjsModule;
+	if (!pdfjsModule) {
+		pdfjsModule = await import("pdfjs-dist/legacy/build/pdf.mjs");
+	}
+	return pdfjsModule;
 }
 
 module.exports = { loadPdfjs };

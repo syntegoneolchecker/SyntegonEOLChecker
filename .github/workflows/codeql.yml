@@ -1,45 +1,45 @@
 name: "CodeQL Security Analysis"
 
 on:
-  push:
-    branches: [ main, develop, claude/** ]
-  pull_request:
-    branches: [ main ]
-  schedule:
-    # Run every Monday at 6:00 UTC
-    - cron: '0 6 * * 1'
+    push:
+        branches: [main, develop, claude/**]
+    pull_request:
+        branches: [main]
+    schedule:
+        # Run every Monday at 6:00 UTC
+        - cron: "0 6 * * 1"
 
 jobs:
-  analyze:
-    name: Analyze Code
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
+    analyze:
+        name: Analyze Code
+        runs-on: ubuntu-latest
+        permissions:
+            actions: read
+            contents: read
+            security-events: write
 
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [ 'javascript' ]
+        strategy:
+            fail-fast: false
+            matrix:
+                language: ["javascript"]
 
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
 
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v4
-      with:
-        languages: ${{ matrix.language }}
-        # Detect security vulnerabilities and code quality issues
-        queries: +security-and-quality
-        # Use custom configuration to suppress intentional SSRF patterns
-        config-file: ./.github/codeql/codeql-config.yml
+            - name: Initialize CodeQL
+              uses: github/codeql-action/init@v4
+              with:
+                  languages: ${{ matrix.language }}
+                  # Detect security vulnerabilities and code quality issues
+                  queries: +security-and-quality
+                  # Use custom configuration to suppress intentional SSRF patterns
+                  config-file: ./.github/codeql/codeql-config.yml
 
-    - name: Autobuild
-      uses: github/codeql-action/autobuild@v4
+            - name: Autobuild
+              uses: github/codeql-action/autobuild@v4
 
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v4
-      with:
-        category: "/language:${{matrix.language}}"
+            - name: Perform CodeQL Analysis
+              uses: github/codeql-action/analyze@v4
+              with:
+                  category: "/language:${{matrix.language}}"

@@ -1,5 +1,5 @@
-const { getStore } = require('@netlify/blobs');
-const crypto = require('node:crypto');
+const { getStore } = require("@netlify/blobs");
+const crypto = require("node:crypto");
 
 /**
  * User Storage Manager for Authentication
@@ -11,21 +11,21 @@ const crypto = require('node:crypto');
  * - login-attempts: Map of email -> attempt data (for rate limiting)
  */
 
-const USERS_BLOB_KEY = 'users';
-const TOKENS_BLOB_KEY = 'verification-tokens';
-const PASSWORD_RESET_TOKENS_BLOB_KEY = 'password-reset-tokens';
-const LOGIN_ATTEMPTS_BLOB_KEY = 'login-attempts';
+const USERS_BLOB_KEY = "users";
+const TOKENS_BLOB_KEY = "verification-tokens";
+const PASSWORD_RESET_TOKENS_BLOB_KEY = "password-reset-tokens";
+const LOGIN_ATTEMPTS_BLOB_KEY = "login-attempts";
 
 /**
  * Get configured Netlify Blobs store
  * @returns {Object} Netlify Blobs store instance
  */
 function getAuthStore() {
-    return getStore({
-        name: 'auth-data',
-        siteID: process.env.SITE_ID,
-        token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
-    });
+	return getStore({
+		name: "auth-data",
+		siteID: process.env.SITE_ID,
+		token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN
+	});
 }
 
 /**
@@ -33,9 +33,9 @@ function getAuthStore() {
  * @returns {Promise<Array>} Array of user objects
  */
 async function getUsers() {
-    const store = getAuthStore();
-    const usersBlob = await store.get(USERS_BLOB_KEY, { type: 'json' });
-    return usersBlob || [];
+	const store = getAuthStore();
+	const usersBlob = await store.get(USERS_BLOB_KEY, { type: "json" });
+	return usersBlob || [];
 }
 
 /**
@@ -44,19 +44,19 @@ async function getUsers() {
  * @returns {Promise<void>}
  */
 async function saveUsers(users) {
-    const store = getAuthStore();
-    const maxRetries = 5;
+	const store = getAuthStore();
+	const maxRetries = 5;
 
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            await store.setJSON(USERS_BLOB_KEY, users);
-            return;
-        } catch (error) {
-            if (i === maxRetries - 1) throw error;
-            // Exponential backoff
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 100));
-        }
-    }
+	for (let i = 0; i < maxRetries; i++) {
+		try {
+			await store.setJSON(USERS_BLOB_KEY, users);
+			return;
+		} catch (error) {
+			if (i === maxRetries - 1) throw error;
+			// Exponential backoff
+			await new Promise((resolve) => setTimeout(resolve, Math.pow(2, i) * 100));
+		}
+	}
 }
 
 /**
@@ -65,9 +65,9 @@ async function saveUsers(users) {
  * @returns {Promise<Object|null>} User object or null
  */
 async function findUserByEmail(email) {
-    const users = await getUsers();
-    const normalizedEmail = normalizeEmail(email);
-    return users.find(u => u.email === normalizedEmail) || null;
+	const users = await getUsers();
+	const normalizedEmail = normalizeEmail(email);
+	return users.find((u) => u.email === normalizedEmail) || null;
 }
 
 /**
@@ -76,28 +76,28 @@ async function findUserByEmail(email) {
  * @returns {Promise<Object>} Created user object
  */
 async function createUser(userData) {
-    const users = await getUsers();
-    const normalizedEmail = normalizeEmail(userData.email);
+	const users = await getUsers();
+	const normalizedEmail = normalizeEmail(userData.email);
 
-    // Check if user already exists
-    if (users.some(u => u.email === normalizedEmail)) {
-        throw new Error('User already exists');
-    }
+	// Check if user already exists
+	if (users.some((u) => u.email === normalizedEmail)) {
+		throw new Error("User already exists");
+	}
 
-    const newUser = {
-        id: crypto.randomBytes(16).toString('hex'),
-        email: normalizedEmail,
-        hashedPassword: userData.hashedPassword,
-        verified: false,
-        createdAt: new Date().toISOString(),
-        failedLoginAttempts: 0,
-        lockedUntil: null
-    };
+	const newUser = {
+		id: crypto.randomBytes(16).toString("hex"),
+		email: normalizedEmail,
+		hashedPassword: userData.hashedPassword,
+		verified: false,
+		createdAt: new Date().toISOString(),
+		failedLoginAttempts: 0,
+		lockedUntil: null
+	};
 
-    users.push(newUser);
-    await saveUsers(users);
+	users.push(newUser);
+	await saveUsers(users);
 
-    return newUser;
+	return newUser;
 }
 
 /**
@@ -107,18 +107,18 @@ async function createUser(userData) {
  * @returns {Promise<Object>} Updated user object
  */
 async function updateUser(email, updates) {
-    const users = await getUsers();
-    const normalizedEmail = normalizeEmail(email);
-    const userIndex = users.findIndex(u => u.email === normalizedEmail);
+	const users = await getUsers();
+	const normalizedEmail = normalizeEmail(email);
+	const userIndex = users.findIndex((u) => u.email === normalizedEmail);
 
-    if (userIndex === -1) {
-        throw new Error('User not found');
-    }
+	if (userIndex === -1) {
+		throw new Error("User not found");
+	}
 
-    users[userIndex] = { ...users[userIndex], ...updates };
-    await saveUsers(users);
+	users[userIndex] = { ...users[userIndex], ...updates };
+	await saveUsers(users);
 
-    return users[userIndex];
+	return users[userIndex];
 }
 
 /**
@@ -127,16 +127,16 @@ async function updateUser(email, updates) {
  * @returns {Promise<boolean>} Success status
  */
 async function deleteUser(email) {
-    const users = await getUsers();
-    const normalizedEmail = normalizeEmail(email);
-    const filteredUsers = users.filter(u => u.email !== normalizedEmail);
+	const users = await getUsers();
+	const normalizedEmail = normalizeEmail(email);
+	const filteredUsers = users.filter((u) => u.email !== normalizedEmail);
 
-    if (filteredUsers.length === users.length) {
-        return false; // User not found
-    }
+	if (filteredUsers.length === users.length) {
+		return false; // User not found
+	}
 
-    await saveUsers(filteredUsers);
-    return true;
+	await saveUsers(filteredUsers);
+	return true;
 }
 
 /**
@@ -146,15 +146,15 @@ async function deleteUser(email) {
  * @returns {Promise<void>}
  */
 async function storeVerificationToken(token, data) {
-    const store = getAuthStore();
-    const tokens = await store.get(TOKENS_BLOB_KEY, { type: 'json' }) || {};
+	const store = getAuthStore();
+	const tokens = (await store.get(TOKENS_BLOB_KEY, { type: "json" })) || {};
 
-    tokens[token] = {
-        ...data,
-        createdAt: new Date().toISOString()
-    };
+	tokens[token] = {
+		...data,
+		createdAt: new Date().toISOString()
+	};
 
-    await store.setJSON(TOKENS_BLOB_KEY, tokens);
+	await store.setJSON(TOKENS_BLOB_KEY, tokens);
 }
 
 /**
@@ -163,20 +163,20 @@ async function storeVerificationToken(token, data) {
  * @returns {Promise<Object|null>} Token data or null if invalid/expired
  */
 async function getVerificationToken(token) {
-    const store = getAuthStore();
-    const tokens = await store.get(TOKENS_BLOB_KEY, { type: 'json' }) || {};
+	const store = getAuthStore();
+	const tokens = (await store.get(TOKENS_BLOB_KEY, { type: "json" })) || {};
 
-    const tokenData = tokens[token];
-    if (!tokenData) return null;
+	const tokenData = tokens[token];
+	if (!tokenData) return null;
 
-    // Check expiration
-    if (new Date(tokenData.expiresAt) < new Date()) {
-        // Token expired, remove it
-        await deleteVerificationToken(token);
-        return null;
-    }
+	// Check expiration
+	if (new Date(tokenData.expiresAt) < new Date()) {
+		// Token expired, remove it
+		await deleteVerificationToken(token);
+		return null;
+	}
 
-    return tokenData;
+	return tokenData;
 }
 
 /**
@@ -185,11 +185,11 @@ async function getVerificationToken(token) {
  * @returns {Promise<void>}
  */
 async function deleteVerificationToken(token) {
-    const store = getAuthStore();
-    const tokens = await store.get(TOKENS_BLOB_KEY, { type: 'json' }) || {};
+	const store = getAuthStore();
+	const tokens = (await store.get(TOKENS_BLOB_KEY, { type: "json" })) || {};
 
-    delete tokens[token];
-    await store.setJSON(TOKENS_BLOB_KEY, tokens);
+	delete tokens[token];
+	await store.setJSON(TOKENS_BLOB_KEY, tokens);
 }
 
 /**
@@ -199,15 +199,15 @@ async function deleteVerificationToken(token) {
  * @returns {Promise<void>}
  */
 async function storePasswordResetToken(token, data) {
-    const store = getAuthStore();
-    const tokens = await store.get(PASSWORD_RESET_TOKENS_BLOB_KEY, { type: 'json' }) || {};
+	const store = getAuthStore();
+	const tokens = (await store.get(PASSWORD_RESET_TOKENS_BLOB_KEY, { type: "json" })) || {};
 
-    tokens[token] = {
-        ...data,
-        createdAt: new Date().toISOString()
-    };
+	tokens[token] = {
+		...data,
+		createdAt: new Date().toISOString()
+	};
 
-    await store.setJSON(PASSWORD_RESET_TOKENS_BLOB_KEY, tokens);
+	await store.setJSON(PASSWORD_RESET_TOKENS_BLOB_KEY, tokens);
 }
 
 /**
@@ -216,20 +216,20 @@ async function storePasswordResetToken(token, data) {
  * @returns {Promise<Object|null>} Token data or null if invalid/expired
  */
 async function getPasswordResetToken(token) {
-    const store = getAuthStore();
-    const tokens = await store.get(PASSWORD_RESET_TOKENS_BLOB_KEY, { type: 'json' }) || {};
+	const store = getAuthStore();
+	const tokens = (await store.get(PASSWORD_RESET_TOKENS_BLOB_KEY, { type: "json" })) || {};
 
-    const tokenData = tokens[token];
-    if (!tokenData) return null;
+	const tokenData = tokens[token];
+	if (!tokenData) return null;
 
-    // Check expiration
-    if (new Date(tokenData.expiresAt) < new Date()) {
-        // Token expired, remove it
-        await deletePasswordResetToken(token);
-        return null;
-    }
+	// Check expiration
+	if (new Date(tokenData.expiresAt) < new Date()) {
+		// Token expired, remove it
+		await deletePasswordResetToken(token);
+		return null;
+	}
 
-    return tokenData;
+	return tokenData;
 }
 
 /**
@@ -238,11 +238,11 @@ async function getPasswordResetToken(token) {
  * @returns {Promise<void>}
  */
 async function deletePasswordResetToken(token) {
-    const store = getAuthStore();
-    const tokens = await store.get(PASSWORD_RESET_TOKENS_BLOB_KEY, { type: 'json' }) || {};
+	const store = getAuthStore();
+	const tokens = (await store.get(PASSWORD_RESET_TOKENS_BLOB_KEY, { type: "json" })) || {};
 
-    delete tokens[token];
-    await store.setJSON(PASSWORD_RESET_TOKENS_BLOB_KEY, tokens);
+	delete tokens[token];
+	await store.setJSON(PASSWORD_RESET_TOKENS_BLOB_KEY, tokens);
 }
 
 /**
@@ -251,23 +251,23 @@ async function deletePasswordResetToken(token) {
  * @returns {Promise<number>} Number of failed attempts
  */
 async function recordFailedLogin(email) {
-    const store = getAuthStore();
-    const attempts = await store.get(LOGIN_ATTEMPTS_BLOB_KEY, { type: 'json' }) || {};
-    const normalizedEmail = normalizeEmail(email);
+	const store = getAuthStore();
+	const attempts = (await store.get(LOGIN_ATTEMPTS_BLOB_KEY, { type: "json" })) || {};
+	const normalizedEmail = normalizeEmail(email);
 
-    if (!attempts[normalizedEmail]) {
-        attempts[normalizedEmail] = {
-            count: 0,
-            firstAttempt: new Date().toISOString()
-        };
-    }
+	if (!attempts[normalizedEmail]) {
+		attempts[normalizedEmail] = {
+			count: 0,
+			firstAttempt: new Date().toISOString()
+		};
+	}
 
-    attempts[normalizedEmail].count++;
-    attempts[normalizedEmail].lastAttempt = new Date().toISOString();
+	attempts[normalizedEmail].count++;
+	attempts[normalizedEmail].lastAttempt = new Date().toISOString();
 
-    await store.setJSON(LOGIN_ATTEMPTS_BLOB_KEY, attempts);
+	await store.setJSON(LOGIN_ATTEMPTS_BLOB_KEY, attempts);
 
-    return attempts[normalizedEmail].count;
+	return attempts[normalizedEmail].count;
 }
 
 /**
@@ -276,12 +276,12 @@ async function recordFailedLogin(email) {
  * @returns {Promise<void>}
  */
 async function clearFailedLogins(email) {
-    const store = getAuthStore();
-    const attempts = await store.get(LOGIN_ATTEMPTS_BLOB_KEY, { type: 'json' }) || {};
-    const normalizedEmail = normalizeEmail(email);
+	const store = getAuthStore();
+	const attempts = (await store.get(LOGIN_ATTEMPTS_BLOB_KEY, { type: "json" })) || {};
+	const normalizedEmail = normalizeEmail(email);
 
-    delete attempts[normalizedEmail];
-    await store.setJSON(LOGIN_ATTEMPTS_BLOB_KEY, attempts);
+	delete attempts[normalizedEmail];
+	await store.setJSON(LOGIN_ATTEMPTS_BLOB_KEY, attempts);
 }
 
 /**
@@ -290,11 +290,11 @@ async function clearFailedLogins(email) {
  * @returns {Promise<number>} Number of failed attempts
  */
 async function getFailedLoginCount(email) {
-    const store = getAuthStore();
-    const attempts = await store.get(LOGIN_ATTEMPTS_BLOB_KEY, { type: 'json' }) || {};
-    const normalizedEmail = normalizeEmail(email);
+	const store = getAuthStore();
+	const attempts = (await store.get(LOGIN_ATTEMPTS_BLOB_KEY, { type: "json" })) || {};
+	const normalizedEmail = normalizeEmail(email);
 
-    return attempts[normalizedEmail]?.count || 0;
+	return attempts[normalizedEmail]?.count || 0;
 }
 
 /**
@@ -304,14 +304,14 @@ async function getFailedLoginCount(email) {
  * @throws {Error} If email format is invalid (missing @ or multiple @)
  */
 function normalizeEmail(email) {
-    const parts = email.toLowerCase().split('@');
-    if (parts.length !== 2) {
-        throw new Error('Invalid email format: must contain exactly one @ symbol');
-    }
-    const [localPart, domain] = parts;
-    // Remove plus addressing (e.g., user+test@domain.com -> user@domain.com)
-    const cleanLocalPart = localPart.split('+')[0];
-    return `${cleanLocalPart}@${domain}`;
+	const parts = email.toLowerCase().split("@");
+	if (parts.length !== 2) {
+		throw new Error("Invalid email format: must contain exactly one @ symbol");
+	}
+	const [localPart, domain] = parts;
+	// Remove plus addressing (e.g., user+test@domain.com -> user@domain.com)
+	const cleanLocalPart = localPart.split("+")[0];
+	return `${cleanLocalPart}@${domain}`;
 }
 
 /**
@@ -319,41 +319,41 @@ function normalizeEmail(email) {
  * @returns {Promise<number>} Number of tokens removed
  */
 async function cleanupExpiredTokens() {
-    const store = getAuthStore();
-    const tokens = await store.get(TOKENS_BLOB_KEY, { type: 'json' }) || {};
+	const store = getAuthStore();
+	const tokens = (await store.get(TOKENS_BLOB_KEY, { type: "json" })) || {};
 
-    const now = new Date();
-    let removedCount = 0;
+	const now = new Date();
+	let removedCount = 0;
 
-    for (const [token, data] of Object.entries(tokens)) {
-        if (new Date(data.expiresAt) < now) {
-            delete tokens[token];
-            removedCount++;
-        }
-    }
+	for (const [token, data] of Object.entries(tokens)) {
+		if (new Date(data.expiresAt) < now) {
+			delete tokens[token];
+			removedCount++;
+		}
+	}
 
-    if (removedCount > 0) {
-        await store.setJSON(TOKENS_BLOB_KEY, tokens);
-    }
+	if (removedCount > 0) {
+		await store.setJSON(TOKENS_BLOB_KEY, tokens);
+	}
 
-    return removedCount;
+	return removedCount;
 }
 
 module.exports = {
-    getUsers,
-    findUserByEmail,
-    createUser,
-    updateUser,
-    deleteUser,
-    storeVerificationToken,
-    getVerificationToken,
-    deleteVerificationToken,
-    storePasswordResetToken,
-    getPasswordResetToken,
-    deletePasswordResetToken,
-    recordFailedLogin,
-    clearFailedLogins,
-    getFailedLoginCount,
-    normalizeEmail,
-    cleanupExpiredTokens
+	getUsers,
+	findUserByEmail,
+	createUser,
+	updateUser,
+	deleteUser,
+	storeVerificationToken,
+	getVerificationToken,
+	deleteVerificationToken,
+	storePasswordResetToken,
+	getPasswordResetToken,
+	deletePasswordResetToken,
+	recordFailedLogin,
+	clearFailedLogins,
+	getFailedLoginCount,
+	normalizeEmail,
+	cleanupExpiredTokens
 };

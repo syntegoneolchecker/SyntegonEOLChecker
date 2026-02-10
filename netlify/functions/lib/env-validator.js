@@ -1,4 +1,4 @@
-const logger = require('./logger');
+const logger = require("./logger");
 
 /**
  * Environment variable validation for Netlify functions
@@ -10,20 +10,15 @@ const logger = require('./logger');
  * @throws {Error} If any required variable is missing
  */
 function validateCommonEnvVars() {
-    const required = [
-        'SITE_ID',
-        'SERPAPI_API_KEY',
-        'GROQ_API_KEY',
-        'SCRAPING_API_KEY'
-    ];
+	const required = ["SITE_ID", "SERPAPI_API_KEY", "GROQ_API_KEY", "SCRAPING_API_KEY"];
 
-    const missing = required.filter(varName => !process.env[varName]);
+	const missing = required.filter((varName) => !process.env[varName]);
 
-    if (missing.length > 0) {
-        const errorMsg = `Missing required environment variables: ${missing.join(', ')}`;
-        logger.error('❌', errorMsg);
-        throw new Error(errorMsg);
-    }
+	if (missing.length > 0) {
+		const errorMsg = `Missing required environment variables: ${missing.join(", ")}`;
+		logger.error("❌", errorMsg);
+		throw new Error(errorMsg);
+	}
 }
 
 /**
@@ -31,11 +26,11 @@ function validateCommonEnvVars() {
  * @returns {boolean} True if available
  */
 function validateBrowserQLKey() {
-    if (!process.env.BROWSERQL_API_KEY) {
-        logger.warn('⚠️  BROWSERQL_API_KEY not set - Cloudflare-protected sites may fail');
-        return false;
-    }
-    return true;
+	if (!process.env.BROWSERQL_API_KEY) {
+		logger.warn("⚠️  BROWSERQL_API_KEY not set - Cloudflare-protected sites may fail");
+		return false;
+	}
+	return true;
 }
 
 /**
@@ -43,17 +38,17 @@ function validateBrowserQLKey() {
  * @throws {Error} If URL is missing or invalid
  */
 function validateScrapingServiceUrl() {
-    const url = process.env.SCRAPING_SERVICE_URL;
+	const url = process.env.SCRAPING_SERVICE_URL;
 
-    if (!url) {
-        throw new Error('SCRAPING_SERVICE_URL environment variable is required');
-    }
+	if (!url) {
+		throw new Error("SCRAPING_SERVICE_URL environment variable is required");
+	}
 
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        throw new Error(`Invalid SCRAPING_SERVICE_URL format: ${url}`);
-    }
+	if (!url.startsWith("http://") && !url.startsWith("https://")) {
+		throw new Error(`Invalid SCRAPING_SERVICE_URL format: ${url}`);
+	}
 
-    return true;
+	return true;
 }
 
 /**
@@ -61,13 +56,13 @@ function validateScrapingServiceUrl() {
  * @throws {Error} If token is missing
  */
 function validateBlobsToken() {
-    const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN;
+	const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_TOKEN;
 
-    if (!token) {
-        throw new Error('NETLIFY_BLOBS_TOKEN or NETLIFY_TOKEN environment variable is required');
-    }
+	if (!token) {
+		throw new Error("NETLIFY_BLOBS_TOKEN or NETLIFY_TOKEN environment variable is required");
+	}
 
-    return true;
+	return true;
 }
 
 /**
@@ -75,49 +70,49 @@ function validateBlobsToken() {
  * Use this in critical functions that need multiple env vars
  */
 function validateAllEnvVars() {
-    const errors = [];
-    const warnings = [];
+	const errors = [];
+	const warnings = [];
 
-    try {
-        validateCommonEnvVars();
-    } catch (error) {
-        errors.push(error.message);
-    }
+	try {
+		validateCommonEnvVars();
+	} catch (error) {
+		errors.push(error.message);
+	}
 
-    try {
-        validateBlobsToken();
-    } catch (error) {
-        errors.push(error.message);
-    }
+	try {
+		validateBlobsToken();
+	} catch (error) {
+		errors.push(error.message);
+	}
 
-    try {
-        validateScrapingServiceUrl();
-    } catch (error) {
-        warnings.push(error.message + ' (will use default)');
-    }
+	try {
+		validateScrapingServiceUrl();
+	} catch (error) {
+		warnings.push(error.message + " (will use default)");
+	}
 
-    if (!validateBrowserQLKey()) {
-        warnings.push('BrowserQL not configured - some manufacturers may fail');
-    }
+	if (!validateBrowserQLKey()) {
+		warnings.push("BrowserQL not configured - some manufacturers may fail");
+	}
 
-    if (warnings.length > 0) {
-        logger.warn('⚠️  Environment warnings:');
-        warnings.forEach(w => logger.warn(`   ${w}`));
-    }
+	if (warnings.length > 0) {
+		logger.warn("⚠️  Environment warnings:");
+		warnings.forEach((w) => logger.warn(`   ${w}`));
+	}
 
-    if (errors.length > 0) {
-        logger.error('❌ Environment validation failed:');
-        errors.forEach(e => logger.error(`   ${e}`));
-        throw new Error('Missing required environment variables');
-    }
+	if (errors.length > 0) {
+		logger.error("❌ Environment validation failed:");
+		errors.forEach((e) => logger.error(`   ${e}`));
+		throw new Error("Missing required environment variables");
+	}
 
-    logger.info('✓ Environment variables validated');
+	logger.info("✓ Environment variables validated");
 }
 
 module.exports = {
-    validateCommonEnvVars,
-    validateBrowserQLKey,
-    validateScrapingServiceUrl,
-    validateBlobsToken,
-    validateAllEnvVars
+	validateCommonEnvVars,
+	validateBrowserQLKey,
+	validateScrapingServiceUrl,
+	validateBlobsToken,
+	validateAllEnvVars
 };

@@ -1,4 +1,4 @@
-# SyntegonEOLChecker Architecture 
+# SyntegonEOLChecker Architecture
 
 ## Overview
 
@@ -10,14 +10,14 @@ This is a completely free EOL (End-of-Life) checker application built entirely o
 
 All architectural decisions are driven by these **hard limits**:
 
-| Service | Limit | Impact on Architecture |
-|---------|-------|------------------------|
-| **Netlify Functions** | 30s timeout (regular)<br/>15min timeout (background) | - Polling instead of long-running tasks<br/>- Chain multiple background functions for long operations |
-| **Groq LLM** | 200,000 tokens/day<br/>8,000 tokens/minute<br/>(rolling windows) | - Smart content truncation (`analyze-job.js:235-467`)<br/>- Token availability checks before analysis<br/>- Retry logic with exponential backoff |
-| **SerpAPI Search** | 250 searches/month | - 1 search per product, only 2 search results used due to LLM token constraints<br/>- Manufacturer-specific direct URLs to skip search<br/>- 20 product limit on daily auto-checks |
-| **BrowserQL** | 1,000 tokens/month<br/>(1 token = 30 seconds) | - Use ONLY for Cloudflare-protected sites<br/>- Puppeteer (free) for everything else |
-| **Render (Scraping Service)** | 512MB RAM<br/>750 hours/month | - Aggressive memory management<br/>- Self-restart when approaching limit<br/>- Sequential scraping (no concurrency) |
-| **Netlify Blobs** | Limited storage | - Job cleanup after 24 hours (1440 minutes)<br/>- No historical data retention |
+| Service                       | Limit                                                            | Impact on Architecture                                                                                                                                                             |
+| ----------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Netlify Functions**         | 30s timeout (regular)<br/>15min timeout (background)             | - Polling instead of long-running tasks<br/>- Chain multiple background functions for long operations                                                                              |
+| **Groq LLM**                  | 200,000 tokens/day<br/>8,000 tokens/minute<br/>(rolling windows) | - Smart content truncation (`analyze-job.js:235-467`)<br/>- Token availability checks before analysis<br/>- Retry logic with exponential backoff                                   |
+| **SerpAPI Search**            | 250 searches/month                                               | - 1 search per product, only 2 search results used due to LLM token constraints<br/>- Manufacturer-specific direct URLs to skip search<br/>- 20 product limit on daily auto-checks |
+| **BrowserQL**                 | 1,000 tokens/month<br/>(1 token = 30 seconds)                    | - Use ONLY for Cloudflare-protected sites<br/>- Puppeteer (free) for everything else                                                                                               |
+| **Render (Scraping Service)** | 512MB RAM<br/>750 hours/month                                    | - Aggressive memory management<br/>- Self-restart when approaching limit<br/>- Sequential scraping (no concurrency)                                                                |
+| **Netlify Blobs**             | Limited storage                                                  | - Job cleanup after 24 hours (1440 minutes)<br/>- No historical data retention                                                                                                     |
 
 ### Key Architectural Decisions
 
@@ -35,11 +35,13 @@ case 'SMC':
 ```
 
 **Benefits**:
+
 - Saves SerpAPI searches for a large amount of products
 - Faster (no search delay)
 - More reliable information (direct to manufacturer page)
 
 **Trade-off**:
+
 - Manual maintenance required (manufacturer sites could change layout or URL structure)
 - Can only be implemented for some manufacturers with consistent and predictable locations for product information
 
@@ -54,11 +56,13 @@ case 'SMC':
 ```
 
 **BrowserQL** (`lib/browserql-scraper.js`):
+
 - ✅ Bypasses Cloudflare
 - ❌ Limited to 1000 tokens/month
 - **Use cases**: Oriental Motor, NTN (on motion.com)
 
 **Puppeteer** (Render scraping service):
+
 - ✅ "Free indefinitely" for our usage
 - ❌ Blocked by Cloudflare
 - **Use cases**: All the other manufacturers
@@ -68,58 +72,64 @@ case 'SMC':
 **Problem**: 200,000 tokens/day limit means ~25-30 products max per day (more if less Groq tokens are used per request)
 
 **Solutions**:
+
 1. **Smart Content Truncation** (`analyze-job.js:235-467`):
-   - Remove tables that don't mention the product
-   - Extract only sections around product mentions
-   - Truncate each URL to 6,500 characters, total limit 13,000 characters
-   - Mix of Hiragana, Katakana, Kanji and other characters makes a direct translation of characters to Groq tokens difficult
-       Solution -> Dynamic truncation depending on composition of characters with retry logic that reduces characters further if token limit is breached
+    - Remove tables that don't mention the product
+    - Extract only sections around product mentions
+    - Truncate each URL to 6,500 characters, total limit 13,000 characters
+    - Mix of Hiragana, Katakana, Kanji and other characters makes a direct translation of characters to Groq tokens difficult
+      Solution -> Dynamic truncation depending on composition of characters with retry logic that reduces characters further if token limit is breached
 
 2. **Token Availability Checks** (`analyze-job.js:93-99`):
-   ```javascript
-   const tokenCheck = await checkGroqTokenAvailability();
-   if (!tokenCheck.available) {
-       await new Promise(resolve => setTimeout(resolve, waitMs));
-   }
-   ```
+
+    ```javascript
+    const tokenCheck = await checkGroqTokenAvailability();
+    if (!tokenCheck.available) {
+    	await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+    ```
 
 3. **Daily Limit Handling** (`analyze-job.js:634-664`):
-   - Parse "7m54.336s" format from error message
-   - Show countdown to user
-   - Cancel check (don't waste function invocations)
+    - Parse "7m54.336s" format from error message
+    - Show countdown to user
+    - Cancel check (don't waste function invocations)
 
 #### 4. **Memory Management in Render** (`scraping-service/index.js`)
 
 **Problem**: 512MB RAM limit, Puppeteer uses 200-300MB per instance
 
 **Solutions**:
+
 1. **Sequential Processing** (lines 86-93):
-   ```javascript
-   let puppeteerQueue = Promise.resolve();
-   function enqueuePuppeteerTask(task) {
-       const result = puppeteerQueue.then(task, task);
-       puppeteerQueue = result.catch(() => {});
-       return result;
-   }
-   ```
-   - Only 1 browser instance at a time
-   - Prevents memory spikes
+
+    ```javascript
+    let puppeteerQueue = Promise.resolve();
+    function enqueuePuppeteerTask(task) {
+    	const result = puppeteerQueue.then(task, task);
+    	puppeteerQueue = result.catch(() => {});
+    	return result;
+    }
+    ```
+
+    - Only 1 browser instance at a time
+    - Prevents memory spikes
 
 2. **Aggressive Cleanup** (lines 906-927):
-   - Close browser IMMEDIATELY after scraping
-   - Null out large variables
-   - Force garbage collection (`--expose-gc` flag)
+    - Close browser IMMEDIATELY after scraping
+    - Null out large variables
+    - Force garbage collection (`--expose-gc` flag)
 
 3. **Self-Restart Safety Net** (lines 445-464):
-   - Monitor RSS memory usage
-   - Restart at 450MB (62MB buffer before OOM)
-   - Render automatically restarts the service
+    - Monitor RSS memory usage
+    - Restart at 450MB (62MB buffer before OOM)
+    - Render automatically restarts the service
 
 #### 5. **Job Storage & Cleanup** (`lib/job-storage.js`)
 
 **Problem**: Netlify Blobs has limited storage
 
 **Solution**:
+
 - Jobs deleted 24 hours (1440 minutes) after completion
 - Cleanup runs on every new job creation (opportunistic)
 - Logs are separate (not affected by cleanup)
@@ -135,10 +145,12 @@ async function createJob(maker, model, context) {
 #### 6. **Polling Instead of WebSocket**
 
 **Why not WebSocket?**
+
 - Netlify Functions don't support persistent connections
 - Would need external WebSocket service ($$)
 
 **Current Solution**:
+
 - Frontend polls job status every 2 seconds
 - Max 60 attempts (2 minutes)
 - Good enough for ~10-20 checks/day volume
@@ -186,6 +198,7 @@ async function createJob(maker, model, context) {
 ### When to Add Direct URL Strategy
 
 Add a manufacturer to `initialize-job.js:12-90` if:
+
 1. ✅ Manufacturer has **10+ products** in database
 2. ✅ URL pattern is **predictable** (e.g., uses model number in URL)
 3. ✅ Website is **reliable** (not frequently changing)
@@ -193,86 +206,90 @@ Add a manufacturer to `initialize-job.js:12-90` if:
 ### Steps
 
 1. **Test the URL Pattern**:
-   ```javascript
-   // Test with 3-5 different model numbers
-   const testModels = ['ABC-123', 'DEF-456', 'GHI-789'];
-   testModels.forEach(model => {
-       const url = `https://manufacturer.com/product/${model}`;
-       // Manually verify URL works
-   });
-   ```
+
+    ```javascript
+    // Test with 3-5 different model numbers
+    const testModels = ["ABC-123", "DEF-456", "GHI-789"];
+    testModels.forEach((model) => {
+    	const url = `https://manufacturer.com/product/${model}`;
+    	// Manually verify URL works
+    });
+    ```
 
 2. **Determine Scraping Method**:
-   - Try Puppeteer first (free)
-   - If Cloudflare-protected → BrowserQL (limited tokens)
+    - Try Puppeteer first (free)
+    - If Cloudflare-protected → BrowserQL (limited tokens)
 
 3. **Add to Switch Statement**:
-   ```javascript
-   case 'New Manufacturer':
-       return {
-           url: `https://.../${encodedModel}`,
-           scrapingMethod: 'render' // or 'browserql'
-       };
-   ```
+
+    ```javascript
+    case 'New Manufacturer':
+        return {
+            url: `https://.../${encodedModel}`,
+            scrapingMethod: 'render' // or 'browserql'
+        };
+    ```
 
 4. **Test Thoroughly**:
-   - Test with 5+ different products
-   - Check for edge cases (special characters, long names)
-   - Verify token usage (check SerpAPI dashboard, searches should not be used if the manufacturer case works correctly)
+    - Test with 5+ different products
+    - Check for edge cases (special characters, long names)
+    - Verify token usage (check SerpAPI dashboard, searches should not be used if the manufacturer case works correctly)
 
 ## Token Usage Optimization Tips
 
 ### Current Token Usage (Estimated)
 
-| Operation | SerpAPI Tokens | Groq Tokens | BrowserQL Tokens |
-|-----------|---------------|-------------|------------------|
-| Manual check (SerpAPI) | 1 | ~5,000 | 0 |
-| Manual check (Direct URL) | 0 | ~5,000 | 0 |
-| Manual check (BrowserQL) | 0 | ~5,000 | 1 |
-| Daily auto-check (20 products) | 0-20 | ~100,000 | 0-20 |
+| Operation                      | SerpAPI Tokens | Groq Tokens | BrowserQL Tokens |
+| ------------------------------ | -------------- | ----------- | ---------------- |
+| Manual check (SerpAPI)         | 1              | ~5,000      | 0                |
+| Manual check (Direct URL)      | 0              | ~5,000      | 0                |
+| Manual check (BrowserQL)       | 0              | ~5,000      | 1                |
+| Daily auto-check (20 products) | 0-20           | ~100,000    | 0-20             |
 
 ### Maximizing Daily Capacity
 
 **Current**: ~25-30 products/day with Groq limit
 
 **Optimization strategies**:
+
 1. **Manufacturer Direct URLs**: Already implemented, saves SerpAPI tokens
 2. **Content Truncation**: Already complex, hard to improve further
 3. **Caching**: NOT implemented (same product won't be checked twice in months anyway), SerpAPI has 1 hour caching for search results
 4. **Parallel LLM Requests**: Not possible (rate limit is per-account)
 
 **Bottlenecks**:
-   - Per minute: 8,000 Groq tokens, reset time is shown after request
-   - Per day: 200,000 Groq tokens, reset time will be shown if reached
-   - Per month: 250 SerpAPI searches (SerpAPI is most likely bottleneck, less likely are BrowserQL 1000 tokens and render.com 750 instance hours)
-    
+
+- Per minute: 8,000 Groq tokens, reset time is shown after request
+- Per day: 200,000 Groq tokens, reset time will be shown if reached
+- Per month: 250 SerpAPI searches (SerpAPI is most likely bottleneck, less likely are BrowserQL 1000 tokens and render.com 750 instance hours)
+
 ## Monitoring & Debugging
 
 ### Logs to Watch
 
 1. **Netlify Function Logs**:
-   - Token usage: `Groq tokens remaining: X, reset in: Ys`
-   - Memory warnings: `⚠️  Memory approaching limit: XMB RSS`
-   - Job cleanup: `✓ Cleanup complete: deleted X old job(s)`
+    - Token usage: `Groq tokens remaining: X, reset in: Ys`
+    - Memory warnings: `⚠️  Memory approaching limit: XMB RSS`
+    - Job cleanup: `✓ Cleanup complete: deleted X old job(s)`
 
 2. **Render Service Logs**:
-   - Memory before/after: `Memory before scrape: RSS=250MB`
-   - Restart triggers: `🔄 MEMORY LIMIT REACHED - RESTARTING`
-   - Network timeouts: `NETWORK TIMEOUT DIAGNOSTICS`
+    - Memory before/after: `Memory before scrape: RSS=250MB`
+    - Restart triggers: `🔄 MEMORY LIMIT REACHED - RESTARTING`
+    - Network timeouts: `NETWORK TIMEOUT DIAGNOSTICS`
 
 3. **Frontend (Browser Console)**:
-   - Polling attempts: `Polling job abc123 (attempt X/60)`
-   - Token countdown: `Daily token limit reached. Retry in 7m54s`
+    - Polling attempts: `Polling job abc123 (attempt X/60)`
+    - Token countdown: `Daily token limit reached. Retry in 7m54s`
 
 ### Common Issues & Solutions
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| "Daily token limit reached" | Groq 200K/day limit hit | Wait for tokens to recover (rolling window) |
-| Job timeout after 2min | Render cold start + slow site or unforseen issues during EOL check | Retry (first request wakes Render) |
-| Memory limit restart | Large page or PDF | Expected behavior, service auto-restarts |
-| "No SerpAPI credits" | Used 250 searches this month | Wait for monthly reset or add direct URLs |
-| BrowserQL quota exhausted | Used 1000 tokens this month | Wait for monthly reset or reduce usage |
+| Issue                       | Cause                                                              | Solution                                    |
+| --------------------------- | ------------------------------------------------------------------ | ------------------------------------------- |
+| "Daily token limit reached" | Groq 200K/day limit hit                                            | Wait for tokens to recover (rolling window) |
+| Job timeout after 2min      | Render cold start + slow site or unforseen issues during EOL check | Retry (first request wakes Render)          |
+| Memory limit restart        | Large page or PDF                                                  | Expected behavior, service auto-restarts    |
+| "No SerpAPI credits"        | Used 250 searches this month                                       | Wait for monthly reset or add direct URLs   |
+| BrowserQL quota exhausted   | Used 1000 tokens this month                                        | Wait for monthly reset or reduce usage      |
 
 ## Testing Strategy
 
@@ -306,23 +323,24 @@ console.assert(result.data.length === 2);
 ## Future Improvements (If Free Tiers Change)
 
 1. **If Groq increases tokens/minute limit**:
-   - Remove aggressive content truncation
-   - Check more than 2 URLs per search
+    - Remove aggressive content truncation
+    - Check more than 2 URLs per search
 
 2. **If Render increases RAM**:
-   - Enable concurrent scraping (2-3 browsers)
-   - Remove memory restart mechanism
+    - Enable concurrent scraping (2-3 browsers)
+    - Remove memory restart mechanism
 
 3. **If SerpAPI increases limit**:
-   - Increase number of daily checks (Groq daily limit still exists!)
+    - Increase number of daily checks (Groq daily limit still exists!)
 
 4. **If BrowserQL increases tokens**:
-   - Use for more manufacturers
-   - Reduce Puppeteer usage
+    - Use for more manufacturers
+    - Reduce Puppeteer usage
 
 ## Contributing
 
 When making changes:
+
 1. **Test token impact**: Check SerpAPI, Groq, BrowserQL usage after changes
 2. **Monitor memory**: Watch Render logs for memory spikes
 3. **Update config**: Add new magic numbers to `lib/config.js`

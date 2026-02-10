@@ -2,8 +2,8 @@
 
 An automated End-of-Life (EOL) status checker for industrial products. The system uses AI-powered web scraping to determine if products are discontinued and identify their successors.
 
-Why is the repository public? 
-  -> In order to use SonarCloud for free, the repository must be public.
+Why is the repository public?
+-> In order to use SonarCloud for free, the repository must be public.
 
 ## Security Notice
 
@@ -23,19 +23,19 @@ If you're forking this project, make sure to set up your own environment variabl
 - **Storage**: Netlify Blobs (for database and job state)
 - **Logging**: Supabase PostgreSQL (centralized logging)
 - **APIs**:
-  - SerpAPI (web search)
-  - Groq (LLM analysis)
-  - BrowserQL/Browserless (Cloudflare bypass)
+    - SerpAPI (web search)
+    - Groq (LLM analysis)
+    - BrowserQL/Browserless (Cloudflare bypass)
 
 ## Key Features
 
 - **Manual EOL Checks**: Check individual products on-demand
 - **Automated Daily Checks**: Schedule up to 20 automatic EOL checks per day (21:00 GMT+9)
 - **Multiple Scraping Methods**:
-  - Fast fetch (PDFs)
-  - Puppeteer (General websites, Javascript-heavy sites supported)
-  - BrowserQL (Cloudflare-protected sites)
-  - Interactive search (manufacturer-specific)
+    - Fast fetch (PDFs)
+    - Puppeteer (General websites, Javascript-heavy sites supported)
+    - BrowserQL (Cloudflare-protected sites)
+    - Interactive search (manufacturer-specific)
 - **Excel Import/Export**: Bulk manage product database
 - **Smart Content Extraction**: AI-powered table detection and product mention extraction with advanced truncation logic to fit token limits
 
@@ -45,22 +45,22 @@ If you're forking this project, make sure to set up your own environment variabl
 
 Set these in your Netlify dashboard under Site Settings > Environment Variables:
 
-| Variable | Description | Example | Secret/Public |
-|----------|-------------|---------|---------------|
-| `ALLOWED_EMAIL_DOMAIN` | Allowed email domain for registration | `syntegon.com` | Public |
-| `BROWSERQL_API_KEY` | Browserless.io API key (for Cloudflare bypass) | `abc123...` | Secret |
-| `EMAIL_PASSWORD` | Gmail app password for SMTP | `xxxx xxxx xxxx xxxx` | Secret |
-| `EMAIL_USER` | Gmail account for sending emails | `your-account@gmail.com` | Public |
-| `GROQ_API_KEY` | Groq LLM API key | `gsk_abc123...` | Secret |
-| `INTERNAL_API_KEY` | Internal API key to protect backend endpoints | `your-secret-key` | Secret |
-| `JWT_SECRET` | Secret key for JWT tokens | `your-random-64-char-hex` | Secret |
-| `LOG_LEVEL` | Logging level | `info` | Public |
-| `NETLIFY_TOKEN` | Token for Netlify Blobs access | Provided by Netlify | Secret |
-| `SCRAPING_API_KEY` | API key for authenticating with Render scraping service | `your-secret-key` | Secret |
-| `SCRAPING_SERVICE_URL` | URL of Render scraping service | `https://eolscrapingservice.onrender.com` | Public |
-| `SERPAPI_API_KEY` | SerpAPI web search API key | `abc123...` | Secret |
-| `SUPABASE_URL` | Supabase project URL (for logging) | `https://xxxxx.supabase.co` | Public |
-| `SUPABASE_API_KEY` | Supabase anon key (for logging) | `eyJhbGci...` | Secret |
+| Variable               | Description                                             | Example                                   | Secret/Public |
+| ---------------------- | ------------------------------------------------------- | ----------------------------------------- | ------------- |
+| `ALLOWED_EMAIL_DOMAIN` | Allowed email domain for registration                   | `syntegon.com`                            | Public        |
+| `BROWSERQL_API_KEY`    | Browserless.io API key (for Cloudflare bypass)          | `abc123...`                               | Secret        |
+| `EMAIL_PASSWORD`       | Gmail app password for SMTP                             | `xxxx xxxx xxxx xxxx`                     | Secret        |
+| `EMAIL_USER`           | Gmail account for sending emails                        | `your-account@gmail.com`                  | Public        |
+| `GROQ_API_KEY`         | Groq LLM API key                                        | `gsk_abc123...`                           | Secret        |
+| `INTERNAL_API_KEY`     | Internal API key to protect backend endpoints           | `your-secret-key`                         | Secret        |
+| `JWT_SECRET`           | Secret key for JWT tokens                               | `your-random-64-char-hex`                 | Secret        |
+| `LOG_LEVEL`            | Logging level                                           | `info`                                    | Public        |
+| `NETLIFY_TOKEN`        | Token for Netlify Blobs access                          | Provided by Netlify                       | Secret        |
+| `SCRAPING_API_KEY`     | API key for authenticating with Render scraping service | `your-secret-key`                         | Secret        |
+| `SCRAPING_SERVICE_URL` | URL of Render scraping service                          | `https://eolscrapingservice.onrender.com` | Public        |
+| `SERPAPI_API_KEY`      | SerpAPI web search API key                              | `abc123...`                               | Secret        |
+| `SUPABASE_URL`         | Supabase project URL (for logging)                      | `https://xxxxx.supabase.co`               | Public        |
+| `SUPABASE_API_KEY`     | Supabase anon key (for logging)                         | `eyJhbGci...`                             | Secret        |
 
 ## API Rate Limits
 
@@ -105,8 +105,8 @@ netlify deploy --prod
 5. Start command: `npm start`
 6. Instance type: Free (512 MB RAM)
 7. Set Environment Variables:
-   - `SCRAPING_API_KEY`: Same secret key as set in Netlify (for authentication)
-   - `ALLOWED_ORIGINS`: Your Netlify site URL (e.g., `https://your-site.netlify.app`)
+    - `SCRAPING_API_KEY`: Same secret key as set in Netlify (for authentication)
+    - `ALLOWED_ORIGINS`: Your Netlify site URL (e.g., `https://your-site.netlify.app`)
 
 **Important**: The service will spin down after 15 minutes of inactivity. Cold starts take ~1 minute.
 
@@ -115,11 +115,13 @@ netlify deploy --prod
 The system includes a Netlify scheduled function that runs daily at **21:00 GMT+9 (12:00 UTC)**.
 
 **To enable**:
+
 1. Deploy to Netlify
 2. Netlify automatically detects and registers the scheduled function
 3. Toggle the auto-check slider in the UI
 
 **Configuration**:
+
 - Max 20 checks per day (reduced to conserve SerpAPI credits)
 - Runs at 21:00 GMT+9 daily
 - Auto-disables if SerpAPI credits < 30
@@ -130,21 +132,21 @@ The system includes a Netlify scheduled function that runs daily at **21:00 GMT+
 
 The CSV database has 13 columns:
 
-| Column | Index | Description |
-|--------|-------|-------------|
-| SAP Part Number | 0 | Primary identifier |
-| Legacy Part Number | 1 | Old part number |
-| Designation | 2 | Product name |
-| Model | 3 | Model number (used for EOL check) |
-| Manufacturer | 4 | Maker name (used for EOL check) |
-| Status | 5 | ACTIVE / DISCONTINUED / UNKNOWN |
-| Status Comment | 6 | Explanation from LLM |
-| Successor Model | 7 | Replacement product model |
-| Successor Comment | 8 | Explanation about successor |
-| Successor SAP Number | 9 | SAP number of replacement |
-| Stock | 10 | Current stock level |
-| Information Date | 11 | Last check timestamp |
-| Auto Check | 12 | Enable/disable for auto-check(put "NO" to disable) |
+| Column               | Index | Description                                        |
+| -------------------- | ----- | -------------------------------------------------- |
+| SAP Part Number      | 0     | Primary identifier                                 |
+| Legacy Part Number   | 1     | Old part number                                    |
+| Designation          | 2     | Product name                                       |
+| Model                | 3     | Model number (used for EOL check)                  |
+| Manufacturer         | 4     | Maker name (used for EOL check)                    |
+| Status               | 5     | ACTIVE / DISCONTINUED / UNKNOWN                    |
+| Status Comment       | 6     | Explanation from LLM                               |
+| Successor Model      | 7     | Replacement product model                          |
+| Successor Comment    | 8     | Explanation about successor                        |
+| Successor SAP Number | 9     | SAP number of replacement                          |
+| Stock                | 10    | Current stock level                                |
+| Information Date     | 11    | Last check timestamp                               |
+| Auto Check           | 12    | Enable/disable for auto-check(put "NO" to disable) |
 
 ## Development
 
@@ -202,6 +204,7 @@ The scraping service monitors memory and automatically restarts when approaching
 - **Restart**: 450 MB (62 MB buffer before OOM)
 
 Check logs for memory tracking:
+
 ```
 Memory before scrape: RSS=250MB, Heap=180/220MB
 ⚠️  Memory approaching limit: 390MB RSS
@@ -210,6 +213,7 @@ Memory before scrape: RSS=250MB, Heap=180/220MB
 ### Groq Rate Limits
 
 The system checks Groq token availability before analysis:
+
 - Waits for token reset if < 500 tokens remain
 - Max 3 retries with exponential backoff
 - Logs token usage: `Groq tokens remaining: 1200, reset in: 7.5s`
@@ -217,11 +221,13 @@ The system checks Groq token availability before analysis:
 ### Job Timeouts
 
 Jobs poll for 2 minutes (60 attempts × 2s):
+
 ```
 Polling job abc123 (max 60 attempts, 2 minutes)
 ```
 
 If a job times out:
+
 1. Check Netlify function logs
 2. Check Render scraping service logs
 3. Verify scraping service is not in cold start
@@ -230,6 +236,7 @@ If a job times out:
 ### Cold Starts
 
 Render free tier spins down after 15 minutes of inactivity:
+
 - First request after spin-down: **~60 seconds**
 - Subsequent requests: **~1-5 seconds**
 
@@ -247,6 +254,7 @@ The auto-check background function wakes up Render on the first daily check.
 - Supabase: Free (500MB database, 2GB bandwidth/month)
 
 **Estimated capacity**:
+
 - 10 products/day × 30 days = 300 products/month (limited by SerpAPI)
 - Capacity much higher when using manufacturer-specific direct URL strategies (bypasses search)
 
