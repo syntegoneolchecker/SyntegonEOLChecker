@@ -20,7 +20,7 @@ function parseLine(line) {
 			inQuotes = true;
 		} else if (char === '"' && inQuotes && nextChar === '"') {
 			current += '"';
-			i++; // Skip next quote
+			i++; // NOSONAR // Skip next quote
 		} else if (char === '"' && inQuotes) {
 			inQuotes = false;
 		} else if (char === "," && !inQuotes) {

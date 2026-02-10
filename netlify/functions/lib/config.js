@@ -41,7 +41,7 @@ module.exports = {
 	TABLE_CONTEXT_ROWS_BEFORE: 3, // When truncating tables, keep N rows before product mention
 	TABLE_CONTEXT_ROWS_AFTER: 3, // When truncating tables, keep N rows after product mention
 	ADJACENT_TABLE_THRESHOLD: 200, // Tables within N chars of a product-containing table are kept
-	TABLE_FILTERING_THRESHOLD_RATIO: 1.0, // Only filter tables when content > maxContentLength * ratio
+	TABLE_FILTERING_THRESHOLD_RATIO: 1, // Only filter tables when content > maxContentLength * ratio
 
 	// ZONE EXTRACTION (last resort truncation):
 	// Keeps only content near product mentions and EOL-related keywords (e.g., "discontinued", "生産終了")
