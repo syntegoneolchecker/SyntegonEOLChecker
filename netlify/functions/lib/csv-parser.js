@@ -152,5 +152,7 @@ function toCSV(data) {
 
 module.exports = {
     parseCSV,
+    parseLine,
+    validateColumnConsistency,
     toCSV
 };
