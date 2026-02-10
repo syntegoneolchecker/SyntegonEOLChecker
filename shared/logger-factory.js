@@ -14,6 +14,11 @@ const LOG_LEVELS = {
 	NONE: 4
 };
 
+// Pre-compiled regex patterns for sanitization
+// Using new RegExp() with String.raw to avoid control characters in regex literals (S6324)
+const ANSI_ESCAPE_RE = new RegExp(String.raw`\x1b\[[0-9;]*m`, "g");
+const CONTROL_CHARS_RE = new RegExp(String.raw`[\x00-\x08\x0B-\x1F\x7F]`, "g");
+
 /**
  * Sanitize string for safe logging (prevents log injection attacks)
  * Removes:
@@ -32,14 +37,58 @@ function sanitizeForLog(str) {
 	return (
 		str
 			// Remove ANSI escape codes (e.g., \x1b[31m for colors)
-			.replace(/\x1b\[[0-9;]*m/g, "")
+			.replaceAll(ANSI_ESCAPE_RE, "")
 			// Replace newlines with escaped versions to prevent log injection
-			.replace(/\r\n/g, "\\r\\n")
-			.replace(/\n/g, "\\n")
-			.replace(/\r/g, "\\r")
+			.replaceAll("\r\n", String.raw`\r\n`)
+			.replaceAll("\n", String.raw`\n`)
+			.replaceAll("\r", String.raw`\r`)
 			// Remove other control characters except tab (0x09)
-			.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, "")
+			.replaceAll(CONTROL_CHARS_RE, "")
 	);
+}
+
+/**
+ * Sanitize an Error object for safe logging
+ * Converts to a plain object with sanitized properties
+ *
+ * @param {Error} error - Error to sanitize
+ * @param {WeakSet} seen - Set to track visited objects for cycle detection
+ * @returns {Object} Sanitized error as a plain object
+ */
+function sanitizeErrorForLog(error, seen) {
+	const sanitizedError = {
+		name: sanitizeForLog(error.name),
+		message: sanitizeForLog(error.message),
+		stack: sanitizeForLog(error.stack || "")
+	};
+
+	// Include any enumerable properties on the error
+	for (const key in error) {
+		if (Object.hasOwn(error, key)) {
+			sanitizedError[key] = sanitizeValueForLog(error[key], seen);
+		}
+	}
+
+	return sanitizedError;
+}
+
+/**
+ * Sanitize a plain object for safe logging
+ * Sanitizes both keys and values
+ *
+ * @param {Object} obj - Object to sanitize
+ * @param {WeakSet} seen - Set to track visited objects for cycle detection
+ * @returns {Object} Sanitized object
+ */
+function sanitizeObjectForLog(obj, seen) {
+	const sanitized = {};
+	for (const key in obj) {
+		if (Object.hasOwn(obj, key)) {
+			const sanitizedKey = sanitizeForLog(String(key));
+			sanitized[sanitizedKey] = sanitizeValueForLog(obj[key], seen);
+		}
+	}
+	return sanitized;
 }
 
 /**
@@ -74,44 +123,21 @@ function sanitizeValueForLog(value, seen = new WeakSet()) {
 
 	// Handle Errors - convert to plain object with sanitized properties
 	if (value instanceof Error) {
-		const sanitizedError = {
-			name: sanitizeForLog(value.name),
-			message: sanitizeForLog(value.message),
-			stack: sanitizeForLog(value.stack || "")
-		};
-
-		// Include any enumerable properties on the error
-		for (const key in value) {
-			if (Object.prototype.hasOwnProperty.call(value, key)) {
-				sanitizedError[key] = sanitizeValueForLog(value[key], seen);
-			}
-		}
-
-		return sanitizedError;
+		return sanitizeErrorForLog(value, seen);
 	}
 
 	// Cycle detection for objects and arrays
-	if (typeof value === "object") {
+	if (type === "object") {
 		if (seen.has(value)) {
 			return "[Circular Reference]";
 		}
 		seen.add(value);
 
-		// Handle arrays
 		if (Array.isArray(value)) {
 			return value.map((item) => sanitizeValueForLog(item, seen));
 		}
 
-		// Handle plain objects
-		const sanitized = {};
-		for (const key in value) {
-			if (Object.prototype.hasOwnProperty.call(value, key)) {
-				// Sanitize both key and value
-				const sanitizedKey = sanitizeForLog(String(key));
-				sanitized[sanitizedKey] = sanitizeValueForLog(value[key], seen);
-			}
-		}
-		return sanitized;
+		return sanitizeObjectForLog(value, seen);
 	}
 
 	// Fallback for any other types
