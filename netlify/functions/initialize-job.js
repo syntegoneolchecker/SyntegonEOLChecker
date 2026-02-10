@@ -4,7 +4,7 @@ const { validateInitializeJob, sanitizeString } = require('./lib/validators');
 const { scrapeWithBrowserQL } = require('./lib/browserql-scraper');
 const { getJson } = require('serpapi');
 const pdfParse = require('pdf-parse');
-const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+const { loadPdfjs } = require('../../scraping-service/utils/pdfjs-loader');
 const logger = require('./lib/logger');
 const config = require('./lib/config');
 const { getCorsOrigin, errorResponse, validationErrorResponse } = require('./lib/response-builder');
@@ -28,6 +28,7 @@ function isPdfUrl(url) {
 async function extractWithPdfjsDist(pdfBuffer, url) {
     logger.info(`[PDF-SCREEN] Trying pdfjs-dist extraction for ${url}`);
 
+    const pdfjsLib = await loadPdfjs();
     const loadingTask = pdfjsLib.getDocument({ data: pdfBuffer });
     const doc = await loadingTask.promise;
 

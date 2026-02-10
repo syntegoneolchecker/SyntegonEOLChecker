@@ -44,18 +44,20 @@ jest.mock('pdf-parse', () => {
     });
 });
 
-// Mock pdfjs-dist
-jest.mock('pdfjs-dist/legacy/build/pdf.js', () => ({
-    getDocument: jest.fn().mockImplementation(({ data }) => ({
-        promise: Promise.resolve({
-            numPages: 1,
-            getPage: jest.fn().mockResolvedValue({
-                getTextContent: jest.fn().mockResolvedValue({
-                    items: [{ str: 'Text from pdfjs-dist' }]
+// Mock pdfjs-loader (CJS wrapper around pdfjs-dist ESM module)
+jest.mock('../scraping-service/utils/pdfjs-loader', () => ({
+    loadPdfjs: jest.fn().mockResolvedValue({
+        getDocument: jest.fn().mockImplementation(({ data }) => ({
+            promise: Promise.resolve({
+                numPages: 1,
+                getPage: jest.fn().mockResolvedValue({
+                    getTextContent: jest.fn().mockResolvedValue({
+                        items: [{ str: 'Text from pdfjs-dist' }]
+                    })
                 })
             })
-        })
-    }))
+        }))
+    })
 }));
 
 const { isPDFUrl, isTextFileUrl, extractHTMLText, isErrorPage, extractPDFText, tryFastFetch } = require('../scraping-service/utils/extraction');
