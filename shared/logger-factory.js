@@ -16,8 +16,8 @@ const LOG_LEVELS = {
 
 // Pre-compiled regex patterns for sanitization
 // Using new RegExp() with String.raw to avoid control characters in regex literals (S6324)
-const ANSI_ESCAPE_RE = new RegExp(String.raw`\x1b\[[0-9;]*m`, "g");
-const CONTROL_CHARS_RE = new RegExp(String.raw`[\x00-\x08\x0B-\x1F\x7F]`, "g");
+const ANSI_ESCAPE_RE = new RegExp(String.raw`\x1b\[[0-9;]*m`, "g"); // NOSONAR
+const CONTROL_CHARS_RE = new RegExp(String.raw`[\x00-\x08\x0B-\x1F\x7F]`, "g"); // NOSONAR
 
 /**
  * Sanitize string for safe logging (prevents log injection attacks)
