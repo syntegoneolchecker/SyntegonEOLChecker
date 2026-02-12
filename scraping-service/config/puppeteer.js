@@ -222,11 +222,16 @@ async function performExtraction(page) {
 async function extractPageContent(page, timeout = 10000) {
 	const extractionPromise = performExtraction(page);
 
-	const timeoutPromise = new Promise((_, reject) =>
-		setTimeout(() => reject(new Error("Content extraction timeout")), timeout)
-	);
+	let timeoutId;
+	const timeoutPromise = new Promise((_, reject) => {
+		timeoutId = setTimeout(() => reject(new Error("Content extraction timeout")), timeout);
+	});
 
-	return await Promise.race([extractionPromise, timeoutPromise]);
+	try {
+		return await Promise.race([extractionPromise, timeoutPromise]);
+	} finally {
+		clearTimeout(timeoutId);
+	}
 }
 
 module.exports = {

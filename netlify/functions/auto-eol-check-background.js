@@ -1006,3 +1006,29 @@ async function handleErrorState(event) {
 
 // Protect with hybrid authentication (JWT for frontend, API key for backend)
 exports.handler = requireHybridAuth(autoEolCheckBackgroundHandler);
+
+// Export internal helpers for testing
+exports._internal = {
+	getInternalAuthHeaders,
+	getGMT9Date,
+	getGMT9DateTime,
+	wakeRenderService,
+	waitForGroqTokens,
+	isAutoCheckEnabled,
+	hasFinalEOLStatus,
+	findNextProduct,
+	executeEOLCheck,
+	JobPoller,
+	updateProduct,
+	disableAutoCheckForMissingData,
+	autoEolCheckBackgroundHandler,
+	initializeFromEvent,
+	validateAndPrepareForCheck,
+	processNextProduct,
+	determineChainContinuation,
+	handleErrorState,
+	updateAutoCheckState,
+	triggerNextCheck,
+	stopChain,
+	prepareForEOLCheck
+};

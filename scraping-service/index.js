@@ -132,7 +132,10 @@ app.post("/scrape", handleScrapeRequest);
 app.post("/scrape-keyence", handleKeyenceScrapeRequest);
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
 	logger.info(`Scraping service running on port ${PORT}`);
 	logger.info(`Health check: http://localhost:${PORT}/health`);
 });
+
+app._server = server;
+module.exports = app;
