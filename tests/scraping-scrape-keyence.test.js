@@ -108,58 +108,6 @@ function createMockReq(body) {
 }
 
 describe("Scraping Scrape Keyence Route", () => {
-	describe("validateKeyenceContent (logic test)", () => {
-		/**
-		 * Re-implement validateKeyenceContent to test the logic directly,
-		 * since the function is not exported from the module.
-		 */
-		function validateKeyenceContent(text) {
-			if (!text || text.length < 50) {
-				return `[KEYENCE search extracted only ${text ? text.length : 0} characters. The search may have returned no results, the page may be unavailable, or the site may be blocking automated access.]`;
-			}
-			return text;
-		}
-
-		test("should return explanation for null content", () => {
-			const result = validateKeyenceContent(null);
-			expect(result).toContain("extracted only 0 characters");
-			expect(result).toContain("KEYENCE search");
-		});
-
-		test("should return explanation for undefined content", () => {
-			const result = validateKeyenceContent(undefined);
-			expect(result).toContain("extracted only 0 characters");
-		});
-
-		test("should return explanation for empty string", () => {
-			const result = validateKeyenceContent("");
-			expect(result).toContain("extracted only 0 characters");
-		});
-
-		test("should return explanation for short content (< 50 chars)", () => {
-			const result = validateKeyenceContent("short text");
-			expect(result).toContain("extracted only 10 characters");
-		});
-
-		test("should return explanation for content of exactly 49 chars", () => {
-			const text = "x".repeat(49);
-			const result = validateKeyenceContent(text);
-			expect(result).toContain("extracted only 49 characters");
-		});
-
-		test("should return content as-is when exactly 50 chars", () => {
-			const text = "y".repeat(50);
-			const result = validateKeyenceContent(text);
-			expect(result).toBe(text);
-		});
-
-		test("should return content as-is for long content", () => {
-			const text = "KEYENCE LR-ZB250CP is a laser sensor for reflective detection up to 250mm range with built-in amplifier.";
-			const result = validateKeyenceContent(text);
-			expect(result).toBe(text);
-		});
-	});
-
 	describe("handleKeyenceScrapeRequest - input validation", () => {
 		test("should return 400 when model is missing", async () => {
 			const req = createMockReq({
