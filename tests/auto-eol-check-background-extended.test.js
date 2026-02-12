@@ -1320,7 +1320,6 @@ describe("auto-eol-check-background extended", () => {
 
 		describe("waitForNextPoll()", () => {
 			test("waits for 2000ms", async () => {
-				const start = Date.now();
 				const promise = poller.waitForNextPoll();
 				await jest.advanceTimersByTimeAsync(2000);
 				await promise;

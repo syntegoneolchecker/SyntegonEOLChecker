@@ -10,7 +10,7 @@ import {
 	delay,
 	buildConfirmationMessage
 } from "../js/utils.js";
-import { state, setData, setOriginalData } from "../js/state.js";
+import { state } from "../js/state.js";
 
 // Mock document for showStatus (imported by utils.js at module level)
 // showStatus uses document.getElementById("status"), so we need a minimal mock

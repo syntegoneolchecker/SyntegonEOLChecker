@@ -2,7 +2,6 @@
 // Tests for js/eol-check.js - EOL Checking Functionality
 // =============================================================================
 
-import { state } from "../js/state.js";
 import { pollJobStatus } from "../js/eol-check.js";
 
 // Mock document for DOM interactions across all imported modules

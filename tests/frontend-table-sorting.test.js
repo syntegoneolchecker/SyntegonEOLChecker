@@ -2,8 +2,8 @@
 // Tests for js/table.js - Table Rendering and Sorting
 // =============================================================================
 
-import { state, setData, setOriginalData, resetSortState } from "../js/state.js";
-import { sortTable, render, updateCheckEOLButtons } from "../js/table.js";
+import { state } from "../js/state.js";
+import { sortTable } from "../js/table.js";
 
 // Mock document for render() and updateCheckEOLButtons() calls
 beforeAll(() => {
