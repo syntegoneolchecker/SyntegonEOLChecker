@@ -22,7 +22,7 @@ global.XLSX = {
 // Mock fetch
 global.fetch = jest.fn();
 
-import { state, setOriginalData, resetSortState } from "../js/state.js";
+import { state } from "../js/state.js";
 import { downloadExcel, loadExcel } from "../js/excel.js";
 
 describe("Excel data transformation", () => {

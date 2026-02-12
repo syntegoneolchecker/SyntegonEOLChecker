@@ -44,7 +44,7 @@ module.exports = [
 		},
 		rules: {
 			// Errors
-			"no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+			"no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }],
 			"no-undef": "error",
 			eqeqeq: ["error", "always"],
 			"no-var": "error",
@@ -75,6 +75,16 @@ module.exports = [
 				afterAll: "readonly",
 				jest: "readonly",
 				it: "readonly"
+			}
+		}
+	},
+	// Frontend test files use ES module imports
+	{
+		files: ["tests/frontend-*.test.js"],
+		languageOptions: {
+			sourceType: "module",
+			globals: {
+				global: "readonly"
 			}
 		}
 	},

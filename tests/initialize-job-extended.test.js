@@ -128,22 +128,6 @@ function mockFetchHtml(html, status = 200) {
 	});
 }
 
-// Helper: mock global.fetch for PDF responses
-function mockFetchPdf(buffer, contentType = "application/pdf", contentLength = null, status = 200) {
-	const headers = new Map([["content-type", contentType]]);
-	if (contentLength !== null) {
-		headers.set("content-length", String(contentLength));
-	}
-	global.fetch.mockResolvedValue({
-		ok: status >= 200 && status < 300,
-		status,
-		headers: {
-			get: (key) => headers.get(key.toLowerCase())
-		},
-		arrayBuffer: jest.fn().mockResolvedValue(buffer)
-	});
-}
-
 const mockContext = {};
 
 describe("initialize-job extended tests", () => {
@@ -1039,7 +1023,7 @@ describe("initialize-job extended tests", () => {
 
 			setupSerpAPI([]);
 
-			const result = await handler(postEvent("NTN", "6200Z"), mockContext);
+			await handler(postEvent("NTN", "6200Z"), mockContext);
 
 			// Empty content => hasNoSearchResults returns true => fallback
 			expect(getJson).toHaveBeenCalled();

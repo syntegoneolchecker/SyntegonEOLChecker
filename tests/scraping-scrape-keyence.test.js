@@ -54,7 +54,6 @@ const {
 	trackMemoryUsage
 } = require("../scraping-service/utils/memory");
 const { isValidCallbackUrl } = require("../scraping-service/utils/validation");
-const { sendCallback } = require("../scraping-service/utils/callback");
 const { enqueuePuppeteerTask } = require("../scraping-service/routes/scrape");
 const { launchBrowser } = require("../scraping-service/config/puppeteer");
 const logger = require("../scraping-service/utils/logger");

@@ -2,7 +2,7 @@
 // Tests for js/api.js - Server Integration with Retry Logic
 // =============================================================================
 
-import { state, setData, setOriginalData, resetSortState } from "../js/state.js";
+import { state } from "../js/state.js";
 import { loadFromServer, saveToServer } from "../js/api.js";
 
 // Mock document for showStatus calls
