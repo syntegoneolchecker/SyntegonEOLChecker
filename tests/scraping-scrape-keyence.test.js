@@ -29,7 +29,8 @@ jest.mock("../scraping-service/utils/memory", () => ({
 jest.mock("../scraping-service/utils/validation", () => ({
 	isValidCallbackUrl: jest.fn((url) => {
 		if (!url) return { valid: true };
-		if (url.includes("evil.com") || url.includes("169.254.")) {
+		const hostname = new URL(url).hostname;
+		if (hostname === "evil.com" || hostname.startsWith("169.254.")) {
 			return { valid: false, reason: "Callback URL domain not in allowed list" };
 		}
 		return { valid: true };
@@ -65,7 +66,8 @@ beforeEach(() => {
 	trackMemoryUsage.mockReturnValue({ rss: 100, heapUsed: 60, heapTotal: 120, external: 5 });
 	isValidCallbackUrl.mockImplementation((url) => {
 		if (!url) return { valid: true };
-		if (url.includes("evil.com") || url.includes("169.254.")) {
+		const hostname = new URL(url).hostname;
+		if (hostname === "evil.com" || hostname.startsWith("169.254.")) {
 			return { valid: false, reason: "Callback URL domain not in allowed list" };
 		}
 		return { valid: true };
@@ -372,9 +374,7 @@ describe("Scraping Scrape Keyence Route", () => {
 			expect(logger.info).toHaveBeenCalledWith(
 				expect.stringContaining("KEYENCE Search Request #1")
 			);
-			expect(logger.info).toHaveBeenCalledWith(
-				expect.stringContaining("Memory: 100MB RSS")
-			);
+			expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("Memory: 100MB RSS"));
 		});
 	});
 });

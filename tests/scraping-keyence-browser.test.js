@@ -42,7 +42,8 @@ jest.mock("../scraping-service/utils/memory", () => ({
 jest.mock("../scraping-service/utils/validation", () => ({
 	isValidCallbackUrl: jest.fn((url) => {
 		if (!url) return { valid: true };
-		if (url.includes("evil.com") || url.includes("169.254.")) {
+		const hostname = new URL(url).hostname;
+		if (hostname === "evil.com" || hostname.startsWith("169.254.")) {
 			return { valid: false, reason: "Callback URL domain not in allowed list" };
 		}
 		return { valid: true };
@@ -177,7 +178,7 @@ async function runHandlerAndWaitForBackground(req, res) {
 	if (backgroundTaskPromise) {
 		try {
 			await backgroundTaskPromise;
-		} catch (_) {
+		} catch {
 			// Background errors are handled internally via .catch()
 		}
 	}
@@ -196,7 +197,8 @@ beforeEach(() => {
 	trackMemoryUsage.mockReturnValue({ rss: 100, heapUsed: 60, heapTotal: 120, external: 5 });
 	isValidCallbackUrl.mockImplementation((url) => {
 		if (!url) return { valid: true };
-		if (url.includes("evil.com") || url.includes("169.254.")) {
+		const hostname = new URL(url).hostname;
+		if (hostname === "evil.com" || hostname.startsWith("169.254.")) {
 			return { valid: false, reason: "Callback URL domain not in allowed list" };
 		}
 		return { valid: true };
@@ -338,7 +340,9 @@ describe("Scraping Keyence Browser Logic", () => {
 
 			// Verify cleanup
 			expect(forceGarbageCollection).toHaveBeenCalled();
-			expect(trackMemoryUsage).toHaveBeenCalledWith(expect.stringContaining("keyence_complete_"));
+			expect(trackMemoryUsage).toHaveBeenCalledWith(
+				expect.stringContaining("keyence_complete_")
+			);
 			expect(scheduleRestartIfNeeded).toHaveBeenCalled();
 		});
 
@@ -382,7 +386,9 @@ describe("Scraping Keyence Browser Logic", () => {
 			await runHandlerAndWaitForBackground(req, res);
 
 			expect(forceGarbageCollection).toHaveBeenCalled();
-			expect(trackMemoryUsage).toHaveBeenCalledWith(expect.stringContaining("keyence_complete_"));
+			expect(trackMemoryUsage).toHaveBeenCalledWith(
+				expect.stringContaining("keyence_complete_")
+			);
 		});
 
 		test("should skip callback send when no callbackUrl is provided", async () => {
@@ -459,7 +465,8 @@ describe("Scraping Keyence Browser Logic", () => {
 				callCount++;
 				if (callCount === 1) return Promise.resolve(true);
 				if (callCount === 2) return Promise.resolve(undefined);
-				if (callCount === 3) return Promise.reject(new Error("Evaluation failed: page crashed"));
+				if (callCount === 3)
+					return Promise.reject(new Error("Evaluation failed: page crashed"));
 				return Promise.resolve(undefined);
 			});
 
@@ -713,7 +720,7 @@ describe("Scraping Keyence Browser Logic", () => {
 			if (backgroundTaskPromise) {
 				try {
 					await backgroundTaskPromise;
-				} catch (_) {
+				} catch {
 					// handled internally
 				}
 			}
@@ -722,9 +729,7 @@ describe("Scraping Keyence Browser Logic", () => {
 			await Promise.resolve();
 
 			// Should log navigation timeout
-			expect(logger.info).toHaveBeenCalledWith(
-				expect.stringContaining("Navigation timeout")
-			);
+			expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("Navigation timeout"));
 
 			// Should still proceed and complete successfully (not trigger error path)
 			// The success callback should be sent with content
@@ -825,7 +830,7 @@ describe("Scraping Keyence Browser Logic", () => {
 			if (backgroundTaskPromise) {
 				try {
 					await backgroundTaskPromise;
-				} catch (_) {
+				} catch {
 					// Expected: the extraction timeout error is caught internally
 				}
 			}
@@ -937,8 +942,7 @@ describe("Scraping Keyence Browser Logic", () => {
 				callCount++;
 				if (callCount === 1) return Promise.resolve(true);
 				if (callCount === 2) return Promise.resolve(undefined);
-				if (callCount === 3)
-					return Promise.resolve({ text: shortContent, title: "Title" });
+				if (callCount === 3) return Promise.resolve({ text: shortContent, title: "Title" });
 				return Promise.resolve(undefined);
 			});
 

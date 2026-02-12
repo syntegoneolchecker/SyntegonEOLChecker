@@ -30,14 +30,20 @@ jest.mock("../scraping-service/utils/memory", () => ({
 
 jest.mock("../scraping-service/utils/validation", () => ({
 	isSafePublicUrl: jest.fn((url) => {
-		if (!url || url.includes("localhost") || url.includes("127.0.0.1") || url.includes("169.254.")) {
+		if (
+			!url ||
+			url.includes("localhost") ||
+			url.includes("127.0.0.1") ||
+			url.includes("169.254.")
+		) {
 			return { valid: false, reason: "Blocked by SSRF protection" };
 		}
 		return { valid: true };
 	}),
 	isValidCallbackUrl: jest.fn((url) => {
 		if (!url) return { valid: true };
-		if (url.includes("evil.com")) {
+		const hostname = new URL(url).hostname;
+		if (hostname === "evil.com") {
 			return { valid: false, reason: "Callback URL domain not in allowed list" };
 		}
 		return { valid: true };
@@ -73,14 +79,20 @@ beforeEach(() => {
 	incrementRequestCount.mockReturnValue(1);
 	trackMemoryUsage.mockReturnValue({ rss: 100, heapUsed: 60, heapTotal: 120, external: 5 });
 	isSafePublicUrl.mockImplementation((url) => {
-		if (!url || url.includes("localhost") || url.includes("127.0.0.1") || url.includes("169.254.")) {
+		if (
+			!url ||
+			url.includes("localhost") ||
+			url.includes("127.0.0.1") ||
+			url.includes("169.254.")
+		) {
 			return { valid: false, reason: "Blocked by SSRF protection" };
 		}
 		return { valid: true };
 	});
 	isValidCallbackUrl.mockImplementation((url) => {
 		if (!url) return { valid: true };
-		if (url.includes("evil.com")) {
+		const hostname = new URL(url).hostname;
+		if (hostname === "evil.com") {
 			return { valid: false, reason: "Callback URL domain not in allowed list" };
 		}
 		return { valid: true };
@@ -282,7 +294,10 @@ describe("Scraping Scrape Route", () => {
 		});
 
 		test("should reject private IP in scrape URL", async () => {
-			isSafePublicUrl.mockReturnValue({ valid: false, reason: "Cannot scrape private IP addresses" });
+			isSafePublicUrl.mockReturnValue({
+				valid: false,
+				reason: "Cannot scrape private IP addresses"
+			});
 			const req = createMockReq({
 				url: "http://169.254.169.254/latest/meta-data",
 				callbackUrl: "https://example.com/callback",
@@ -349,7 +364,9 @@ describe("Scraping Scrape Route", () => {
 	describe("handleScrapeRequest - routing to fast-fetch vs Puppeteer", () => {
 		test("should use fast-fetch for PDF URLs", async () => {
 			isPDFUrl.mockReturnValue(true);
-			tryFastFetch.mockResolvedValue("PDF content that is long enough to pass validation check easily");
+			tryFastFetch.mockResolvedValue(
+				"PDF content that is long enough to pass validation check easily"
+			);
 
 			const req = createMockReq({
 				url: "https://example.com/doc.pdf",
@@ -367,7 +384,9 @@ describe("Scraping Scrape Route", () => {
 
 		test("should use fast-fetch for text file URLs", async () => {
 			isTextFileUrl.mockReturnValue(true);
-			tryFastFetch.mockResolvedValue("Text content that is long enough to pass validation check easily");
+			tryFastFetch.mockResolvedValue(
+				"Text content that is long enough to pass validation check easily"
+			);
 
 			const req = createMockReq({
 				url: "https://example.com/readme.txt",
@@ -427,5 +446,4 @@ describe("Scraping Scrape Route", () => {
 			);
 		});
 	});
-
 });
