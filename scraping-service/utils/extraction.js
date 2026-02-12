@@ -352,16 +352,19 @@ async function fetchWithTimeout(url, timeout) {
 	// (RFC 1918), link-local addresses (cloud metadata like 169.254.x.x), reserved IP ranges, and
 	// dangerous protocols. Service is internal-only with no sensitive data.
 	// Defense-in-depth: validation at endpoint level + immediate pre-fetch validation above.
-	const response = await fetch(url, {
-		headers: {
-			"User-Agent":
-				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-		},
-		signal: controller.signal
-	});
+	try {
+		const response = await fetch(url, {
+			headers: {
+				"User-Agent":
+					"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+			},
+			signal: controller.signal
+		});
 
-	clearTimeout(timeoutId);
-	return response;
+		return response;
+	} finally {
+		clearTimeout(timeoutId);
+	}
 }
 
 function handleFailedResponse(response, url, isPDF) {
