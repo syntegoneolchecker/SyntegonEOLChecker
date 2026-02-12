@@ -56,19 +56,19 @@ This application has a centralized logging system that aggregates logs from both
 
 ## Features
 
-✅ **Unified Logs**: All logs from both Netlify and Render in one place
-✅ **Lightning Fast**: 100x faster than previous Netlify Blobs implementation
-✅ **No Crashes**: Handles millions of logs without browser performance issues
-✅ **Chronological Sorting**: Logs sorted by timestamp with efficient pagination
-✅ **Source Tagging**: Each log entry includes its source (function name/service)
-✅ **Log Levels**: DEBUG, INFO, WARN, ERROR with filtering support
-✅ **Full-Text Search**: Built-in PostgreSQL search across all log messages
-✅ **Fire-and-Forget**: Logging failures don't break your application
-✅ **Structured Data**: Logs include message, context objects (JSONB), and metadata
-✅ **Web UI**: Filterable web interface to view logs
-✅ **JSON API**: Programmatic access to logs via REST
-✅ **Auto-Cleanup**: Automatic deletion of old logs (configurable retention)
-✅ **Free Tier**: Supabase free tier (500MB database, 2GB bandwidth/month)
+- ✅ **Unified Logs**: All logs from both Netlify and Render in one place
+- ✅ **Lightning Fast**: 100x faster than previous Netlify Blobs implementation
+- ✅ **No Crashes**: Handles millions of logs without browser performance issues
+- ✅ **Chronological Sorting**: Logs sorted by timestamp with efficient pagination
+- ✅ **Source Tagging**: Each log entry includes its source (function name/service)
+- ✅ **Log Levels**: DEBUG, INFO, WARN, ERROR with filtering support
+- ✅ **Full-Text Search**: Built-in PostgreSQL search across all log messages
+- ✅ **Fire-and-Forget**: Logging failures don't break your application
+- ✅ **Structured Data**: Logs include message, context objects (JSONB), and metadata
+- ✅ **Web UI**: Filterable web interface to view logs
+- ✅ **JSON API**: Programmatic access to logs via REST
+- ✅ **Auto-Cleanup**: Automatic deletion of old logs (configurable retention)
+- ✅ **Free Tier**: Supabase free tier (500MB database, 2GB bandwidth/month)
 
 ## Configuration
 
