@@ -23,26 +23,42 @@ Health check endpoint.
 
 ### `POST /scrape`
 
-Scrape a single URL.
+Scrape a single URL. Uses an async callback pattern - the service accepts the request, scrapes in the background, and sends results to the provided callback URL.
 
 **Request:**
 
 ```json
 {
-	"url": "https://example.com/product-page"
+	"url": "https://example.com/product-page",
+	"callbackUrl": "https://your-site.netlify.app/.netlify/functions/scraping-callback",
+	"jobId": "job-123",
+	"urlIndex": 0
 }
 ```
 
-**Response:**
+**Immediate Response (202 Accepted):**
 
 ```json
 {
 	"success": true,
-	"url": "https://example.com/product-page",
-	"title": "Product Page Title",
-	"content": "Full page text content...",
-	"contentLength": 12345,
-	"timestamp": "2025-12-01T10:00:00.000Z"
+	"message": "Scraping started"
+}
+```
+
+Results are sent asynchronously to the `callbackUrl` when scraping completes.
+
+### `POST /scrape-keyence`
+
+Interactive search scraping for Keyence products. Same callback pattern as `/scrape`.
+
+**Request:**
+
+```json
+{
+	"model": "XG-8000",
+	"callbackUrl": "https://your-site.netlify.app/.netlify/functions/scraping-callback",
+	"jobId": "job-456",
+	"urlIndex": 0
 }
 ```
 

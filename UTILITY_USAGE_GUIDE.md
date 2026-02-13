@@ -205,16 +205,16 @@ Benefits:
 ```javascript
 const {
 	validateCommonEnvVars,
-	validateBlobsToken,
+	validateBrowserQLKey,
 	validateScrapingServiceUrl
 } = require("./lib/env-validator");
 
 // Validate all common env vars
-// Throws error if SITE_ID or GROQ_API_KEY missing
+// Throws error if required vars are missing
 validateCommonEnvVars();
 
 // Validate specific vars
-validateBlobsToken(); // Throws if NETLIFY_BLOBS_TOKEN missing
+validateBrowserQLKey(); // Throws if BROWSERQL_API_KEY missing
 validateScrapingServiceUrl(); // Throws if URL invalid
 ```
 
