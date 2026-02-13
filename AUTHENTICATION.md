@@ -52,17 +52,12 @@ The EOL Checker includes a secure email-domain-based authentication system that 
 These endpoints accept either JWT authentication (frontend) or `INTERNAL_API_KEY` (background functions):
 
 - `initialize-job.js` - ✅ Protected (creates EOL check jobs)
+- `fetch-url.js` - ✅ Protected (URL scraping orchestration)
+- `analyze-job.js` - ✅ Protected (LLM analysis processing)
 - `set-auto-check-state.js` - ✅ Protected (modifies auto-check state)
 - `get-auto-check-state.js` - ✅ Protected (reads auto-check state)
 - `get-groq-usage.js` - ✅ Protected (reads Groq API usage)
 - `get-serpapi-usage.js` - ✅ Protected (reads SerpAPI usage)
-
-#### Protected Endpoints (Internal API Key Only)
-
-These endpoints are ONLY called by internal background functions (no frontend access):
-
-- `analyze-job.js` - ✅ Protected (LLM analysis processing)
-- `fetch-url.js` - ✅ Protected (URL scraping orchestration)
 - `auto-eol-check-background.js` - ✅ Protected (background EOL checking)
 
 ### Libraries

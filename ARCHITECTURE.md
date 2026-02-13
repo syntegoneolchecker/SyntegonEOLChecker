@@ -13,7 +13,7 @@ All architectural decisions are driven by these **hard limits**:
 | Service                       | Limit                                                            | Impact on Architecture                                                                                                                                                             |
 | ----------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Netlify Functions**         | 30s timeout (regular)<br/>15min timeout (background)             | - Polling instead of long-running tasks<br/>- Chain multiple background functions for long operations                                                                              |
-| **Groq LLM**                  | 200,000 tokens/day<br/>8,000 tokens/minute<br/>(rolling windows) | - Smart content truncation (`analyze-job.js:235-467`)<br/>- Token availability checks before analysis<br/>- Retry logic with exponential backoff                                   |
+| **Groq LLM**                  | 200,000 tokens/day<br/>8,000 tokens/minute<br/>(rolling windows) | - Smart content truncation (`analyze-job.js`)<br/>- Token availability checks before analysis<br/>- Retry logic with exponential backoff                                   |
 | **SerpAPI Search**            | 250 searches/month                                               | - 1 search per product, only 2 search results used due to LLM token constraints<br/>- Manufacturer-specific direct URLs to skip search<br/>- 20 product limit on daily auto-checks |
 | **BrowserQL**                 | 1,000 tokens/month<br/>(1 token = 30 seconds)                    | - Use ONLY for Cloudflare-protected sites<br/>- Puppeteer (free) for everything else                                                                                               |
 | **Render (Scraping Service)** | 512MB RAM<br/>750 hours/month                                    | - Aggressive memory management<br/>- Self-restart when approaching limit<br/>- Sequential scraping (no concurrency)                                                                |
@@ -21,7 +21,7 @@ All architectural decisions are driven by these **hard limits**:
 
 ### Key Architectural Decisions
 
-#### 1. **Manufacturer-Specific URL Strategies** (`initialize-job.js:12-90`)
+#### 1. **Manufacturer-Specific URL Strategies** (`initialize-job.js`)
 
 Instead of always using SerpAPI search (1 search per product, limited to 250/month), we maintain hardcoded URL patterns for manufacturers with many database entries:
 
@@ -73,14 +73,14 @@ case 'SMC':
 
 **Solutions**:
 
-1. **Smart Content Truncation** (`analyze-job.js:235-467`):
+1. **Smart Content Truncation** (`analyze-job.js`):
     - Remove tables that don't mention the product
     - Extract only sections around product mentions
     - Truncate each URL to 6,500 characters, total limit 13,000 characters
     - Mix of Hiragana, Katakana, Kanji and other characters makes a direct translation of characters to Groq tokens difficult
       Solution -> Dynamic truncation depending on composition of characters with retry logic that reduces characters further if token limit is breached
 
-2. **Token Availability Checks** (`analyze-job.js:93-99`):
+2. **Token Availability Checks** (`analyze-job.js`):
 
     ```javascript
     const tokenCheck = await checkGroqTokenAvailability();
@@ -89,7 +89,7 @@ case 'SMC':
     }
     ```
 
-3. **Daily Limit Handling** (`analyze-job.js:634-664`):
+3. **Daily Limit Handling** (`analyze-job.js`):
     - Parse "7m54.336s" format from error message
     - Show countdown to user
     - Cancel check (don't waste function invocations)
@@ -197,7 +197,7 @@ async function createJob(maker, model, context) {
 
 ### When to Add Direct URL Strategy
 
-Add a manufacturer to `initialize-job.js:12-90` if:
+Add a manufacturer to the `getManufacturerUrl()` function in `initialize-job.js` if:
 
 1. ✅ Manufacturer has **10+ products** in database
 2. ✅ URL pattern is **predictable** (e.g., uses model number in URL)

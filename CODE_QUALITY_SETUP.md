@@ -105,13 +105,14 @@ npx eslint netlify/functions/fetch-url.js
 
 ### Configuration:
 
-Rules are defined in `.eslintrc.json`. Current settings:
+Rules are defined in `eslint.config.js` (ESLint v9+ flat config format). Current settings:
 
-- No unused variables (warning)
-- Semicolons required (error)
+- No unused variables (warning, ignores `_` prefixed)
+- No undefined variables (error)
+- Strict equality required (error)
 - Prefer const over let (warning)
 - No var allowed (error)
-- Consistent indentation (4 spaces)
+- No trailing spaces (warning)
 
 ---
 
@@ -179,7 +180,7 @@ All workflows appear as checks on pull requests and commits:
 
 ### ESLint Too Strict?
 
-Edit `.eslintrc.json` to adjust rules:
+Edit `eslint.config.js` to adjust rules:
 
 - Change `"error"` to `"warn"` for softer enforcement
 - Change `"warn"` to `"off"` to disable a rule
