@@ -104,13 +104,12 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 
 **Why Gmail SMTP?**
 
-- ✅ FREE indefinitely (no time limits)
+- ✅ Free indefinitely
 - ✅ No credit card required
 - ✅ No personal domain required
-- ✅ Reliable and simple
 - ✅ 500 emails/day (more than enough)
 
-**Setup (5 minutes):**
+**Setup:**
 
 1. **Enable 2-Step Verification** on your Gmail account:
     - Go to [Google Account Security](https://myaccount.google.com/security)
@@ -133,12 +132,6 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 
 - Never use your regular Gmail password - only use App Passwords
 - App Passwords can be revoked anytime from Google Account settings
-- Gmail SMTP uses TLS encryption (port 587)
-
-**Free Tier Limits:**
-
-- 500 emails/day - Perfect for small teams
-- No time limit - Free forever
 
 ### No Email Service Configured
 
@@ -161,7 +154,7 @@ If no email service is configured:
     - Email domain (@syntegon.com)
     - Password strength (8+ chars, upper/lower/number)
 5. Account created (unverified)
-6. Verification email sent (or URL shown in dev)
+6. Verification email sent
 
 ### Email Verification
 
