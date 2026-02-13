@@ -1,12 +1,10 @@
-# Code Quality Tools Setup Guide
+# Code Quality Tools Setup
 
-This repository is configured with three free code quality tools that work automatically on every push. Here's how to enable them:
+This repository is configured with three free code quality tools that work automatically on every push.
 
 ---
 
-## 🔒 1. CodeQL (GitHub Security Scanning)
-
-**Status**: ✅ Ready to use (no configuration needed)
+## 1. CodeQL (GitHub Security Scanning)
 
 CodeQL is GitHub's built-in security scanner. It detects:
 
@@ -14,20 +12,24 @@ CodeQL is GitHub's built-in security scanner. It detects:
 - CWE patterns
 - Common coding mistakes
 
-### Activation Steps:
+### CodeQL Settings:
 
 1. Go to your GitHub repository
-2. Click **Settings** → **Code security and analysis**
-3. Enable **Code scanning** → **Set up** → **Default**
-4. CodeQL will run automatically on every push
+2. Click **Settings** → **Advanced Security**
+3. Scroll down to **Code scanning** -> find **CodeQL analysis**
 
-**First run**: Happens automatically on next push to `main` or any `claude/**` branch.
+### Configuration and Execution
+CodeQL is executed on every push to the repository through GitHub Actions. 
+- The workflow can be found under **.github/workflows/codeql.yml**
+- Configuration to filter out certain warnings is present in **.github/codeql/codeql-config.yml**
+
+The filtered warnings are coming from issues that are inherent to the applications functionality (like using user controlled input during EOL checking). These issues have been handled through different security implementations but CodeQL still marks them. The filters remove these false positives.
+
+To view CodeQLs findings, open the **Security** tab in the repository and select **Code scanning**. Each issue is presented in a ticket-system-like format.
 
 ---
 
 ## 📊 2. SonarCloud (Code Quality Analysis)
-
-**Status**: ⚙️ Requires one-time setup
 
 SonarCloud provides comprehensive code quality metrics:
 
