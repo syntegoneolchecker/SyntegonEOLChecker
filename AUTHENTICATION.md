@@ -277,10 +277,10 @@ const response = await fetch(`${siteUrl}/.netlify/functions/my-hybrid-function`,
 
 ## Endpoints That Should NOT Be Protected
 
-These endpoints use different security mechanisms or cannot be protected:
+These endpoints use different security mechanisms:
 
 - **`scraping-callback.js`** - Called by Render scraping service (uses separate `SCRAPING_API_KEY` via `x-api-key` header)
-- **`scheduled-eol-check.js`** - Netlify scheduled function (invoked directly by Netlify cron scheduler, not via HTTP)
+- **`scheduled-eol-check.js`** - Netlify scheduled function (invoked directly by Netlify cron scheduler, not callable via external HTTP)
 
 ## Storage
 
@@ -303,55 +303,6 @@ User data is stored in Netlify Blobs in the `auth-data` store:
 	"lockedUntil": null
 }
 ```
-
-## Security Considerations
-
-### ✅ What's Secure
-
-- Passwords never stored in plaintext (bcrypt)
-- JWTs signed and verified
-- Secure, httpOnly cookies (prevents XSS)
-- Email domain validation
-- Account lockout (brute force protection)
-- Email verification (prevents fake registrations)
-- HTTPS in production
-
-### ⚠️ Limitations
-
-- Small user base (<10) - Netlify Blobs suitable
-- No OAuth integration (Google/Microsoft)
-- No session revocation list (tokens valid until expiry)
-- Email verification relies on configured email service
-
-### Best Practices
-
-1. **Never commit secrets** - Use Netlify environment variables
-2. **Regular JWT_SECRET rotation** - Change periodically
-3. **Monitor failed logins** - Check for brute force attempts
-4. **Keep dependencies updated** - `npm audit` regularly
-5. **Use strong passwords** - Enforce in registration
-
-## Testing
-
-### Local Development
-
-```bash
-# Start Netlify Dev
-netlify dev
-
-# Navigate to:
-# http://localhost:8888/auth.html - Login/Register
-# http://localhost:8888 - Main app (will redirect if not logged in)
-```
-
-### Test User Registration
-
-1. Go to `/auth.html`
-2. Register with your company email
-3. Check console for verification URL (if no email service)
-4. Visit verification URL
-5. Login with credentials
-6. Should see main app
 
 ### Test Authentication Protection
 
@@ -379,14 +330,12 @@ curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
 ### "Account locked" message
 
 - Wait 15 minutes after 5 failed login attempts
-- Or contact admin to reset lock
 
 ### Verification email not received
 
 - Check spam folder
 - Verify `EMAIL_USER` and `EMAIL_PASSWORD` are set in Netlify environment variables
 - Check Netlify function logs for errors
-- In development, get URL from function response
 
 ### Can't access main app
 
@@ -441,36 +390,4 @@ Password reset is implemented as an account deletion flow. Since accounts only s
 - `delete-account.html` - Confirmation page for account deletion
 
 ### View All Users
-
-```javascript
-// Temporary function
-const { getUsers } = require("./lib/user-storage");
-
-exports.handler = async () => {
-	const users = await getUsers();
-	const safeUsers = users.map((u) => ({
-		email: u.email,
-		verified: u.verified,
-		createdAt: u.createdAt
-	}));
-
-	return {
-		statusCode: 200,
-		body: JSON.stringify(safeUsers, null, 2)
-	};
-};
-```
-
-## Support
-
-For issues or questions:
-
-1. Check Netlify function logs
-2. Review browser console errors
-3. Verify all environment variables are set
-4. Check this documentation
-5. Review the code in `/netlify/functions/lib/auth-*.js`
-
-## License
-
-Same as main project.
+Check the Netlify Blob store "auth-data" and the blob "users" to see all currently registered users.
