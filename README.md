@@ -1,8 +1,8 @@
 # Syntegon EOL Checker
 
-An automated End-of-Life (EOL) status checker for machine parts. The system uses web search in combination with AI analysis to determine if products are discontinued and identify their successors.
+An automated End-of-Life (EOL) status checker for machine parts. The system uses web search in combination with AI analysis to determine if products are discontinued and identifies direct successor products.
 
-Why is the repository public?
+Why may the repository be public?
 -> In order to use SonarCloud for free, the repository must be public.
 
 ## Security Notice
@@ -11,7 +11,7 @@ Why is the repository public?
 
 - **API Keys**: Stored in Netlify environment variables (never committed to repo)
 - **Database**: SAP part numbers and product data stored in Netlify Blobs (not in repo)
-- **Important**: Never commit `.env` files or API keys to this repository
+- **Important**: Never commit sensitive information to this repository
 
 ## Architecture
 
