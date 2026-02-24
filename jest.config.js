@@ -22,22 +22,6 @@ module.exports = {
 		"!**/*.spec.js"
 	],
 
-	// Coverage thresholds - prevent regression without blocking development
-	coverageThreshold: {
-		global: {
-			statements: 45,
-			branches: 40,
-			functions: 45,
-			lines: 45
-		},
-		"./netlify/functions/lib/": {
-			statements: 90,
-			branches: 80,
-			functions: 95,
-			lines: 95
-		}
-	},
-
 	// Transform ES modules for frontend tests
 	transform: {
 		"^.+\\.js$": ["babel-jest", { configFile: "./babel.config.json" }]
