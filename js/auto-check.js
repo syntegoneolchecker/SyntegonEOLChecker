@@ -206,7 +206,8 @@ async function autoDisableOnLowCredits(state) {
 	if (!creditsElement) return;
 
 	const remaining = parseCreditsRemaining(creditsElement.textContent);
-	if (remaining === null || remaining > 50) return;
+	// Copy value (30) from netlify/functions/lib/config.js, MIN_SERPAPI_CREDITS_FOR_AUTO
+	if (remaining === null || remaining > 30) return;
 
 	console.log("Auto-disabling auto-check due to low searches:", remaining);
 
