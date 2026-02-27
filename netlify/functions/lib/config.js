@@ -1,6 +1,7 @@
 /**
  * Configuration constants for EOL Checker application
- * Centralizes all magic numbers and limits that are USED in code
+ * Centralizes all magic numbers and limits that are used in code
+ * Commented out values serve as documentation
  *
  * Note: Free tier limit documentation is in ARCHITECTURE.md
  */
@@ -53,7 +54,7 @@ module.exports = {
 	KEYWORD_MAX_TOTAL: 20, // Track max N keyword positions total (prevents keyword spam)
 
 	// === SERPAPI SEARCH ===
-	SERPAPI_MAX_RESULTS: 10, // Search results to fetch from SerpAPI (organic_results limit)
+	// SERPAPI_MAX_RESULTS: 10, // Search results to fetch from SerpAPI (organic_results limit)
 	SERPAPI_ENGINE: "google", // Search engine to use with SerpAPI
 	SERPAPI_GOOGLE_DOMAIN: "google.com", // Google domain for searches
 	// Site list loaded from external JSON file for maintainability
@@ -61,14 +62,13 @@ module.exports = {
 	SERPAPI_SITES_TO_SEARCH: require("./serpapi-sites.json"),
 
 	// === BROWSERQL / SCRAPING ===
-	BROWSERQL_MONTHLY_TOKENS: 1000, // BrowserQL token limit
-	BROWSERQL_SECONDS_PER_TOKEN: 30, // Seconds per BrowserQL token
-	RENDER_MEMORY_LIMIT_MB: 450, // Restart threshold (512MB limit - 62MB buffer)
-	RENDER_MEMORY_WARNING_MB: 380, // Warning threshold for memory logs
-	SCRAPING_TIMEOUT_MS: 120000, // 2 minutes max for scraping operations
-	FAST_FETCH_TIMEOUT_MS: 5000, // 5 seconds for simple HTTP fetches
-	PDF_FETCH_TIMEOUT_MS: 20000, // 20 seconds for PDF downloads
-	MAX_PDF_SIZE_MB: 20, // Max PDF size to process
+	// BROWSERQL_MONTHLY_TOKENS: 1000, // BrowserQL token limit
+	// BROWSERQL_SECONDS_PER_TOKEN: 30, // Seconds per BrowserQL token
+	// RENDER_MEMORY_LIMIT_MB: 450, // Restart threshold (512MB limit - 62MB buffer)
+	// RENDER_MEMORY_WARNING_MB: 380, // Warning threshold for memory logs
+	// SCRAPING_TIMEOUT_MS: 120000, // 2 minutes max for scraping operations
+	// FAST_FETCH_TIMEOUT_MS: 5000, // 5 seconds for simple HTTP fetches
+	// PDF_FETCH_TIMEOUT_MS: 20000, // 20 seconds for PDF downloads
 
 	// === PDF SCREENING ===
 	PDF_SCREENING_MIN_CHARS: 100, // Minimum extractable characters to accept PDF
@@ -95,8 +95,8 @@ module.exports = {
 	// === SERVICE URLs ===
 	// Default URLs (can be overridden by environment variables)
 	DEFAULT_SCRAPING_SERVICE_URL: "https://eolscrapingservice.onrender.com",
-	DEFAULT_BROWSERQL_API_URL: "https://production-sfo.browserless.io/stealth/bql",
-	DEFAULT_NETLIFY_SITE_URL: "https://syntegoneolchecker.netlify.app",
+	// DEFAULT_BROWSERQL_API_URL: "https://production-sfo.browserless.io/stealth/bql",
+	// DEFAULT_NETLIFY_SITE_URL: "https://syntegoneolchecker.netlify.app",
 	DEVELOP_NETLIFY_SITE_URL: "https://develop--syntegoneolchecker.netlify.app",
 
 	// === FIRE-AND-FORGET RETRY ===
