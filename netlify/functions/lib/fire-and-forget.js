@@ -108,13 +108,6 @@ async function triggerFetchUrl(baseUrl, payload) {
 			return;
 		}
 
-		if (urlInfo.status === "fetching") {
-			logger.info(
-				`[DEDUP] URL ${payload.urlIndex} already fetching for job ${payload.jobId}, skipping duplicate`
-			);
-			return;
-		}
-
 		logger.debug(
 			`[DEDUP] URL ${payload.urlIndex} status is '${urlInfo.status}', proceeding with fetch`
 		);
