@@ -33,12 +33,12 @@ Located in `scraping-service/utils/validation.js`
 
 **Blacklist approach** - blocks dangerous targets:
 
-- ✅ Localhost addresses (`127.0.0.1`, `::1`, etc.)
-- ✅ Private IP ranges (RFC 1918: `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`)
-- ✅ Link-local addresses (`169.254.x.x` - AWS/GCP metadata endpoints)
-- ✅ Reserved IP ranges (`0.x.x.x`, `224.x.x.x`, `240.x.x.x`)
-- ✅ IPv6 private addresses (`fc00::/7`, `fe80::/10`)
-- ✅ Dangerous protocols (only `http://` and `https://` allowed)
+- Localhost addresses (`127.0.0.1`, `::1`, etc.)
+- Private IP ranges (RFC 1918: `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`)
+- Link-local addresses (`169.254.x.x` - AWS/GCP metadata endpoints)
+- Reserved IP ranges (`0.x.x.x`, `224.x.x.x`, `240.x.x.x`)
+- IPv6 private addresses (`fc00::/7`, `fe80::/10`)
+- Dangerous protocols (only `http://` and `https://` allowed)
 
 **Why not whitelist?**
 URLs are dynamic and come from search results. We cannot predict which manufacturer domains will be scraped.
@@ -49,10 +49,10 @@ Located in `scraping-service/utils/validation.js`
 
 **Whitelist approach** - only allows configured backends:
 
-- ✅ Uses `ALLOWED_ORIGINS` environment variable
-- ✅ Only permits trusted backend domains
-- ✅ Strict hostname and port matching for localhost
-- ✅ Subdomain matching for production domains
+- Uses `ALLOWED_ORIGINS` environment variable
+- Only permits trusted backend domains
+- Strict hostname and port matching for localhost
+- Subdomain matching for production domains
 
 ### 3. API Key Authentication
 
@@ -60,10 +60,10 @@ Located in `scraping-service/index.js`
 
 **Bearer-style authentication** - requires valid API key for all scraping endpoints:
 
-- ✅ `X-API-Key` header required for `/scrape`, `/scrape-keyence`
-- ✅ Key validated against `SCRAPING_API_KEY` environment variable
-- ✅ Health/status endpoints remain public for monitoring
-- ✅ Requests without valid key receive 401 Unauthorized
+- `X-API-Key` header required for `/scrape`, `/scrape-keyence`
+- Key validated against `SCRAPING_API_KEY` environment variable
+- Health/status endpoints remain public for monitoring
+- Requests without valid key receive 401 Unauthorized
 
 ### 4. Defense-in-Depth
 
@@ -127,58 +127,3 @@ console.error(`Error scraping ${url}:`, error.message);
 
 **Suppression Method:**
 Global exclusion via CodeQL config (`js/tainted-format-string`) rather than inline suppressions, as this pattern appears in many log statements across the codebase.
-
-## Alternative Approaches Considered
-
-### ❌ Whitelist-only validation
-
-**Why rejected:** Cannot predict which manufacturer domains need to be scraped. Search results return dynamic URLs.
-
-### ❌ Proxy through trusted service
-
-**Why rejected:** Adds complexity, latency, and cost for minimal security benefit in internal-only service.
-
-### ❌ Remove SSRF functionality
-
-**Why rejected:** This would eliminate the core feature of the application.
-
-## Security Review Checklist
-
-When reviewing changes to this service, verify:
-
-- [ ] `SCRAPING_API_KEY` is set and matches between Netlify and Render
-- [ ] API key middleware protects all scraping endpoints
-- [ ] URL validation is called before all `fetch()` and `page.goto()` calls
-- [ ] `ALLOWED_ORIGINS` is properly configured in production
-- [ ] Blacklist validation covers all dangerous IP ranges
-- [ ] No new fetch calls bypass validation
-- [ ] Service remains internal-only (not exposed to public internet)
-
-## Production Configuration
-
-### Required Environment Variables
-
-```bash
-# API key for authentication (REQUIRED)
-# Must match the SCRAPING_API_KEY set in Netlify
-SCRAPING_API_KEY=your-secret-api-key
-
-# Callback URL whitelist (same as CORS origins)
-ALLOWED_ORIGINS=https://your-backend.example.com,https://api.example.com
-
-# Memory limits (optional)
-MEMORY_LIMIT_MB=450
-MEMORY_WARNING_MB=400
-```
-
-### Deployment Requirements
-
-1. **Network isolation** - Service should only be accessible from trusted backend servers
-2. **Firewall rules** - Block outbound connections to private IP ranges (defense-in-depth)
-3. **Monitoring** - Log all blocked URL attempts for security auditing
-
-## References
-
-- OWASP SSRF: https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
-- RFC 1918 (Private IPs): https://tools.ietf.org/html/rfc1918
-- CodeQL SSRF Detection: https://codeql.github.com/codeql-query-help/javascript/js-ssrf/
