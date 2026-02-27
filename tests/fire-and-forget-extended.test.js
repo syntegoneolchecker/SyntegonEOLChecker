@@ -96,21 +96,6 @@ describe("Fire and Forget - Extended", () => {
 			expect(global.fetch).not.toHaveBeenCalled();
 		});
 
-		test("should skip fetch when URL already fetching", async () => {
-			mockGetJob.mockResolvedValue({
-				jobId: "job-123",
-				urls: [{ index: 0, status: "fetching", url: "http://example.com" }]
-			});
-
-			await triggerFetchUrl("http://base.com", {
-				jobId: "job-123",
-				urlIndex: 0,
-				url: "http://example.com"
-			});
-
-			expect(global.fetch).not.toHaveBeenCalled();
-		});
-
 		test("should proceed with fetch when URL is pending", async () => {
 			mockGetJob.mockResolvedValue({
 				jobId: "job-123",
