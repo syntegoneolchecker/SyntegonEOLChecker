@@ -3,6 +3,7 @@
 // =============================================================================
 
 import { pollJobStatus } from "../js/eol-check.js";
+import { state } from "../js/state.js";
 
 // Mock document for DOM interactions across all imported modules
 beforeAll(() => {
@@ -50,6 +51,11 @@ describe("js/eol-check.js - pollJobStatus", () => {
 	});
 
 	afterEach(() => {
+		// Clear any leaked real setInterval from startGroqCountdown
+		if (state.groqCountdownInterval) {
+			clearInterval(state.groqCountdownInterval);
+			state.groqCountdownInterval = null;
+		}
 		jest.useRealTimers();
 	});
 
