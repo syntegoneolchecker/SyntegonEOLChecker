@@ -1,22 +1,22 @@
 // KEYENCE-specific scraping endpoint handler
 const {
-    launchBrowser,
-    configureStandardPage,
-    setupResourceBlocking
-} = require('../config/puppeteer');
+	launchBrowser,
+	configureStandardPage,
+	setupResourceBlocking
+} = require("../config/puppeteer");
 const {
-    getMemoryUsageMB,
-    trackMemoryUsage,
-    scheduleRestartIfNeeded,
-    getShutdownState,
-    incrementRequestCount,
-    forceGarbageCollection,
-    setShutdownState
-} = require('../utils/memory');
-const { isValidCallbackUrl } = require('../utils/validation');
-const { sendCallback } = require('../utils/callback');
-const { enqueuePuppeteerTask } = require('./scrape');
-const logger = require('./../utils/logger');
+	getMemoryUsageMB,
+	trackMemoryUsage,
+	scheduleRestartIfNeeded,
+	getShutdownState,
+	incrementRequestCount,
+	forceGarbageCollection,
+	setShutdownState
+} = require("../utils/memory");
+const { isValidCallbackUrl } = require("../utils/validation");
+const { sendCallback } = require("../utils/callback");
+const { enqueuePuppeteerTask } = require("./scrape");
+const logger = require("./../utils/logger");
 
 /**
  * Perform KEYENCE search and extract content
@@ -25,55 +25,59 @@ const logger = require('./../utils/logger');
  * @returns {Promise<String>} Search result
  */
 async function performKeyenceSearch(page, model) {
-    logger.info('Navigating to KEYENCE homepage...');
-    // codeql[js/request-forgery] SSRF Justification: Hardcoded URL to KEYENCE official website (trusted source).
-    await page.goto('https://www.keyence.co.jp/', {
-        waitUntil: 'domcontentloaded',
-        timeout: 30000
-    });
+	logger.info("Navigating to KEYENCE homepage...");
+	// codeql[js/request-forgery] SSRF Justification: Hardcoded URL to KEYENCE official website (trusted source).
+	await page.goto("https://www.keyence.co.jp/", {
+		waitUntil: "domcontentloaded",
+		timeout: 30000
+	});
 
-    logger.info('KEYENCE homepage loaded, waiting for search elements to render...');
-    await new Promise(resolve => setTimeout(resolve, 1000));
+	logger.info("KEYENCE homepage loaded, waiting for search elements to render...");
+	await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Verify search elements exist
-    const hasSearchElements = await page.evaluate(() => {
-        const searchInput = document.querySelector('.m-form-search__input');
-        const searchButton = document.querySelector('.m-form-search__button');
-        return !!(searchInput && searchButton);
-    });
+	// Verify search elements exist
+	const hasSearchElements = await page.evaluate(() => {
+		const searchInput = document.querySelector(".m-form-search__input");
+		const searchButton = document.querySelector(".m-form-search__button");
+		return !!(searchInput && searchButton);
+	});
 
-    if (!hasSearchElements) {
-        throw new Error('Search input or button not found on KEYENCE homepage');
-    }
+	if (!hasSearchElements) {
+		throw new Error("Search input or button not found on KEYENCE homepage");
+	}
 
-    // Enter search query
-    const inputSelector = '.m-form-search__input';
-    logger.info(`Setting search input value to "${model}" and pressing Enter...`);
+	// Enter search query
+	const inputSelector = ".m-form-search__input";
+	logger.info(`Setting search input value to "${model}" and pressing Enter...`);
 
-    await page.evaluate((selector, value) => {
-        const input = document.querySelector(selector);
-        if (input) {
-            input.value = value;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-    }, inputSelector, model);
+	await page.evaluate(
+		(selector, value) => {
+			const input = document.querySelector(selector);
+			if (input) {
+				input.value = value;
+				input.dispatchEvent(new Event("input", { bubbles: true }));
+				input.dispatchEvent(new Event("change", { bubbles: true }));
+			}
+		},
+		inputSelector,
+		model
+	);
 
-    await page.click(inputSelector);
+	await page.click(inputSelector);
 
-    // Submit search and wait for navigation
-    try {
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }),
-            page.keyboard.press('Enter')
-        ]);
-        logger.info('Navigation completed successfully');
-    } catch (navError) {
-        logger.info(`Navigation timeout (${navError.message}), checking if page loaded...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+	// Submit search and wait for navigation
+	try {
+		await Promise.all([
+			page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 20000 }),
+			page.keyboard.press("Enter")
+		]);
+		logger.info("Navigation completed successfully");
+	} catch (navError) {
+		logger.info(`Navigation timeout (${navError.message}), checking if page loaded...`);
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+	}
 
-    return page.url();
+	return page.url();
 }
 
 /**
@@ -82,37 +86,39 @@ async function performKeyenceSearch(page, model) {
  * @returns {Promise<Object>} Extracted text and title
  */
 async function extractKeyenceContent(page) {
-    logger.info('Extracting text content (in-browser method)...');
+	logger.info("Extracting text content (in-browser method)...");
 
-    const extractionPromise = page.evaluate(() => {
-        try {
-            // Remove scripts, styles, and noscript elements
-            const scripts = document.querySelectorAll('script, style, noscript');
-            scripts.forEach(el => el.remove());
+	const extractionPromise = page.evaluate(() => {
+		try {
+			// Remove scripts, styles, and noscript elements
+			const scripts = document.querySelectorAll("script, style, noscript");
+			scripts.forEach((el) => el.remove());
 
-            // Extract text directly from DOM (no HTML string transfer)
-            const bodyText = document.body.innerText || document.body.textContent || '';
-            const pageTitle = document.title || '';
+			// Extract text directly from DOM (no HTML string transfer)
+			const bodyText = document.body.innerText || document.body.textContent || "";
+			const pageTitle = document.title || "";
 
-            return { text: bodyText, title: pageTitle };
-        } catch (e) {
-            return { text: '', title: '', error: e.message };
-        }
-    });
+			return { text: bodyText, title: pageTitle };
+		} catch (e) {
+			return { text: "", title: "", error: e.message };
+		}
+	});
 
-    const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Content extraction timeout (10s)')), 10000)
-    );
+	const timeoutPromise = new Promise((_, reject) =>
+		setTimeout(() => reject(new Error("Content extraction timeout (10s)")), 10000)
+	);
 
-    const result = await Promise.race([extractionPromise, timeoutPromise]);
+	const result = await Promise.race([extractionPromise, timeoutPromise]);
 
-    if (result.error) {
-        logger.error(`Browser evaluation error: ${result.error}`);
-    }
+	if (result.error) {
+		logger.error(`Browser evaluation error: ${result.error}`);
+	}
 
-    logger.info(`✓ Extracted ${result.text.length} characters from KEYENCE page (memory-efficient method)`);
+	logger.info(
+		`✓ Extracted ${result.text.length} characters from KEYENCE page (memory-efficient method)`
+	);
 
-    return { text: result.text || '', title: result.title || '' };
+	return { text: result.text || "", title: result.title || "" };
 }
 
 /**
@@ -121,186 +127,207 @@ async function extractKeyenceContent(page) {
  * @returns {string} Final content
  */
 function validateKeyenceContent(text) {
-    if (!text || text.length < 50) {
-        logger.warn(`⚠️  Empty or invalid KEYENCE content (${text ? text.length : 0} chars), adding explanation`);
-        return `[KEYENCE search extracted only ${text ? text.length : 0} characters. The search may have returned no results, the page may be unavailable, or the site may be blocking automated access.]`;
-    }
-    return text;
+	if (!text || text.length < 50) {
+		logger.warn(
+			`⚠️  Empty or invalid KEYENCE content (${text ? text.length : 0} chars), adding explanation`
+		);
+		return `[KEYENCE search extracted only ${text ? text.length : 0} characters. The search may have returned no results, the page may be unavailable, or the site may be blocking automated access.]`;
+	}
+	return text;
 }
 
 /**
  * KEYENCE-specific scraping endpoint handler
  */
 async function handleKeyenceScrapeRequest(req, res) {
-    const { model, callbackUrl, jobId, urlIndex } = req.body;
+	const { model, callbackUrl, jobId, urlIndex } = req.body;
 
-    // Check shutdown state
-    if (getShutdownState()) {
-        logger.info(`Rejecting /scrape-keyence request during shutdown (current memory: ${getMemoryUsageMB().rss}MB)`);
-        return res.status(503).json({
-            error: 'Service restarting due to memory limit',
-            retryAfter: 30
-        });
-    }
+	// Check shutdown state
+	if (getShutdownState()) {
+		logger.info(
+			`Rejecting /scrape-keyence request during shutdown (current memory: ${getMemoryUsageMB().rss}MB)`
+		);
+		return res.status(503).json({
+			error: "Service restarting due to memory limit",
+			retryAfter: 30
+		});
+	}
 
-    // Track memory
-    const requestCount = incrementRequestCount();
-    const memBefore = trackMemoryUsage(`keyence_start_${requestCount}`);
-    logger.info(`[${new Date().toISOString()}] KEYENCE Search Request #${requestCount} - Memory: ${memBefore.rss}MB RSS`);
+	// Track memory
+	const requestCount = incrementRequestCount();
+	const memBefore = trackMemoryUsage(`keyence_start_${requestCount}`);
+	logger.info(
+		`[${new Date().toISOString()}] KEYENCE Search Request #${requestCount} - Memory: ${memBefore.rss}MB RSS`
+	);
 
-    // Validate required fields
-    if (!model) {
-        return res.status(400).json({ error: 'Model is required' });
-    }
+	// Validate required fields
+	if (!model) {
+		return res.status(400).json({ error: "Model is required" });
+	}
 
-    // SSRF Protection: Validate callback URL
-    const callbackValidation = isValidCallbackUrl(callbackUrl);
-    if (!callbackValidation.valid) {
-        logger.warn(`SSRF protection blocked callback URL: ${callbackUrl} - Reason: ${callbackValidation.reason}`);
-        return res.status(400).json({
-            error: 'Invalid or unsafe callback URL',
-            reason: callbackValidation.reason
-        });
-    }
+	// SSRF Protection: Validate callback URL
+	const callbackValidation = isValidCallbackUrl(callbackUrl);
+	if (!callbackValidation.valid) {
+		logger.warn(
+			`SSRF protection blocked callback URL: ${callbackUrl} - Reason: ${callbackValidation.reason}`
+		);
+		return res.status(400).json({
+			error: "Invalid or unsafe callback URL",
+			reason: callbackValidation.reason
+		});
+	}
 
-    logger.info(`[${new Date().toISOString()}] KEYENCE: Searching for model: ${model}`);
-    if (callbackUrl) {
-        logger.info(`Callback URL provided: ${callbackUrl}`);
-    }
+	logger.info(`[${new Date().toISOString()}] KEYENCE: Searching for model: ${model}`);
+	if (callbackUrl) {
+		logger.info(`Callback URL provided: ${callbackUrl}`);
+	}
 
-    // Generate unique task ID for tracking
-    const taskId = `keyence_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    logger.debug(`[KEYENCE] About to send 202 response, task ID: ${taskId}`);
+	// Generate unique task ID for tracking
+	const taskId = `keyence_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+	logger.debug(`[KEYENCE] About to send 202 response, task ID: ${taskId}`);
 
-    // Respond immediately with 202 Accepted (fire-and-forget)
-    res.status(202).json({
-        success: true,
-        status: 'processing',
-        message: 'KEYENCE search started, results will be sent via callback'
-    });
+	// Respond immediately with 202 Accepted (fire-and-forget)
+	res.status(202).json({
+		success: true,
+		status: "processing",
+		message: "KEYENCE search started, results will be sent via callback"
+	});
 
-    logger.debug(`[KEYENCE] 202 response sent, about to enqueue task ${taskId}`);
+	logger.debug(`[KEYENCE] 202 response sent, about to enqueue task ${taskId}`);
 
-    // Enqueue task in background (don't await - true fire-and-forget)
-    enqueuePuppeteerTask(async () => {
-        logger.debug(`[KEYENCE] Task ${taskId} - Starting execution in queue`);
-        let browser = null;
-        const callbackSent = false;
+	// Enqueue task in background (don't await - true fire-and-forget)
+	enqueuePuppeteerTask(async () => {
+		logger.debug(`[KEYENCE] Task ${taskId} - Starting execution in queue`);
+		let browser = null;
+		const callbackSent = false;
 
-        try {
-            logger.debug(`[KEYENCE] Task ${taskId} - In try block, about to launch browser`);
-            browser = await launchBrowser();
-            const page = await browser.newPage();
+		try {
+			logger.debug(`[KEYENCE] Task ${taskId} - In try block, about to launch browser`);
+			browser = await launchBrowser();
+			const page = await browser.newPage();
 
-            await configureStandardPage(page);
+			await configureStandardPage(page);
 
-            // Enable resource blocking (allow CSS/JS for KEYENCE functionality)
-            await setupResourceBlocking(page, {
-                blockImages: true,
-                blockStylesheets: false, // Allow CSS for KEYENCE
-                blockFonts: true,
-                blockMedia: true,
-                blockTracking: true
-            });
+			// Enable resource blocking (allow CSS/JS for KEYENCE functionality)
+			await setupResourceBlocking(page, {
+				blockImages: true,
+				blockStylesheets: false, // Allow CSS for KEYENCE
+				blockFonts: true,
+				blockMedia: true,
+				blockTracking: true
+			});
 
-            // Perform search
-            logger.debug(`[KEYENCE] Task ${taskId} - Starting KEYENCE search for model: ${model}`);
-            const finalUrl = await performKeyenceSearch(page, model);
-            logger.debug(`[KEYENCE] Task ${taskId} - Final page URL: ${String(finalUrl)}`);
+			// Perform search
+			logger.debug(`[KEYENCE] Task ${taskId} - Starting KEYENCE search for model: ${model}`);
+			const finalUrl = await performKeyenceSearch(page, model);
+			logger.debug(`[KEYENCE] Task ${taskId} - Final page URL: ${String(finalUrl)}`);
 
-            // Extract content
-            logger.debug(`[KEYENCE] Task ${taskId} - Extracting content from page`);
-            const { text, title } = await extractKeyenceContent(page);
-            logger.debug(`[KEYENCE] Task ${taskId} - Extracted ${text.length} characters`);
+			// Extract content
+			logger.debug(`[KEYENCE] Task ${taskId} - Extracting content from page`);
+			const { text, title } = await extractKeyenceContent(page);
+			logger.debug(`[KEYENCE] Task ${taskId} - Extracted ${text.length} characters`);
 
-            // Validate content
-            const finalContent = validateKeyenceContent(text);
-            logger.debug(`[KEYENCE] Task ${taskId} - Content validated, final length: ${finalContent.length} characters`);
+			// Validate content
+			const finalContent = validateKeyenceContent(text);
+			logger.debug(
+				`[KEYENCE] Task ${taskId} - Content validated, final length: ${finalContent.length} characters`
+			);
 
-            // Close browser before callback
-            await browser.close();
-            browser = null;
-            logger.debug(`[KEYENCE] Task ${taskId} - Browser closed, memory freed`);
+			// Close browser before callback
+			await browser.close();
+			browser = null;
+			logger.debug(`[KEYENCE] Task ${taskId} - Browser closed, memory freed`);
 
-            // Send callback
-            if (callbackUrl) {
-                logger.debug(`[KEYENCE] Task ${taskId} - Sending success callback to ${callbackUrl}`);
-                await sendCallback(callbackUrl, {
-                    jobId,
-                    urlIndex,
-                    content: finalContent,
-                    title: title,
-                    snippet: `KEYENCE search result for ${model}`,
-                    url: finalUrl
-                });
-                logger.debug(`[KEYENCE] Task ${taskId} - Success callback sent`);
-            }
+			// Send callback
+			if (callbackUrl) {
+				logger.debug(
+					`[KEYENCE] Task ${taskId} - Sending success callback to ${callbackUrl}`
+				);
+				await sendCallback(callbackUrl, {
+					jobId,
+					urlIndex,
+					content: finalContent,
+					title: title,
+					snippet: `KEYENCE search result for ${model}`,
+					url: finalUrl
+				});
+				logger.debug(`[KEYENCE] Task ${taskId} - Success callback sent`);
+			}
 
-            // Cleanup
-            logger.debug(`[KEYENCE] Task ${taskId} - Performing cleanup`);
-            forceGarbageCollection();
-            trackMemoryUsage(`keyence_complete_${requestCount}`);
-            scheduleRestartIfNeeded();
-            logger.debug(`[KEYENCE] Task ${taskId} - Task completed successfully`);
+			// Cleanup
+			logger.debug(`[KEYENCE] Task ${taskId} - Performing cleanup`);
+			forceGarbageCollection();
+			trackMemoryUsage(`keyence_complete_${requestCount}`);
+			scheduleRestartIfNeeded();
+			logger.debug(`[KEYENCE] Task ${taskId} - Task completed successfully`);
 
-            // Response already sent (202), no need to return result
+			// Response already sent (202), no need to return result
+		} catch (error) {
+			logger.error(`[KEYENCE] Task ${taskId} - KEYENCE scraping error:`, error);
+			logger.error(`[KEYENCE] Task ${taskId} - Error details:`, error.message);
+			logger.error(`[KEYENCE] Task ${taskId} - Error stack:`, error.stack);
 
-        } catch (error) {
-            logger.error(`[KEYENCE] Task ${taskId} - KEYENCE scraping error:`, error);
-            logger.error(`[KEYENCE] Task ${taskId} - Error details:`, error.message);
-            logger.error(`[KEYENCE] Task ${taskId} - Error stack:`, error.stack);
+			// Close browser
+			if (browser) {
+				try {
+					await browser.close();
+					logger.debug(
+						`[KEYENCE] Task ${taskId} - Browser closed after error, memory freed`
+					);
+				} catch (closeError) {
+					logger.error(
+						`[KEYENCE] Task ${taskId} - Error closing browser after KEYENCE scraping error:`,
+						closeError
+					);
+				}
+			}
 
-            // Close browser
-            if (browser) {
-                try {
-                    await browser.close();
-                    logger.debug(`[KEYENCE] Task ${taskId} - Browser closed after error, memory freed`);
-                } catch (closeError) {
-                    logger.error(`[KEYENCE] Task ${taskId} - Error closing browser after KEYENCE scraping error:`, closeError);
-                }
-            }
+			// Send error callback
+			if (callbackUrl && !callbackSent) {
+				logger.debug(`[KEYENCE] Task ${taskId} - Sending error callback to ${callbackUrl}`);
+				await sendCallback(callbackUrl, {
+					jobId,
+					urlIndex,
+					content: `[KEYENCE search failed: ${error.message}]`,
+					title: null,
+					snippet: "",
+					url: "https://www.keyence.co.jp/"
+				});
+				logger.debug(`[KEYENCE] Task ${taskId} - Error callback sent`);
+			}
 
-            // Send error callback
-            if (callbackUrl && !callbackSent) {
-                logger.debug(`[KEYENCE] Task ${taskId} - Sending error callback to ${callbackUrl}`);
-                await sendCallback(callbackUrl, {
-                    jobId,
-                    urlIndex,
-                    content: `[KEYENCE search failed: ${error.message}]`,
-                    title: null,
-                    snippet: '',
-                    url: 'https://www.keyence.co.jp/'
-                });
-                logger.debug(`[KEYENCE] Task ${taskId} - Error callback sent`);
-            }
+			// Force restart after KEYENCE check
+			logger.debug(
+				`[KEYENCE] Task ${taskId} - KEYENCE check failed - forcing restart to free memory`
+			);
+			setShutdownState(true);
+			scheduleRestartIfNeeded();
 
-            // Force restart after KEYENCE check
-            logger.debug(`[KEYENCE] Task ${taskId} - KEYENCE check failed - forcing restart to free memory`);
-            setShutdownState(true);
-            scheduleRestartIfNeeded();
+			// Response already sent (202), error callback already sent
+		} finally {
+			// Ensure browser is always closed
+			if (browser) {
+				try {
+					await browser.close();
+				} catch (error_) {
+					logger.error("Failed to close browser in finally block:", error_.message);
+				}
+			}
+		}
+	}).catch((error) => {
+		// Error already logged and callback already sent
+		logger.error(
+			`[KEYENCE] Task ${taskId} - Background KEYENCE scraping failed:`,
+			error.message
+		);
+		logger.error(`[KEYENCE] Task ${taskId} - Error stack:`, error.stack);
+	});
 
-            // Response already sent (202), error callback already sent
-        } finally {
-            // Ensure browser is always closed
-            if (browser) {
-                try {
-                    await browser.close();
-                } catch (error_) {
-                    logger.error('Failed to close browser in finally block:', error_.message);
-                }
-            }
-        }
-    }).catch(error => {
-        // Error already logged and callback already sent
-        logger.error(`[KEYENCE] Task ${taskId} - Background KEYENCE scraping failed:`, error.message);
-        logger.error(`[KEYENCE] Task ${taskId} - Error stack:`, error.stack);
-    });
+	logger.debug(`[KEYENCE] Task ${taskId} enqueued successfully, continuing...`);
 
-    logger.debug(`[KEYENCE] Task ${taskId} enqueued successfully, continuing...`);
-
-    // Response already sent above (202 Accepted)
+	// Response already sent above (202 Accepted)
 }
 
 module.exports = {
-    handleKeyenceScrapeRequest
+	handleKeyenceScrapeRequest
 };

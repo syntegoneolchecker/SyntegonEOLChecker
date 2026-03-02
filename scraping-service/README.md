@@ -9,70 +9,56 @@ This service handles dynamic website scraping for general websites, PDFs and Jav
 ## Endpoints
 
 ### `GET /health`
+
 Health check endpoint.
 
 **Response:**
+
 ```json
 {
-  "status": "ok",
-  "timestamp": "2025-12-01T10:00:00.000Z"
+	"status": "ok",
+	"timestamp": "2025-12-01T10:00:00.000Z"
 }
 ```
 
 ### `POST /scrape`
-Scrape a single URL.
+
+Scrape a single URL. Uses an async callback pattern - the service accepts the request, scrapes in the background, and sends results to the provided callback URL.
 
 **Request:**
+
 ```json
 {
-  "url": "https://example.com/product-page"
+	"url": "https://example.com/product-page",
+	"callbackUrl": "https://your-site.netlify.app/.netlify/functions/scraping-callback",
+	"jobId": "job-123",
+	"urlIndex": 0
 }
 ```
 
-**Response:**
+**Immediate Response (202 Accepted):**
+
 ```json
 {
-  "success": true,
-  "url": "https://example.com/product-page",
-  "title": "Product Page Title",
-  "content": "Full page text content...",
-  "contentLength": 12345,
-  "timestamp": "2025-12-01T10:00:00.000Z"
+	"success": true,
+	"message": "Scraping started"
 }
 ```
 
-### `POST /scrape-batch`
-Scrape multiple URLs.
+Results are sent asynchronously to the `callbackUrl` when scraping completes.
+
+### `POST /scrape-keyence`
+
+Interactive search scraping for Keyence products. Same callback pattern as `/scrape`.
 
 **Request:**
-```json
-{
-  "urls": [
-    "https://example.com/page1",
-    "https://example.com/page2"
-  ]
-}
-```
 
-**Response:**
 ```json
 {
-  "success": true,
-  "results": [
-    {
-      "success": true,
-      "url": "https://example.com/page1",
-      "title": "Page 1",
-      "content": "Content...",
-      "contentLength": 5000
-    },
-    {
-      "success": false,
-      "url": "https://example.com/page2",
-      "error": "Timeout"
-    }
-  ],
-  "timestamp": "2025-12-01T10:00:00.000Z"
+	"model": "XG-8000",
+	"callbackUrl": "https://your-site.netlify.app/.netlify/functions/scraping-callback",
+	"jobId": "job-456",
+	"urlIndex": 0
 }
 ```
 
@@ -88,8 +74,15 @@ npm start
 ```
 
 Test with curl:
+
 ```bash
 curl -X POST http://localhost:3000/scrape \
   -H "Content-Type: application/json" \
-  -d '{"url":"https://example.com"}'
+  -H "X-API-Key: your-scraping-api-key" \
+  -d '{
+    "url": "https://example.com",
+    "callbackUrl": "http://localhost:8888/.netlify/functions/scraping-callback",
+    "jobId": "test-123",
+    "urlIndex": 0
+  }'
 ```

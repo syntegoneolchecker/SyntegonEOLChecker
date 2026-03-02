@@ -1,102 +1,115 @@
 // Run LLM analysis on fetched results
-const { getJob, saveFinalResult, updateJobStatus } = require('./lib/job-storage');
-const { errorResponse, methodNotAllowedResponse, notFoundResponse } = require('./lib/response-builder');
-const { processTablesInContent, filterIrrelevantTables, smartTruncate } = require('./lib/content-truncator');
-const RE2 = require('re2');
-const logger = require('./lib/logger');
-const config = require('./lib/config');
+const { getJob, saveFinalResult, updateJobStatus } = require("./lib/job-storage");
+const {
+	errorResponse,
+	methodNotAllowedResponse,
+	notFoundResponse
+} = require("./lib/response-builder");
+const {
+	processTablesInContent,
+	filterIrrelevantTables,
+	smartTruncate
+} = require("./lib/content-truncator");
+const { requireHybridAuth } = require("./lib/auth-middleware");
+const RE2 = require("re2");
+const logger = require("./lib/logger");
+const config = require("./lib/config");
 
 // Check Groq API token availability before making request
 async function checkGroqTokenAvailability() {
-    try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: 'openai/gpt-oss-120b',
-                messages: [{ role: 'user', content: 'ping' }],
-                max_completion_tokens: 1
-            })
-        });
+	try {
+		const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+				"Content-Type": "application/json"
+			},
+			body: JSON.stringify({
+				model: "openai/gpt-oss-120b",
+				messages: [{ role: "user", content: "ping" }],
+				max_completion_tokens: 1
+			})
+		});
 
-        const resetTokens = response.headers.get('x-ratelimit-reset-tokens');
-        const remainingTokens = Number.parseInt(response.headers.get('x-ratelimit-remaining-tokens') || '0');
+		const resetTokens = response.headers.get("x-ratelimit-reset-tokens");
+		const remainingTokens = Number.parseInt(
+			response.headers.get("x-ratelimit-remaining-tokens") || "0"
+		);
 
-        let resetSeconds = null;
-        if (resetTokens) {
-            const match = /^([\d.]+)s?$/.exec(resetTokens);
+		let resetSeconds = null;
+		if (resetTokens) {
+			const match = /^([\d.]+)s?$/.exec(resetTokens);
 
-            if (match) {
-                resetSeconds = Number.parseFloat(match[1]);
-            }
-        }
+			if (match) {
+				resetSeconds = Number.parseFloat(match[1]);
+			}
+		}
 
-        logger.info(`Groq tokens remaining: ${remainingTokens}, reset in: ${resetSeconds || 'N/A'}s`);
+		logger.info(
+			`Groq tokens remaining: ${remainingTokens}, reset in: ${resetSeconds || "N/A"}s`
+		);
 
-        return {
-            available: remainingTokens > 500, // Need at least 500 tokens for analysis
-            remainingTokens,
-            resetSeconds: resetSeconds || 0
-        };
-    } catch (error) {
-        logger.error('Failed to check Groq token availability:', error.message);
-        // If check fails, assume tokens available and let actual call handle it
-        return { available: true, remainingTokens: null, resetSeconds: 0 };
-    }
+		return {
+			available: remainingTokens > 500, // Need at least 500 tokens for analysis
+			remainingTokens,
+			resetSeconds: resetSeconds || 0
+		};
+	} catch (error) {
+		logger.error("Failed to check Groq token availability:", error.message);
+		// If check fails, assume tokens available and let actual call handle it
+		return { available: true, remainingTokens: null, resetSeconds: 0 };
+	}
 }
 
 // Estimate token count with CJK-aware calculation
 // CJK characters (kanji, hiragana, katakana) typically use 2-3 tokens each
 // ASCII/Latin characters average ~0.25 tokens (4 chars = 1 token)
 function estimateTokenCount(text) {
-    if (!text) return 0;
+	if (!text) return 0;
 
-    // Unicode ranges for CJK characters
-    // Hiragana: U+3040-U+309F
-    // Katakana: U+30A0-U+30FF
-    // CJK Unified Ideographs (Kanji): U+4E00-U+9FFF
-    // CJK Extension A: U+3400-U+4DBF
-    // Full-width ASCII: U+FF00-U+FFEF
-    const cjkRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3400-\u4DBF\uFF00-\uFFEF]/g;
+	// Unicode ranges for CJK characters
+	// Hiragana: U+3040-U+309F
+	// Katakana: U+30A0-U+30FF
+	// CJK Unified Ideographs (Kanji): U+4E00-U+9FFF
+	// CJK Extension A: U+3400-U+4DBF
+	// Full-width ASCII: U+FF00-U+FFEF
+	const cjkRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3400-\u4DBF\uFF00-\uFFEF]/g;
 
-    const cjkMatches = text.match(cjkRegex) || [];
-    const cjkCount = cjkMatches.length;
-    const nonCjkCount = text.length - cjkCount;
+	const cjkMatches = text.match(cjkRegex) || [];
+	const cjkCount = cjkMatches.length;
+	const nonCjkCount = text.length - cjkCount;
 
-    // CJK characters: ~2.5 tokens per character (conservative average)
-    // Non-CJK characters: ~0.25 tokens per character (4 chars = 1 token)
-    const cjkTokens = cjkCount * 2.5;
-    const nonCjkTokens = nonCjkCount * 0.25;
+	// CJK characters: ~2.5 tokens per character (conservative average)
+	// Non-CJK characters: ~0.25 tokens per character (4 chars = 1 token)
+	const cjkTokens = cjkCount * 2.5;
+	const nonCjkTokens = nonCjkCount * 0.25;
 
-    return Math.round(cjkTokens + nonCjkTokens);
+	return Math.round(cjkTokens + nonCjkTokens);
 }
 
 // Parse time string (e.g., "7m54.336s", "2h30m15s") to seconds
 function parseTimeToSeconds(timeStr) {
-    let totalSeconds = 0;
+	let totalSeconds = 0;
 
-    // Extract hours
-    const hoursMatch = timeStr.match(/(\d{1,2})h/);  // Max 2 digits for hours
-    if (hoursMatch) {
-        totalSeconds += Number.parseInt(hoursMatch[1]) * 3600;
-    }
+	// Extract hours
+	const hoursMatch = timeStr.match(/(\d{1,2})h/); // Max 2 digits for hours
+	if (hoursMatch) {
+		totalSeconds += Number.parseInt(hoursMatch[1]) * 3600;
+	}
 
-    // Extract minutes
-    const minutesMatch = timeStr.match(/(\d{1,2})m/);  // Max 2 digits for minutes
-    if (minutesMatch) {
-        totalSeconds += Number.parseInt(minutesMatch[1]) * 60;
-    }
+	// Extract minutes
+	const minutesMatch = timeStr.match(/(\d{1,2})m/); // Max 2 digits for minutes
+	if (minutesMatch) {
+		totalSeconds += Number.parseInt(minutesMatch[1]) * 60;
+	}
 
-    // Extract seconds (with optional decimal)
-    const secondsMatch = timeStr.match(/(\d{1,2}(?:\.\d{1,3})?)s/);  // Reasonable decimal precision
-    if (secondsMatch) {
-        totalSeconds += Number.parseFloat(secondsMatch[1]);
-    }
+	// Extract seconds (with optional decimal)
+	const secondsMatch = timeStr.match(/(\d{1,2}(?:\.\d{1,3})?)s/); // Reasonable decimal precision
+	if (secondsMatch) {
+		totalSeconds += Number.parseFloat(secondsMatch[1]);
+	}
 
-    return totalSeconds;
+	return totalSeconds;
 }
 
 /**
@@ -104,12 +117,14 @@ function parseTimeToSeconds(timeStr) {
  * @param {Object} tokenCheck - Token availability check result
  */
 async function waitForTokenReset(tokenCheck) {
-    if (!tokenCheck.available && tokenCheck.resetSeconds > 0) {
-        const waitMs = Math.ceil(tokenCheck.resetSeconds * 1000) + 1000; // Add 1s buffer
-        logger.info(`⏳ Groq tokens low (${tokenCheck.remainingTokens}), waiting ${waitMs}ms for rate limit reset...`);
-        await new Promise(resolve => setTimeout(resolve, waitMs));
-        logger.info(`✓ Wait complete, proceeding with analysis`);
-    }
+	if (!tokenCheck.available && tokenCheck.resetSeconds > 0) {
+		const waitMs = Math.ceil(tokenCheck.resetSeconds * 1000) + 1000; // Add 1s buffer
+		logger.info(
+			`⏳ Groq tokens low (${tokenCheck.remainingTokens}), waiting ${waitMs}ms for rate limit reset...`
+		);
+		await new Promise((resolve) => setTimeout(resolve, waitMs));
+		logger.info(`✓ Wait complete, proceeding with analysis`);
+	}
 }
 
 /**
@@ -118,25 +133,28 @@ async function waitForTokenReset(tokenCheck) {
  * @returns {Promise<Object>} Analysis result
  */
 async function runAnalysisWithTruncation(job) {
-    const MAX_TRUNCATION_LEVELS = 3;
-    let lastError = null;
+	const MAX_TRUNCATION_LEVELS = 3;
+	let lastError = null;
 
-    for (let truncationLevel = 0; truncationLevel < MAX_TRUNCATION_LEVELS; truncationLevel++) {
-        try {
-            const searchContext = formatResults(job, truncationLevel);
-            return await analyzeWithGroq(job.maker, job.model, searchContext);
-        } catch (error) {
-            lastError = error;
-            const canRetryWithMoreTruncation = error.isPromptTooLarge && truncationLevel < MAX_TRUNCATION_LEVELS - 1;
-            if (canRetryWithMoreTruncation) {
-                logger.info(`Prompt too large at truncation level ${truncationLevel}, trying level ${truncationLevel + 1}`);
-                continue;
-            }
-            throw error;
-        }
-    }
+	for (let truncationLevel = 0; truncationLevel < MAX_TRUNCATION_LEVELS; truncationLevel++) {
+		try {
+			const searchContext = formatResults(job, truncationLevel);
+			return await analyzeWithGroq(job.maker, job.model, searchContext);
+		} catch (error) {
+			lastError = error;
+			const canRetryWithMoreTruncation =
+				error.isPromptTooLarge && truncationLevel < MAX_TRUNCATION_LEVELS - 1;
+			if (canRetryWithMoreTruncation) {
+				logger.info(
+					`Prompt too large at truncation level ${truncationLevel}, trying level ${truncationLevel + 1}`
+				);
+				continue;
+			}
+			throw error;
+		}
+	}
 
-    throw lastError || new Error('Analysis failed after all truncation attempts');
+	throw lastError || new Error("Analysis failed after all truncation attempts");
 }
 
 /**
@@ -147,78 +165,80 @@ async function runAnalysisWithTruncation(job) {
  * @returns {Object} HTTP response
  */
 async function handleAnalysisError(error, eventBody, context) {
-    logger.error('Analysis error:', error);
+	logger.error("Analysis error:", error);
 
-    try {
-        const { jobId } = JSON.parse(eventBody);
+	try {
+		const { jobId } = JSON.parse(eventBody);
 
-        if (error.isDailyLimit) {
-            await updateJobStatus(jobId, 'error', error.message, context, {
-                isDailyLimit: true,
-                retrySeconds: error.retrySeconds || null
-            });
+		if (error.isDailyLimit) {
+			await updateJobStatus(jobId, "error", error.message, context, {
+				isDailyLimit: true,
+				retrySeconds: error.retrySeconds || null
+			});
 
-            return {
-                statusCode: 429,
-                body: JSON.stringify({
-                    error: error.message,
-                    isDailyLimit: true,
-                    retrySeconds: error.retrySeconds || null,
-                    message: 'Daily Groq token limit reached (rolling 24h window). Analysis cancelled. Tokens gradually recover as they age out of the 24-hour window.'
-                })
-            };
-        }
+			return {
+				statusCode: 429,
+				body: JSON.stringify({
+					error: error.message,
+					isDailyLimit: true,
+					retrySeconds: error.retrySeconds || null,
+					message:
+						"Daily Groq token limit reached (rolling 24h window). Analysis cancelled. Tokens gradually recover as they age out of the 24-hour window."
+				})
+			};
+		}
 
-        await updateJobStatus(jobId, 'error', error.message, context);
-    } catch (e) {
-        logger.info(`Exception thrown: ${e}`);
-    }
+		await updateJobStatus(jobId, "error", error.message, context);
+	} catch (e) {
+		logger.info(`Exception thrown: ${e}`);
+	}
 
-    return errorResponse(error.message);
+	return errorResponse(error.message);
 }
 
-exports.handler = async function(event, context) {
-    if (event.httpMethod !== 'POST') {
-        return methodNotAllowedResponse();
-    }
+const analyzeJobHandler = async function (event, context) {
+	if (event.httpMethod !== "POST") {
+		return methodNotAllowedResponse();
+	}
 
-    const invocationTimestamp = new Date().toISOString();
+	const invocationTimestamp = new Date().toISOString();
 
-    try {
-        const { jobId } = JSON.parse(event.body);
+	try {
+		const { jobId } = JSON.parse(event.body);
 
-        logger.debug(`[ANALYZE] ===== ANALYSIS START ===== Time: ${invocationTimestamp}`);
-        logger.debug(`[ANALYZE] Starting analysis for job ${jobId}`);
+		logger.debug(`[ANALYZE] ===== ANALYSIS START ===== Time: ${invocationTimestamp}`);
+		logger.debug(`[ANALYZE] Starting analysis for job ${jobId}`);
 
-        const job = await getJob(jobId, context);
+		const job = await getJob(jobId, context);
 
-        if (!job) {
-            logger.warn(`[ANALYZE] Job ${jobId} not found`);
-            return notFoundResponse('Job');
-        }
+		if (!job) {
+			logger.warn(`[ANALYZE] Job ${jobId} not found`);
+			return notFoundResponse("Job");
+		}
 
-        logger.debug(`[ANALYZE] Job retrieved. Current status: ${job.status}, URLs: ${job.urls?.length}, Completed: ${job.urls?.filter(u => u.status === 'complete').length}`);
+		logger.debug(
+			`[ANALYZE] Job retrieved. Current status: ${job.status}, URLs: ${job.urls?.length}, Completed: ${job.urls?.filter((u) => u.status === "complete").length}`
+		);
 
-        logger.debug(`[ANALYZE] Updating job status to 'analyzing'`);
-        await updateJobStatus(jobId, 'analyzing', null, context);
-        logger.debug(`[ANALYZE] Job status updated to 'analyzing'`);
+		logger.debug(`[ANALYZE] Updating job status to 'analyzing'`);
+		await updateJobStatus(jobId, "analyzing", null, context);
+		logger.debug(`[ANALYZE] Job status updated to 'analyzing'`);
 
-        const tokenCheck = await checkGroqTokenAvailability();
-        await waitForTokenReset(tokenCheck);
+		const tokenCheck = await checkGroqTokenAvailability();
+		await waitForTokenReset(tokenCheck);
 
-        const analysis = await runAnalysisWithTruncation(job);
+		const analysis = await runAnalysisWithTruncation(job);
 
-        await saveFinalResult(jobId, analysis, context);
-        logger.info(`Analysis complete for job ${jobId}`);
+		await saveFinalResult(jobId, analysis, context);
+		logger.info(`Analysis complete for job ${jobId}`);
 
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ success: true, result: analysis })
-        };
-
-    } catch (error) {
-        return handleAnalysisError(error, event.body, context);
-    }
+		return {
+			statusCode: 200,
+			body: JSON.stringify({ success: true, result: analysis })
+		};
+	} catch (error) {
+		return handleAnalysisError(error, event.body, context);
+	}
 };
 
 // Format job results for LLM with token limiting
@@ -228,131 +248,150 @@ exports.handler = async function(event, context) {
  * Calculate content length limits based on truncation level
  */
 function calculateContentLimits(truncationLevel) {
-    const maxContentLength = Math.max(
-        config.MIN_CONTENT_LENGTH,
-        config.BASE_CONTENT_LENGTH - (truncationLevel * config.TRUNCATION_REDUCTION_PER_LEVEL)
-    );
-    const maxTotalChars = maxContentLength * config.TOTAL_CONTENT_MULTIPLIER + config.TOTAL_CONTENT_BUFFER;
+	const maxContentLength = Math.max(
+		config.MIN_CONTENT_LENGTH,
+		config.BASE_CONTENT_LENGTH - truncationLevel * config.TRUNCATION_REDUCTION_PER_LEVEL
+	);
+	const maxTotalChars =
+		maxContentLength * config.TOTAL_CONTENT_MULTIPLIER + config.TOTAL_CONTENT_BUFFER;
 
-    return { maxContentLength, maxTotalChars };
+	return { maxContentLength, maxTotalChars };
 }
 
 /**
  * Process and truncate URL content if needed
  */
 function processUrlContent(content, maxContentLength, model, urlIndex) {
-    if (!content) {
-        return null;
-    }
+	if (!content) {
+		return null;
+	}
 
-    let processedContent = content;
+	let processedContent = content;
 
-    // Skip table processing if already marked
-    if (!processedContent.includes('=== TABLE START ===')) {
-        processedContent = processTablesInContent(processedContent);
-    }
+	// Skip table processing if already marked
+	if (!processedContent.includes("=== TABLE START ===")) {
+		processedContent = processTablesInContent(processedContent);
+	}
 
-    const filteringThreshold = maxContentLength * config.TABLE_FILTERING_THRESHOLD_RATIO;
-    if (processedContent.length <= filteringThreshold) {
-        return processedContent;
-    }
+	const filteringThreshold = maxContentLength * config.TABLE_FILTERING_THRESHOLD_RATIO;
+	if (processedContent.length <= filteringThreshold) {
+		return processedContent;
+	}
 
-    processedContent = filterIrrelevantTables(processedContent, model);
+	processedContent = filterIrrelevantTables(processedContent, model);
 
-    if (processedContent.length > maxContentLength) {
-        logger.info(`Truncating URL #${urlIndex + 1} content from ${processedContent.length} to ${maxContentLength} chars`);
-        processedContent = smartTruncate(processedContent, maxContentLength, model);
-    }
+	if (processedContent.length > maxContentLength) {
+		logger.info(
+			`Truncating URL #${urlIndex + 1} content from ${processedContent.length} to ${maxContentLength} chars`
+		);
+		processedContent = smartTruncate(processedContent, maxContentLength, model);
+	}
 
-    return processedContent;
+	return processedContent;
 }
 
 /**
  * Build result section for a single URL
  */
 function buildResultSection(urlInfo, result, processedContent, index) {
-    const lines = [
-        '\n========================================',
-        `RESULT #${index + 1}:`,
-        '========================================',
-        `Title: ${urlInfo.title}`,
-        `URL: ${result?.url || urlInfo.url}`
-    ];
+	const lines = [
+		"\n========================================",
+		`RESULT #${index + 1}:`,
+		"========================================",
+		`Title: ${urlInfo.title}`,
+		`URL: ${result?.url || urlInfo.url}`
+	];
 
-    if (!result?.fullContent) {
-        lines.push(`Snippet: ${urlInfo.snippet}`);
-    }
+	if (!result?.fullContent) {
+		lines.push(`Snippet: ${urlInfo.snippet}`);
+	}
 
-    if (processedContent) {
-        lines.push('', 'FULL PAGE CONTENT:', processedContent);
-    } else {
-        lines.push('', '[Note: Could not fetch full content - using snippet only]');
-    }
+	if (processedContent) {
+		lines.push("", "FULL PAGE CONTENT:", processedContent);
+	} else {
+		lines.push("", "[Note: Could not fetch full content - using snippet only]");
+	}
 
-    lines.push('', '========================================', '');
+	lines.push("", "========================================", "");
 
-    return lines.join('\n');
+	return lines.join("\n");
 }
 
 function formatResults(job, truncationLevel = 0) {
-    let { maxContentLength, maxTotalChars } = calculateContentLimits(truncationLevel);
+	const limits = calculateContentLimits(truncationLevel);
+	const { maxTotalChars } = limits;
+	let { maxContentLength } = limits;
 
-    // Dynamically adjust per-URL budget based on actual URL count
-    // This ensures all URLs are included (with less content each if needed)
-    // If total still exceeds limit, progressive truncation will handle it
-    const urlCount = job.urls.length;
-    const availableBudget = maxTotalChars - config.TOTAL_CONTENT_BUFFER;
-    const perUrlBudget = Math.floor(availableBudget / urlCount);
+	// Dynamically adjust per-URL budget based on actual URL count
+	// This ensures all URLs are included (with less content each if needed)
+	// If total still exceeds limit, progressive truncation will handle it
+	const urlCount = job.urls.length;
+	const availableBudget = maxTotalChars - config.TOTAL_CONTENT_BUFFER;
+	const perUrlBudget = Math.floor(availableBudget / urlCount);
 
-    if (perUrlBudget !== maxContentLength) {
-        const adjustedLimit = Math.max(config.MIN_CONTENT_LENGTH, Math.min(maxContentLength, perUrlBudget));
-        if (adjustedLimit !== maxContentLength) {
-            logger.info(`Adjusting content limit for ${urlCount} URLs: ${maxContentLength} -> ${adjustedLimit} chars/URL`);
-            maxContentLength = adjustedLimit;
-        }
-    }
+	if (perUrlBudget !== maxContentLength) {
+		const adjustedLimit = Math.max(
+			config.MIN_CONTENT_LENGTH,
+			Math.min(maxContentLength, perUrlBudget)
+		);
+		if (adjustedLimit !== maxContentLength) {
+			logger.info(
+				`Adjusting content limit for ${urlCount} URLs: ${maxContentLength} -> ${adjustedLimit} chars/URL`
+			);
+			maxContentLength = adjustedLimit;
+		}
+	}
 
-    if (truncationLevel > 0) {
-        logger.info(`Progressive truncation level ${truncationLevel}: max ${maxContentLength} chars/URL, ${maxTotalChars} total`);
-    }
+	if (truncationLevel > 0) {
+		logger.info(
+			`Progressive truncation level ${truncationLevel}: max ${maxContentLength} chars/URL, ${maxTotalChars} total`
+		);
+	}
 
-    let formatted = '';
-    let totalChars = 0;
+	let formatted = "";
+	let totalChars = 0;
 
-    for (const [index, urlInfo] of job.urls.entries()) {
-        const result = job.urlResults[urlInfo.index];
-        const processedContent = processUrlContent(result?.fullContent, maxContentLength, job.model, index);
-        const resultSection = buildResultSection(urlInfo, result, processedContent, index);
+	for (const [index, urlInfo] of job.urls.entries()) {
+		const result = job.urlResults[urlInfo.index];
+		const processedContent = processUrlContent(
+			result?.fullContent,
+			maxContentLength,
+			job.model,
+			index
+		);
+		const resultSection = buildResultSection(urlInfo, result, processedContent, index);
 
-        formatted += resultSection;
-        totalChars += resultSection.length;
-    }
+		formatted += resultSection;
+		totalChars += resultSection.length;
+	}
 
-    const estimatedTokens = estimateTokenCount(formatted);
-    logger.info(`Final formatted content: ${totalChars} characters (~${estimatedTokens} tokens estimated, CJK-aware)`);
-    return formatted.trim();
+	const estimatedTokens = estimateTokenCount(formatted);
+	logger.info(
+		`Final formatted content: ${totalChars} characters (~${estimatedTokens} tokens estimated, CJK-aware)`
+	);
+	return formatted.trim();
 }
 
 // Analyze with Groq
 class GroqAnalyzer {
-    MAX_RETRIES = 3;
-    BASE_URL = 'https://api.groq.com/openai/v1/chat/completions';
+	MAX_RETRIES = 3;
+	BASE_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-    async analyze(maker, model, searchContext) {
-        const prompt = this.buildPrompt(maker, model, searchContext);
-        logger.info('This is the entire prompt:\n' + prompt);
+	async analyze(maker, model, searchContext) {
+		const prompt = this.buildPrompt(maker, model, searchContext);
+		logger.info("This is the entire prompt:\n" + prompt);
 
-        try {
-            const response = await this.callWithRetry(prompt);
-            return this.processResponse(response);
-        } catch (error) {
-            this.handleError(error);
-            throw error;
-        }
-    }
+		try {
+			const response = await this.callWithRetry(prompt);
+			return this.processResponse(response);
+		} catch (error) {
+			this.handleError(error);
+			throw error;
+		}
+	}
 
-    buildPrompt(maker, model, searchContext) {
-        return `TASK: Determine if the product "${model}" by ${maker} is discontinued (end-of-life).
+	buildPrompt(maker, model, searchContext) {
+		return `TASK: Determine if the product "${model}" by ${maker} is discontinued (end-of-life).
 
         SEARCH RESULTS:
         ${searchContext}
@@ -417,230 +456,248 @@ class GroqAnalyzer {
                 "explanation": "Brief explanation or 'Product is active, no successor needed'"
             }
         }`;
-    }
+	}
 
-    async callWithRetry(prompt) {
-        for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
-            try {
-                const response = await this.makeRequest(prompt);
-                if (response.ok) return response;
-                await this.handleFailedRequest(response, attempt);
-            } catch (error) {
-                await this.handleRetry(error, attempt);
-            }
-        }
-        throw new Error('Groq API call failed after all retries');
-    }
+	async callWithRetry(prompt) {
+		for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
+			try {
+				const response = await this.makeRequest(prompt);
+				if (response.ok) return response;
+				await this.handleFailedRequest(response, attempt);
+			} catch (error) {
+				await this.handleRetry(error, attempt);
+			}
+		}
+		throw new Error("Groq API call failed after all retries");
+	}
 
-    async makeRequest(prompt) {
-        return fetch(this.BASE_URL, {
-            method: 'POST',
-            headers: this.getHeaders(),
-            body: JSON.stringify(this.getRequestBody(prompt))
-        });
-    }
+	async makeRequest(prompt) {
+		return fetch(this.BASE_URL, {
+			method: "POST",
+			headers: this.getHeaders(),
+			body: JSON.stringify(this.getRequestBody(prompt))
+		});
+	}
 
-    getHeaders() {
-        return {
-            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-            'Content-Type': 'application/json'
-        };
-    }
+	getHeaders() {
+		return {
+			Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+			"Content-Type": "application/json"
+		};
+	}
 
-    getRequestBody(prompt) {
-        return {
-            model: 'openai/gpt-oss-120b',
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0,
-            max_completion_tokens: 4096,
-            top_p: 1,
-            stream: false,
-            reasoning_effort: 'low',
-            response_format: { type: 'json_object' },
-            stop: null,
-            seed: 1
-        };
-    }
+	getRequestBody(prompt) {
+		return {
+			model: "openai/gpt-oss-120b",
+			messages: [{ role: "user", content: prompt }],
+			temperature: 0,
+			max_completion_tokens: 4096,
+			top_p: 1,
+			stream: false,
+			reasoning_effort: "low",
+			response_format: { type: "json_object" },
+			stop: null,
+			seed: 1
+		};
+	}
 
-    async handleFailedRequest(response, attempt) {
-        const errorText = await response.text();
-        logger.error(`Groq API error (attempt ${attempt}):`, errorText);
+	async handleFailedRequest(response, attempt) {
+		const errorText = await response.text();
+		logger.error(`Groq API error (attempt ${attempt}):`, errorText);
 
-        // Check for prompt too large (413 status or "Request too large" message)
-        if (response.status === 413 || errorText.includes('Request too large')) {
-            throw this.createPromptTooLargeError(errorText);
-        }
+		// Check for prompt too large (413 status or "Request too large" message)
+		if (response.status === 413 || errorText.includes("Request too large")) {
+			throw this.createPromptTooLargeError(errorText);
+		}
 
-        if (response.status === 429) {
-            if (errorText.includes('tokens per day (TPD)')) {
-                throw this.createDailyLimitError(errorText);
-            }
-            await this.handleRateLimit(response, attempt);
-        }
+		if (response.status === 429) {
+			if (errorText.includes("tokens per day (TPD)")) {
+				throw this.createDailyLimitError(errorText);
+			}
+			await this.handleRateLimit(response, attempt);
+		}
 
-        throw new Error(`Groq API failed: ${response.status} - ${errorText}`);
-    }
+		throw new Error(`Groq API failed: ${response.status} - ${errorText}`);
+	}
 
-    createPromptTooLargeError(errorText) {
-        logger.warn('Prompt too large for Groq API - will retry with more aggressive truncation');
-        const error = new Error('Prompt too large - requires more aggressive truncation');
-        error.isPromptTooLarge = true;
-        error.originalError = errorText;
-        return error;
-    }
+	createPromptTooLargeError(errorText) {
+		logger.warn("Prompt too large for Groq API - will retry with more aggressive truncation");
+		const error = new Error("Prompt too large - requires more aggressive truncation");
+		error.isPromptTooLarge = true;
+		error.originalError = errorText;
+		return error;
+	}
 
-    async handleRateLimit(response, attempt) {
-        if (attempt < this.MAX_RETRIES) {
-            const waitTime = this.calculateWaitTime(response);
-            await this.wait(waitTime);
-            throw new Error('Rate limit - retrying');
-        }
-        throw new Error(`Rate limit exceeded after ${this.MAX_RETRIES} attempts`);
-    }
+	async handleRateLimit(response, attempt) {
+		if (attempt < this.MAX_RETRIES) {
+			const waitTime = this.calculateWaitTime(response);
+			await this.wait(waitTime);
+			throw new Error("Rate limit - retrying");
+		}
+		throw new Error(`Rate limit exceeded after ${this.MAX_RETRIES} attempts`);
+	}
 
-    calculateWaitTime(response) {
-        const resetSeconds = this.extractResetTime(response);
-        return Math.ceil(resetSeconds * 1000) + 2000;
-    }
+	calculateWaitTime(response) {
+		const resetSeconds = this.extractResetTime(response);
+		return Math.ceil(resetSeconds * 1000) + 2000;
+	}
 
-    extractResetTime(response) {
-        const resetTokens = response.headers.get('x-ratelimit-reset-tokens');
-        if (!resetTokens) return 60;
-        const match = /^([\d.]+)s?$/.exec(resetTokens);
-        return match ? Number.parseFloat(match[1]) : 60;
-    }
+	extractResetTime(response) {
+		const resetTokens = response.headers.get("x-ratelimit-reset-tokens");
+		if (!resetTokens) return 60;
+		const match = /^([\d.]+)s?$/.exec(resetTokens);
+		return match ? Number.parseFloat(match[1]) : 60;
+	}
 
-    createDailyLimitError(errorText) {
-        const retryInfo = this.extractRetryTime(errorText);
-        logger.error(this.formatDailyLimitMessage(retryInfo.message));
+	createDailyLimitError(errorText) {
+		const retryInfo = this.extractRetryTime(errorText);
+		logger.error(this.formatDailyLimitMessage(retryInfo.message));
 
-        const error = new Error(
-            `Daily token limit reached (rolling 24h window). Analysis cancelled.${retryInfo.message}`
-        );
-        error.isDailyLimit = true;
-        error.retrySeconds = retryInfo.seconds;
-        return error;
-    }
+		const error = new Error(
+			`Daily token limit reached (rolling 24h window). Analysis cancelled.${retryInfo.message}`
+		);
+		error.isDailyLimit = true;
+		error.retrySeconds = retryInfo.seconds;
+		return error;
+	}
 
-    formatDailyLimitMessage(additionalMessage) {
-        return `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	formatDailyLimitMessage(additionalMessage) {
+		return `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🚫 GROQ DAILY TOKEN LIMIT REACHED
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 The daily token limit of 200,000 tokens has been reached.
 Groq uses a rolling 24-hour window - tokens gradually recover as they age out.
-${additionalMessage || ''}
+${additionalMessage || ""}
 EOL check cancelled - no database changes will be made.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-    }
+	}
 
-    extractRetryTime(errorText) {
-        const retryMatch = /Please try again in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s))/.exec(errorText);
-        if (!retryMatch) return { message: '', seconds: null };
+	extractRetryTime(errorText) {
+		const retryMatch = /Please try again in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s))/.exec(
+			errorText
+		);
+		if (!retryMatch) return { message: "", seconds: null };
 
-        const timeStr = retryMatch[1];
-        return {
-            message: ` Tokens will recover in approximately ${timeStr}.`,
-            seconds: parseTimeToSeconds(timeStr)
-        };
-    }
+		const timeStr = retryMatch[1];
+		return {
+			message: ` Tokens will recover in approximately ${timeStr}.`,
+			seconds: parseTimeToSeconds(timeStr)
+		};
+	}
 
-    async handleRetry(error, attempt) {
-        // Don't retry daily limit or prompt-too-large errors - let them bubble up
-        if (error.isDailyLimit || error.isPromptTooLarge) throw error;
+	async handleRetry(error, attempt) {
+		// Don't retry daily limit or prompt-too-large errors - let them bubble up
+		if (error.isDailyLimit || error.isPromptTooLarge) throw error;
 
-        logger.error(`Groq API attempt ${attempt} failed:`, error.message);
+		logger.error(`Groq API attempt ${attempt} failed:`, error.message);
 
-        if (attempt < this.MAX_RETRIES) {
-            await this.wait(this.calculateBackoffTime(attempt));
-            throw new Error('Retrying after error');
-        }
-        throw error;
-    }
+		if (attempt < this.MAX_RETRIES) {
+			await this.wait(this.calculateBackoffTime(attempt));
+			throw new Error("Retrying after error");
+		}
+		throw error;
+	}
 
-    calculateBackoffTime(attempt) {
-        return 2000 * Math.pow(2, attempt - 1);
-    }
+	calculateBackoffTime(attempt) {
+		return 2000 * Math.pow(2, attempt - 1);
+	}
 
-    async wait(ms) {
-        logger.info(`⏳ Waiting ${ms}ms...`);
-        await new Promise(resolve => setTimeout(resolve, ms));
-    }
+	async wait(ms) {
+		logger.info(`⏳ Waiting ${ms}ms...`);
+		await new Promise((resolve) => setTimeout(resolve, ms));
+	}
 
-    async processResponse(response) {
-        const groqData = await response.json();
-        logger.info('Groq response:', JSON.stringify(groqData));
+	async processResponse(response) {
+		const groqData = await response.json();
+		logger.info("Groq response:", JSON.stringify(groqData));
 
-        const generatedText = this.extractGeneratedText(groqData);
-        const parsedResult = this.parseResponseText(generatedText);
-        this.validateResult(parsedResult);
+		const generatedText = this.extractGeneratedText(groqData);
+		const parsedResult = this.parseResponseText(generatedText);
+		this.validateResult(parsedResult);
 
-        parsedResult.rateLimits = this.extractRateLimits(response);
-        return parsedResult;
-    }
+		parsedResult.rateLimits = this.extractRateLimits(response);
+		return parsedResult;
+	}
 
-    extractGeneratedText(groqData) {
-        if (groqData.choices?.[0]?.message?.content) {
-            return groqData.choices[0].message.content;
-        }
-        throw new Error('Unexpected response format from LLM');
-    }
+	extractGeneratedText(groqData) {
+		if (groqData.choices?.[0]?.message?.content) {
+			return groqData.choices[0].message.content;
+		}
+		throw new Error("Unexpected response format from LLM");
+	}
 
-    parseResponseText(text) {
-        try {
-            return JSON.parse(text);
-        } catch (error) {
-            return this.extractJsonFromText(text, error);
-        }
-    }
+	parseResponseText(text) {
+		try {
+			return JSON.parse(text);
+		} catch (error) {
+			return this.extractJsonFromText(text, error);
+		}
+	}
 
-    extractJsonFromText(text, parseError) {
-        const MAX_SIZE = 8192 * 5;
-        if (text.length > MAX_SIZE) {
-            throw new Error('Response exceeds maximum expected size');
-        }
+	extractJsonFromText(text, parseError) {
+		const MAX_SIZE = 8192 * 5;
+		if (text.length > MAX_SIZE) {
+			throw new Error("Response exceeds maximum expected size");
+		}
 
-        const jsonRegex = RE2.fromString(String.raw`\{[^}]*?(?:\{[^}]*?}[^}]*?)*}`);
-        const jsonMatch = jsonRegex.exec(text);
+		const jsonRegex = RE2.fromString(String.raw`\{[^}]*?(?:\{[^}]*?}[^}]*?)*}`);
+		const jsonMatch = jsonRegex.exec(text);
 
-        if (jsonMatch) {
-            try {
-                return JSON.parse(jsonMatch[0]);
-            } catch (extractionError) {
-                throw new Error(
-                    `Failed to parse extracted JSON: ${extractionError.message} ` +
-                    `(Original error: ${parseError.message})`
-                );
-            }
-        }
+		if (jsonMatch) {
+			try {
+				return JSON.parse(jsonMatch[0]);
+			} catch (extractionError) {
+				throw new Error(
+					`Failed to parse extracted JSON: ${extractionError.message} ` +
+						`(Original error: ${parseError.message})`
+				);
+			}
+		}
 
-        throw new Error(`No JSON object found in response. Original parse error: ${parseError.message}`);
-    }
+		throw new Error(
+			`No JSON object found in response. Original parse error: ${parseError.message}`
+		);
+	}
 
-    validateResult(result) {
-        if (!result.status || !result.explanation || !result.successor) {
-            throw new Error('Invalid analysis result structure');
-        }
-    }
+	validateResult(result) {
+		if (!result.status || !result.explanation || !result.successor) {
+			throw new Error("Invalid analysis result structure");
+		}
+	}
 
-    extractRateLimits(response) {
-        return {
-            remainingTokens: response.headers.get('x-ratelimit-remaining-tokens'),
-            limitTokens: response.headers.get('x-ratelimit-limit-tokens'),
-            resetSeconds: this.extractResetTime(response)
-        };
-    }
+	extractRateLimits(response) {
+		return {
+			remainingTokens: response.headers.get("x-ratelimit-remaining-tokens"),
+			limitTokens: response.headers.get("x-ratelimit-limit-tokens"),
+			resetSeconds: this.extractResetTime(response)
+		};
+	}
 
-    handleError(error) {
-        if (error.isDailyLimit) {
-            logger.error('Daily token limit error handled');
-        } else {
-            logger.error('Groq API analysis failed:', error.message);
-        }
-    }
+	handleError(error) {
+		if (error.isDailyLimit) {
+			logger.error("Daily token limit error handled");
+		} else {
+			logger.error("Groq API analysis failed:", error.message);
+		}
+	}
 }
 
 // Usage
 async function analyzeWithGroq(maker, model, searchContext) {
-    const analyzer = new GroqAnalyzer();
-    return analyzer.analyze(maker, model, searchContext);
+	const analyzer = new GroqAnalyzer();
+	return analyzer.analyze(maker, model, searchContext);
 }
+
+// Protect with hybrid authentication (JWT for frontend, API key for backend)
+exports.handler = requireHybridAuth(analyzeJobHandler);
+
+// Export internal helpers for testing
+exports._internal = {
+	estimateTokenCount,
+	parseTimeToSeconds,
+	calculateContentLimits,
+	processUrlContent,
+	buildResultSection,
+	formatResults,
+	GroqAnalyzer
+};

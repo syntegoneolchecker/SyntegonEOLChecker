@@ -1,9 +1,9 @@
-const crypto = require('node:crypto');
-const nodemailer = require('nodemailer');
-const logger = require('./lib/logger');
-const { checkRateLimit, recordAttempt } = require('./lib/rate-limiter');
-const { findUserByEmail, storePasswordResetToken, normalizeEmail } = require('./lib/user-storage');
-const { getCorsOrigin } = require('./lib/response-builder');
+const crypto = require("node:crypto");
+const nodemailer = require("nodemailer");
+const logger = require("./lib/logger");
+const { checkRateLimit, recordAttempt } = require("./lib/rate-limiter");
+const { findUserByEmail, storePasswordResetToken, normalizeEmail } = require("./lib/user-storage");
+const { getCorsOrigin } = require("./lib/response-builder");
 
 /**
  * Construct base URL from request headers (works correctly for branch deploys)
@@ -11,9 +11,9 @@ const { getCorsOrigin } = require('./lib/response-builder');
  * @returns {string} Base URL
  */
 function constructBaseUrl(headers) {
-    const protocol = headers['x-forwarded-proto'] || 'https';
-    const host = headers['host'];
-    return `${protocol}://${host}`;
+	const protocol = headers["x-forwarded-proto"] || "https";
+	const host = headers["host"];
+	return `${protocol}://${host}`;
 }
 
 /**
@@ -33,144 +33,146 @@ function constructBaseUrl(headers) {
  */
 
 exports.handler = async (event) => {
-    // Handle CORS preflight
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 204,
-            headers: {
-                'Access-Control-Allow-Origin': getCorsOrigin(),
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS'
-            },
-            body: ''
-        };
-    }
+	// Handle CORS preflight
+	if (event.httpMethod === "OPTIONS") {
+		return {
+			statusCode: 204,
+			headers: {
+				"Access-Control-Allow-Origin": getCorsOrigin(),
+				"Access-Control-Allow-Headers": "Content-Type",
+				"Access-Control-Allow-Methods": "POST, OPTIONS"
+			},
+			body: ""
+		};
+	}
 
-    // Only allow POST requests
-    if (event.httpMethod !== 'POST') {
-        return {
-            statusCode: 405,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin()
-            },
-            body: JSON.stringify({ error: 'Method not allowed' })
-        };
-    }
+	// Only allow POST requests
+	if (event.httpMethod !== "POST") {
+		return {
+			statusCode: 405,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin()
+			},
+			body: JSON.stringify({ error: "Method not allowed" })
+		};
+	}
 
-    // Parse and validate input
-    let email;
-    try {
-        const body = JSON.parse(event.body);
-        email = body.email;
-    } catch {
-        return {
-            statusCode: 400,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin()
-            },
-            body: JSON.stringify({
-                success: false,
-                message: 'Invalid JSON in request body'
-            })
-        };
-    }
+	// Parse and validate input
+	let email;
+	try {
+		const body = JSON.parse(event.body);
+		email = body.email;
+	} catch {
+		return {
+			statusCode: 400,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin()
+			},
+			body: JSON.stringify({
+				success: false,
+				message: "Invalid JSON in request body"
+			})
+		};
+	}
 
-    if (!email) {
-        return {
-            statusCode: 400,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin()
-            },
-            body: JSON.stringify({
-                success: false,
-                message: 'Email is required'
-            })
-        };
-    }
+	if (!email) {
+		return {
+			statusCode: 400,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin()
+			},
+			body: JSON.stringify({
+				success: false,
+				message: "Email is required"
+			})
+		};
+	}
 
-    // Normalize email for consistent rate limiting
-    const normalizedEmail = normalizeEmail(email);
+	// Normalize email for consistent rate limiting
+	const normalizedEmail = normalizeEmail(email);
 
-    // Check rate limit per email (15 min cooldown)
-    const rateLimit = await checkRateLimit('password-reset', normalizedEmail);
+	// Check rate limit per email (15 min cooldown)
+	const rateLimit = await checkRateLimit("password-reset", normalizedEmail);
 
-    if (!rateLimit.allowed) {
-        logger.warn(`Password reset rate limit exceeded for email: ${normalizedEmail}`);
-        return {
-            statusCode: 429,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin(),
-                'Retry-After': rateLimit.retryAfter.toString()
-            },
-            body: JSON.stringify({
-                success: false,
-                message: rateLimit.message,
-                retryAfter: rateLimit.retryAfter
-            })
-        };
-    }
+	if (!rateLimit.allowed) {
+		logger.warn(`Password reset rate limit exceeded for email: ${normalizedEmail}`);
+		return {
+			statusCode: 429,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin(),
+				"Retry-After": rateLimit.retryAfter.toString()
+			},
+			body: JSON.stringify({
+				success: false,
+				message: rateLimit.message,
+				retryAfter: rateLimit.retryAfter
+			})
+		};
+	}
 
-    try {
-        // Record the attempt (always, regardless of whether account exists)
-        await recordAttempt('password-reset', normalizedEmail);
+	try {
+		// Record the attempt (always, regardless of whether account exists)
+		await recordAttempt("password-reset", normalizedEmail);
 
-        // Check if user exists (don't reveal this in response)
-        const user = await findUserByEmail(email);
+		// Check if user exists (don't reveal this in response)
+		const user = await findUserByEmail(email);
 
-        if (user?.verified) {
-            // Generate password reset token
-            const token = crypto.randomBytes(32).toString('hex');
-            const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(); // 48 hours
+		if (user?.verified) {
+			// Generate password reset token
+			const token = crypto.randomBytes(32).toString("hex");
+			const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(); // 48 hours
 
-            // Store token
-            await storePasswordResetToken(token, {
-                email: normalizedEmail,
-                expiresAt
-            });
+			// Store token
+			await storePasswordResetToken(token, {
+				email: normalizedEmail,
+				expiresAt
+			});
 
-            // Generate deletion URL from request headers (works correctly for branch deploys)
-            const siteUrl = constructBaseUrl(event.headers);
-            const deletionUrl = `${siteUrl}/delete-account.html?token=${token}`;
+			// Generate deletion URL from request headers (works correctly for branch deploys)
+			const siteUrl = constructBaseUrl(event.headers);
+			const deletionUrl = `${siteUrl}/delete-account.html?token=${token}`;
 
-            // Send password reset email
-            await sendPasswordResetEmail(normalizedEmail, deletionUrl);
-        } else {
-            // User doesn't exist or is not verified - don't reveal this
-            // Just log for monitoring purposes
-            logger.info(`Password reset requested for non-existent or unverified account: ${normalizedEmail}`);
-        }
+			// Send password reset email
+			await sendPasswordResetEmail(normalizedEmail, deletionUrl);
+		} else {
+			// User doesn't exist or is not verified - don't reveal this
+			// Just log for monitoring purposes
+			logger.info(
+				`Password reset requested for non-existent or unverified account: ${normalizedEmail}`
+			);
+		}
 
-        // Always return the same response to prevent account enumeration
-        return {
-            statusCode: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin()
-            },
-            body: JSON.stringify({
-                success: true,
-                message: 'If an account exists with this email, a password reset link has been sent.'
-            })
-        };
-
-    } catch (error) {
-        logger.error('Password reset error:', error);
-        return {
-            statusCode: 500,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin()
-            },
-            body: JSON.stringify({
-                success: false,
-                message: 'An error occurred while processing your request'
-            })
-        };
-    }
+		// Always return the same response to prevent account enumeration
+		return {
+			statusCode: 200,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin()
+			},
+			body: JSON.stringify({
+				success: true,
+				message:
+					"If an account exists with this email, a password reset link has been sent."
+			})
+		};
+	} catch (error) {
+		logger.error("Password reset error:", error);
+		return {
+			statusCode: 500,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin()
+			},
+			body: JSON.stringify({
+				success: false,
+				message: "An error occurred while processing your request"
+			})
+		};
+	}
 };
 
 /**
@@ -179,7 +181,7 @@ exports.handler = async (event) => {
  * @returns {string} HTML email content
  */
 function getPasswordResetEmailHtml(deletionUrl) {
-    return `
+	return `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #333;">Password Reset Request</h2>
             <p>You requested to reset your password for the Syntegon EOL Checker.</p>
@@ -213,38 +215,38 @@ function getPasswordResetEmailHtml(deletionUrl) {
  * @returns {Promise<boolean>} True if email was sent
  */
 async function sendPasswordResetEmail(email, deletionUrl) {
-    const user = process.env.EMAIL_USER;
-    const pass = process.env.EMAIL_PASSWORD;
+	const user = process.env.EMAIL_USER;
+	const pass = process.env.EMAIL_PASSWORD;
 
-    if (!user || !pass) {
-        logger.error('Gmail credentials not configured:', {
-            EMAIL_USER: user ? 'set' : 'MISSING',
-            EMAIL_PASSWORD: pass ? 'set' : 'MISSING'
-        });
-        return false;
-    }
+	if (!user || !pass) {
+		logger.error("Gmail credentials not configured:", {
+			EMAIL_USER: user ? "set" : "MISSING",
+			EMAIL_PASSWORD: pass ? "set" : "MISSING"
+		});
+		return false;
+	}
 
-    try {
-        const transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 587,
-            secure: false, // Use STARTTLS
-            requireTLS: true, // Enforce TLS upgrade - reject if TLS fails
-            auth: { user, pass }
-        });
+	try {
+		const transporter = nodemailer.createTransport({
+			host: "smtp.gmail.com",
+			port: 587,
+			secure: false, // Use STARTTLS
+			requireTLS: true, // Enforce TLS upgrade - reject if TLS fails
+			auth: { user, pass }
+		});
 
-        const mailOptions = {
-            from: process.env.FROM_EMAIL || user,
-            to: email,
-            subject: 'Password Reset - EOL Checker',
-            html: getPasswordResetEmailHtml(deletionUrl)
-        };
+		const mailOptions = {
+			from: process.env.FROM_EMAIL || user,
+			to: email,
+			subject: "Password Reset - EOL Checker",
+			html: getPasswordResetEmailHtml(deletionUrl)
+		};
 
-        await transporter.sendMail(mailOptions);
-        logger.info(`Password reset email sent successfully to ${email} via Gmail SMTP`);
-        return true;
-    } catch (error) {
-        logger.error('Failed to send password reset email via Gmail SMTP:', error);
-        return false;
-    }
+		await transporter.sendMail(mailOptions);
+		logger.info(`Password reset email sent successfully to ${email} via Gmail SMTP`);
+		return true;
+	} catch (error) {
+		logger.error("Failed to send password reset email via Gmail SMTP:", error);
+		return false;
+	}
 }

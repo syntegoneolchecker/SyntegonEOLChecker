@@ -1,4 +1,4 @@
-const logger = require('./logger');
+const logger = require("./logger");
 
 // Memory management utilities
 const MEMORY_LIMIT_MB = 450; // Restart threshold (leaves 62MB buffer before 512MB limit)
@@ -17,12 +17,12 @@ let requestCount = 0;
  * Force garbage collection if available (start with --expose-gc flag)
  */
 function forceGarbageCollection() {
-    if (globalThis.gc) {
-        const before = getMemoryUsageMB();
-        globalThis.gc();
-        const after = getMemoryUsageMB();
-        logger.info(`GC: ${before.rss}MB → ${after.rss}MB (freed ${before.rss - after.rss}MB)`);
-    }
+	if (globalThis.gc) {
+		const before = getMemoryUsageMB();
+		globalThis.gc();
+		const after = getMemoryUsageMB();
+		logger.info(`GC: ${before.rss}MB → ${after.rss}MB (freed ${before.rss - after.rss}MB)`);
+	}
 }
 
 /**
@@ -30,13 +30,13 @@ function forceGarbageCollection() {
  * @returns {Object} Memory usage object with rss, heapUsed, heapTotal, and external
  */
 function getMemoryUsageMB() {
-    const used = process.memoryUsage();
-    return {
-        rss: Math.round(used.rss / 1024 / 1024),
-        heapUsed: Math.round(used.heapUsed / 1024 / 1024),
-        heapTotal: Math.round(used.heapTotal / 1024 / 1024),
-        external: Math.round(used.external / 1024 / 1024)
-    };
+	const used = process.memoryUsage();
+	return {
+		rss: Math.round(used.rss / 1024 / 1024),
+		heapUsed: Math.round(used.heapUsed / 1024 / 1024),
+		heapTotal: Math.round(used.heapTotal / 1024 / 1024),
+		external: Math.round(used.external / 1024 / 1024)
+	};
 }
 
 /**
@@ -45,28 +45,30 @@ function getMemoryUsageMB() {
  * @returns {Object} Current memory usage
  */
 function trackMemoryUsage(stage) {
-    const memory = getMemoryUsageMB();
-    const entry = {
-        timestamp: new Date().toISOString(),
-        stage,
-        requestCount,
-        ...memory
-    };
+	const memory = getMemoryUsageMB();
+	const entry = {
+		timestamp: new Date().toISOString(),
+		stage,
+		requestCount,
+		...memory
+	};
 
-    memoryHistory.push(entry);
+	memoryHistory.push(entry);
 
-    // Keep only last 20 entries to avoid memory bloat
-    if (memoryHistory.length > 20) {
-        memoryHistory.shift();
-    }
+	// Keep only last 20 entries to avoid memory bloat
+	if (memoryHistory.length > 20) {
+		memoryHistory.shift();
+	}
 
-    // Log warning if approaching limit
-    if (memory.rss >= MEMORY_WARNING_MB) {
-        logger.warn(`⚠️  Memory approaching limit: ${memory.rss}MB RSS (warning threshold: ${MEMORY_WARNING_MB}MB)`);
-        logger.info(`Memory history (last 5): ${JSON.stringify(memoryHistory.slice(-5), null, 2)}`);
-    }
+	// Log warning if approaching limit
+	if (memory.rss >= MEMORY_WARNING_MB) {
+		logger.warn(
+			`⚠️  Memory approaching limit: ${memory.rss}MB RSS (warning threshold: ${MEMORY_WARNING_MB}MB)`
+		);
+		logger.info(`Memory history (last 5): ${JSON.stringify(memoryHistory.slice(-5), null, 2)}`);
+	}
 
-    return memory;
+	return memory;
 }
 
 /**
@@ -74,40 +76,44 @@ function trackMemoryUsage(stage) {
  * @returns {boolean} True if restart is needed
  */
 function shouldRestartDueToMemory() {
-    const memory = getMemoryUsageMB();
+	const memory = getMemoryUsageMB();
 
-    if (memory.rss >= MEMORY_LIMIT_MB) {
-        logger.error(`❌ Memory limit reached: ${memory.rss}MB >= ${MEMORY_LIMIT_MB}MB, scheduling restart`);
-        logger.info(`Memory breakdown: Heap=${memory.heapUsed}/${memory.heapTotal}MB, External=${memory.external}MB`);
-        logger.info(`Request count at restart: ${requestCount}`);
-        return true;
-    }
+	if (memory.rss >= MEMORY_LIMIT_MB) {
+		logger.error(
+			`❌ Memory limit reached: ${memory.rss}MB >= ${MEMORY_LIMIT_MB}MB, scheduling restart`
+		);
+		logger.info(
+			`Memory breakdown: Heap=${memory.heapUsed}/${memory.heapTotal}MB, External=${memory.external}MB`
+		);
+		logger.info(`Request count at restart: ${requestCount}`);
+		return true;
+	}
 
-    return false;
+	return false;
 }
 
 /**
  * Schedule process restart if memory limit reached
  */
 function scheduleRestartIfNeeded() {
-    if (shouldRestartDueToMemory()) {
-        logger.info(`\n${'='.repeat(60)}`);
-        logger.info(`🔄 MEMORY LIMIT REACHED - RESTARTING`);
-        logger.info(`Current memory: ${getMemoryUsageMB().rss}MB RSS`);
-        logger.info(`Scheduling graceful restart in 2 seconds to free memory...`);
-        logger.info(`${'='.repeat(60)}\n`);
+	if (shouldRestartDueToMemory()) {
+		logger.info(`\n${"=".repeat(60)}`);
+		logger.info(`🔄 MEMORY LIMIT REACHED - RESTARTING`);
+		logger.info(`Current memory: ${getMemoryUsageMB().rss}MB RSS`);
+		logger.info(`Scheduling graceful restart in 2 seconds to free memory...`);
+		logger.info(`${"=".repeat(60)}\n`);
 
-        // Set shutdown flag to reject new requests
-        isShuttingDown = true;
+		// Set shutdown flag to reject new requests
+		isShuttingDown = true;
 
-        // Give time for response to be sent, then exit
-        // Render will automatically restart the service
-        setTimeout(() => {
-            logger.info('Exiting process for restart...');
-            logger.info(`Total requests processed before restart: ${requestCount}`);
-            process.exit(0);
-        }, 2000);
-    }
+		// Give time for response to be sent, then exit
+		// Render will automatically restart the service
+		setTimeout(() => {
+			logger.info("Exiting process for restart...");
+			logger.info(`Total requests processed before restart: ${requestCount}`);
+			process.exit(0);
+		}, 2000);
+	}
 }
 
 /**
@@ -115,7 +121,7 @@ function scheduleRestartIfNeeded() {
  * @returns {boolean} True if shutting down
  */
 function getShutdownState() {
-    return isShuttingDown;
+	return isShuttingDown;
 }
 
 /**
@@ -123,7 +129,7 @@ function getShutdownState() {
  * @param {boolean} state - New shutdown state
  */
 function setShutdownState(state) {
-    isShuttingDown = state;
+	isShuttingDown = state;
 }
 
 /**
@@ -131,7 +137,7 @@ function setShutdownState(state) {
  * @returns {number} New request count
  */
 function incrementRequestCount() {
-    return ++requestCount;
+	return ++requestCount;
 }
 
 /**
@@ -139,7 +145,7 @@ function incrementRequestCount() {
  * @returns {number} Current request count
  */
 function getRequestCount() {
-    return requestCount;
+	return requestCount;
 }
 
 /**
@@ -147,20 +153,20 @@ function getRequestCount() {
  * @returns {Array} Memory history array
  */
 function getMemoryHistory() {
-    return memoryHistory;
+	return memoryHistory;
 }
 
 module.exports = {
-    MEMORY_LIMIT_MB,
-    MEMORY_WARNING_MB,
-    forceGarbageCollection,
-    getMemoryUsageMB,
-    trackMemoryUsage,
-    shouldRestartDueToMemory,
-    scheduleRestartIfNeeded,
-    getShutdownState,
-    setShutdownState,
-    incrementRequestCount,
-    getRequestCount,
-    getMemoryHistory
+	MEMORY_LIMIT_MB,
+	MEMORY_WARNING_MB,
+	forceGarbageCollection,
+	getMemoryUsageMB,
+	trackMemoryUsage,
+	shouldRestartDueToMemory,
+	scheduleRestartIfNeeded,
+	getShutdownState,
+	setShutdownState,
+	incrementRequestCount,
+	getRequestCount,
+	getMemoryHistory
 };

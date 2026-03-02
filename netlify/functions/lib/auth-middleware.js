@@ -1,5 +1,5 @@
-const { validateAuthToken } = require('./auth-manager');
-const { getCorsOrigin } = require('./response-builder');
+const { validateAuthToken } = require("./auth-manager");
+const { getCorsOrigin } = require("./response-builder");
 
 /**
  * Authentication Middleware
@@ -13,22 +13,22 @@ const { getCorsOrigin } = require('./response-builder');
  * @returns {string|null} JWT token or null
  */
 function extractToken(event) {
-    // Check Authorization header (Bearer token)
-    const authHeader = event.headers.authorization || event.headers.Authorization;
-    if (authHeader?.startsWith('Bearer ')) {
-        return authHeader.substring(7);
-    }
+	// Check Authorization header (Bearer token)
+	const authHeader = event.headers.authorization || event.headers.Authorization;
+	if (authHeader?.startsWith("Bearer ")) {
+		return authHeader.substring(7);
+	}
 
-    // Check cookies
-    const cookies = event.headers?.cookie;
-    if (cookies && typeof cookies === 'string') {
-        const tokenCookie = cookies.split(';').find(c => c.trim().startsWith('auth_token='));
-        if (tokenCookie) {
-            return tokenCookie.split('=')[1];
-        }
-    }
+	// Check cookies
+	const cookies = event.headers?.cookie;
+	if (cookies && typeof cookies === "string") {
+		const tokenCookie = cookies.split(";").find((c) => c.trim().startsWith("auth_token="));
+		if (tokenCookie) {
+			return tokenCookie.split("=")[1];
+		}
+	}
 
-    return null;
+	return null;
 }
 
 /**
@@ -38,45 +38,45 @@ function extractToken(event) {
  * @returns {Function} Protected handler
  */
 function requireAuth(handler) {
-    return async (event, context) => {
-        const token = extractToken(event);
+	return async (event, context) => {
+		const token = extractToken(event);
 
-        if (!token) {
-            return {
-                statusCode: 401,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': getCorsOrigin()
-                },
-                body: JSON.stringify({
-                    error: 'Authentication required',
-                    message: 'Please log in to access this resource'
-                })
-            };
-        }
+		if (!token) {
+			return {
+				statusCode: 401,
+				headers: {
+					"Content-Type": "application/json",
+					"Access-Control-Allow-Origin": getCorsOrigin()
+				},
+				body: JSON.stringify({
+					error: "Authentication required",
+					message: "Please log in to access this resource"
+				})
+			};
+		}
 
-        const validation = await validateAuthToken(token);
+		const validation = await validateAuthToken(token);
 
-        if (!validation.valid) {
-            return {
-                statusCode: 401,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': getCorsOrigin()
-                },
-                body: JSON.stringify({
-                    error: 'Invalid authentication',
-                    message: validation.message || 'Invalid or expired token'
-                })
-            };
-        }
+		if (!validation.valid) {
+			return {
+				statusCode: 401,
+				headers: {
+					"Content-Type": "application/json",
+					"Access-Control-Allow-Origin": getCorsOrigin()
+				},
+				body: JSON.stringify({
+					error: "Invalid authentication",
+					message: validation.message || "Invalid or expired token"
+				})
+			};
+		}
 
-        // Add user to event for use in handler
-        event.user = validation.user;
+		// Add user to event for use in handler
+		event.user = validation.user;
 
-        // Call the original handler
-        return await handler(event, context);
-    };
+		// Call the original handler
+		return await handler(event, context);
+	};
 }
 
 /**
@@ -86,22 +86,23 @@ function requireAuth(handler) {
  * @returns {string} Set-Cookie header value
  */
 function generateAuthCookie(token, maxAge = 7 * 24 * 60 * 60) {
-    const isProduction = process.env.CONTEXT === 'production' || process.env.NODE_ENV === 'production';
+	const isProduction =
+		process.env.CONTEXT === "production" || process.env.NODE_ENV === "production";
 
-    const cookieParts = [
-        `auth_token=${token}`,
-        `Max-Age=${maxAge}`,
-        'Path=/',
-        'HttpOnly', // Prevent JavaScript access
-        'SameSite=Strict' // CSRF protection
-    ];
+	const cookieParts = [
+		`auth_token=${token}`,
+		`Max-Age=${maxAge}`,
+		"Path=/",
+		"HttpOnly", // Prevent JavaScript access
+		"SameSite=Strict" // CSRF protection
+	];
 
-    // Only set Secure flag in production (requires HTTPS)
-    if (isProduction) {
-        cookieParts.push('Secure');
-    }
+	// Only set Secure flag in production (requires HTTPS)
+	if (isProduction) {
+		cookieParts.push("Secure");
+	}
 
-    return cookieParts.join('; ');
+	return cookieParts.join("; ");
 }
 
 /**
@@ -109,7 +110,7 @@ function generateAuthCookie(token, maxAge = 7 * 24 * 60 * 60) {
  * @returns {string} Set-Cookie header value
  */
 function generateLogoutCookie() {
-    return 'auth_token=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict';
+	return "auth_token=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict";
 }
 
 /**
@@ -119,17 +120,120 @@ function generateLogoutCookie() {
  * @returns {Promise<Object|null>} User object or null
  */
 async function getAuthenticatedUser(event) {
-    const token = extractToken(event);
-    if (!token) return null;
+	const token = extractToken(event);
+	if (!token) return null;
 
-    const validation = await validateAuthToken(token);
-    return validation.valid ? validation.user : null;
+	const validation = await validateAuthToken(token);
+	return validation.valid ? validation.user : null;
+}
+
+/**
+ * Validate internal API key from request header
+ * Used for server-to-server calls (background functions, scheduled tasks)
+ * @param {Object} event - Netlify function event
+ * @returns {boolean} True if API key is valid
+ */
+function validateInternalApiKey(event) {
+	const expectedKey = process.env.INTERNAL_API_KEY;
+	if (!expectedKey) {
+		return false;
+	}
+	const providedKey = event.headers["x-internal-key"];
+	return providedKey === expectedKey;
+}
+
+/**
+ * Require hybrid authentication for a function
+ * Allows access if EITHER:
+ * - Valid JWT token (for frontend calls)
+ * - Valid INTERNAL_API_KEY header (for background/server calls)
+ * @param {Function} handler - Function handler to protect
+ * @returns {Function} Protected handler
+ */
+function requireHybridAuth(handler) {
+	return async (event, context) => {
+		// Check internal API key first (for server-to-server calls)
+		if (validateInternalApiKey(event)) {
+			// Mark as internal call (no user object)
+			event.isInternalCall = true;
+			return await handler(event, context);
+		}
+
+		// Fall back to JWT authentication (for frontend calls)
+		const token = extractToken(event);
+
+		if (!token) {
+			return {
+				statusCode: 401,
+				headers: {
+					"Content-Type": "application/json",
+					"Access-Control-Allow-Origin": getCorsOrigin()
+				},
+				body: JSON.stringify({
+					error: "Authentication required",
+					message: "Please log in to access this resource"
+				})
+			};
+		}
+
+		const validation = await validateAuthToken(token);
+
+		if (!validation.valid) {
+			return {
+				statusCode: 401,
+				headers: {
+					"Content-Type": "application/json",
+					"Access-Control-Allow-Origin": getCorsOrigin()
+				},
+				body: JSON.stringify({
+					error: "Invalid authentication",
+					message: validation.message || "Invalid or expired token"
+				})
+			};
+		}
+
+		// Add user to event for use in handler
+		event.user = validation.user;
+
+		// Call the original handler
+		return await handler(event, context);
+	};
+}
+
+/**
+ * Require internal API key authentication only (no JWT)
+ * Use for endpoints that should ONLY be called by internal background functions
+ * @param {Function} handler - Function handler to protect
+ * @returns {Function} Protected handler
+ */
+function requireInternalAuth(handler) {
+	return async (event, context) => {
+		if (!validateInternalApiKey(event)) {
+			return {
+				statusCode: 401,
+				headers: {
+					"Content-Type": "application/json",
+					"Access-Control-Allow-Origin": getCorsOrigin()
+				},
+				body: JSON.stringify({
+					error: "Internal authentication required",
+					message: "This endpoint requires internal API key authentication"
+				})
+			};
+		}
+
+		event.isInternalCall = true;
+		return await handler(event, context);
+	};
 }
 
 module.exports = {
-    extractToken,
-    requireAuth,
-    generateAuthCookie,
-    generateLogoutCookie,
-    getAuthenticatedUser
+	extractToken,
+	requireAuth,
+	requireHybridAuth,
+	requireInternalAuth,
+	validateInternalApiKey,
+	generateAuthCookie,
+	generateLogoutCookie,
+	getAuthenticatedUser
 };

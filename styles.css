@@ -1,546 +1,564 @@
 * {
-    box-sizing: border-box;
+	box-sizing: border-box;
 }
 
 body {
-    font-family: Helvetica, Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    background: #f5f5f5;
-    max-width: 100%;
-    overflow-x: hidden;
+	font-family: Helvetica, Arial, sans-serif;
+	margin: 0;
+	padding: 0;
+	background: #f5f5f5;
+	max-width: 100%;
+	overflow-x: hidden;
 }
 
 /* Sticky header section - stays visible when scrolling */
 .sticky-header {
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    background: #f5f5f5;
-    padding: 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	position: sticky;
+	top: 0;
+	z-index: 100;
+	background: #f5f5f5;
+	padding: 20px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
 }
 
 .header h2 {
-    margin: 0;
-    font-size: 28px;
-    color: #01BE83;
+	margin: 0;
+	font-size: 28px;
+	color: #01be83;
 }
 
 .credits-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 15px;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 15px;
 }
 
 .credits-display {
-    background: white;
-    padding: 10px 15px;
-    border: 2px solid #ddd;
-    font-size: 14px;
+	background: white;
+	padding: 10px 15px;
+	border: 2px solid #ddd;
+	font-size: 14px;
 }
 
 .credits-label {
-    font-weight: bold;
-    color: #555;
-    margin-right: 8px;
+	font-weight: bold;
+	color: #555;
+	margin-right: 8px;
 }
 
 .credits-value {
-    font-weight: bold;
-    padding: 4px 8px;
+	font-weight: bold;
+	padding: 4px 8px;
 }
 
 .credits-high {
-    background: #d4edda;
-    color: #155724;
+	background: #d4edda;
+	color: #155724;
 }
 
 .credits-medium {
-    background: #fff3cd;
-    color: #856404;
+	background: #fff3cd;
+	color: #856404;
 }
 
 .credits-low {
-    background: #f8d7da;
-    color: #721c24;
+	background: #f8d7da;
+	color: #721c24;
 }
 
 /* Table wrapper for horizontal scroll on small screens */
 .table-wrapper {
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding: 0 20px;
-    max-height: calc(100vh - 300px); /* Allow vertical scroll */
-    overflow-y: auto;
+	width: 100%;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	padding: 0 20px;
+	max-height: calc(100vh - 300px); /* Allow vertical scroll */
+	overflow-y: auto;
 }
 
 table {
-    width: 100%;
-    min-width: 1800px; /* Increased for 14 columns */
-    border-collapse: separate; /* Changed from collapse for sticky headers */
-    border-spacing: 0;
-    background: white;
-    margin: 0 0 20px 0;
-    table-layout: fixed;
+	width: 100%;
+	min-width: 1800px; /* Increased for 14 columns */
+	border-collapse: separate; /* Changed from collapse for sticky headers */
+	border-spacing: 0;
+	background: white;
+	margin: 0 0 20px 0;
+	table-layout: fixed;
 }
 
-th, td {
-    border: 1px solid #ddd;
-    padding: 8px;
-    text-align: left;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    font-size: 14px;
+th,
+td {
+	border: 1px solid #ddd;
+	padding: 8px;
+	text-align: left;
+	word-wrap: break-word;
+	overflow-wrap: break-word;
+	font-size: 14px;
 }
 
 /* Column widths for 14-column layout */
 /* 1. SAP Part Number - no wrapping */
-th:nth-child(1), td:nth-child(1) {
-    width: 8%;
-    min-width: 90px;
-    white-space: nowrap;
+th:nth-child(1),
+td:nth-child(1) {
+	width: 8%;
+	min-width: 90px;
+	white-space: nowrap;
 }
 
 /* 2. Legacy Part Number */
-th:nth-child(2), td:nth-child(2) {
-    width: 7%;
-    min-width: 80px;
+th:nth-child(2),
+td:nth-child(2) {
+	width: 7%;
+	min-width: 80px;
 }
 
 /* 3. Designation */
-th:nth-child(3), td:nth-child(3) {
-    width: 7%;
-    min-width: 80px;
+th:nth-child(3),
+td:nth-child(3) {
+	width: 7%;
+	min-width: 80px;
 }
 
 /* 4. Model */
-th:nth-child(4), td:nth-child(4) {
-    width: 6%;
-    min-width: 70px;
+th:nth-child(4),
+td:nth-child(4) {
+	width: 6%;
+	min-width: 70px;
 }
 
 /* 5. Manufacturer */
-th:nth-child(5), td:nth-child(5) {
-    width: 7%;
-    min-width: 80px;
+th:nth-child(5),
+td:nth-child(5) {
+	width: 7%;
+	min-width: 80px;
 }
 
 /* 6. Status */
-th:nth-child(6), td:nth-child(6) {
-    width: 6%;
-    min-width: 70px;
+th:nth-child(6),
+td:nth-child(6) {
+	width: 6%;
+	min-width: 70px;
 }
 
 /* 7. Status Comment */
-th:nth-child(7), td:nth-child(7) {
-    width: 12%;
-    min-width: 120px;
+th:nth-child(7),
+td:nth-child(7) {
+	width: 12%;
+	min-width: 120px;
 }
 
 /* 8. Successor Model */
-th:nth-child(8), td:nth-child(8) {
-    width: 7%;
-    min-width: 80px;
+th:nth-child(8),
+td:nth-child(8) {
+	width: 7%;
+	min-width: 80px;
 }
 
 /* 9. Successor Comment */
-th:nth-child(9), td:nth-child(9) {
-    width: 10%;
-    min-width: 100px;
+th:nth-child(9),
+td:nth-child(9) {
+	width: 10%;
+	min-width: 100px;
 }
 
 /* 10. Successor SAP Number */
-th:nth-child(10), td:nth-child(10) {
-    width: 7%;
-    min-width: 80px;
+th:nth-child(10),
+td:nth-child(10) {
+	width: 7%;
+	min-width: 80px;
 }
 
 /* 11. Stock */
-th:nth-child(11), td:nth-child(11) {
-    width: 5%;
-    min-width: 60px;
+th:nth-child(11),
+td:nth-child(11) {
+	width: 5%;
+	min-width: 60px;
 }
 
 /* 12. Information Date */
-th:nth-child(12), td:nth-child(12) {
-    width: 8%;
-    min-width: 90px;
+th:nth-child(12),
+td:nth-child(12) {
+	width: 8%;
+	min-width: 90px;
 }
 
 /* 13. Auto Check */
-th:nth-child(13), td:nth-child(13) {
-    width: 5%;
-    min-width: 60px;
+th:nth-child(13),
+td:nth-child(13) {
+	width: 5%;
+	min-width: 60px;
 }
 
 /* 14. Actions column - wider to fit both buttons */
-th:nth-child(14), td:nth-child(14) {
-    width: 11%;
-    min-width: 200px;
-    white-space: nowrap;
+th:nth-child(14),
+td:nth-child(14) {
+	width: 11%;
+	min-width: 200px;
+	white-space: nowrap;
 }
 
 th {
-    background: #01be83;
-    color: white;
-    position: sticky;
-    top: 0;
-    z-index: 50; /* Higher z-index to stay above content */
-    box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1); /* Subtle shadow when scrolling */
+	background: #01be83;
+	color: white;
+	position: sticky;
+	top: 0;
+	z-index: 50; /* Higher z-index to stay above content */
+	box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1); /* Subtle shadow when scrolling */
 }
 
 /* Sortable column headers - hover effect */
 th[onclick] {
-    transition: background-color 0.2s;
+	transition: background-color 0.2s;
 }
 
 th[onclick]:hover {
-    background: #28323c;
+	background: #28323c;
 }
 
 tr:hover {
-    background: #f1f1f1;
+	background: #f1f1f1;
 }
 
 button {
-    background: #01be83;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    cursor: pointer;
-    margin: 5px;
-    font-weight: bold;
+	background: #01be83;
+	color: white;
+	border: none;
+	padding: 8px 16px;
+	cursor: pointer;
+	margin: 5px;
+	font-weight: bold;
 }
 
 button:hover {
-    background: #28323c;
-    transition: background-color 0.2s;
+	background: #28323c;
+	transition: background-color 0.2s;
 }
 
 button:disabled {
-    background: #cccccc;
-    cursor: not-allowed;
-    opacity: 0.6;
+	background: #cccccc;
+	cursor: not-allowed;
+	opacity: 0.6;
 }
 
 .check-eol {
-    background: #01be83;
-    min-width: 100px;
+	background: #01be83;
+	min-width: 100px;
 }
 
 .check-eol:hover:not(:disabled) {
-    background: #28323c;
+	background: #28323c;
 }
 
 .delete {
-    background-color: transparent;
-    border: 1px solid #28323c;
-    border-radius: 0;
-    color: #28323c;
-    cursor: pointer;
-    display: inline-block;
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: 0;
-    line-height: 1;
-    margin-right: var(--grid-gutter);
-    padding: 8px 6px;
-    text-align: center;
-    text-decoration: none;
-    text-transform: none;
-    transition: all .15s linear;
-    white-space: normal;
+	background-color: transparent;
+	border: 1px solid #28323c;
+	border-radius: 0;
+	color: #28323c;
+	cursor: pointer;
+	display: inline-block;
+	font-size: 14px;
+	font-weight: 500;
+	letter-spacing: 0;
+	line-height: 1;
+	margin-right: var(--grid-gutter);
+	padding: 8px 6px;
+	text-align: center;
+	text-decoration: none;
+	text-transform: none;
+	transition: all 0.15s linear;
+	white-space: normal;
 }
 
 .delete:hover {
-    background-color: rgba(0,190,130,0);
-    border-color: #00be82;
-    color: #00be82;
-    text-decoration: none;
-    transform: scale(1);
+	background-color: rgba(0, 190, 130, 0);
+	border-color: #00be82;
+	color: #00be82;
+	text-decoration: none;
+	transform: scale(1);
 }
 
 /* Clear Database button, logout button*/
 .alt-button {
-    background-color: transparent;
-    border: 1px solid #28323c;
-    border-radius: 0;
-    color: #28323c;
-    cursor: pointer;
-    display: inline-block;
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: 0;
-    line-height: 1.5;
-    margin-right: var(--grid-gutter);
-    padding: 5px 20px;
-    text-align: center;
-    text-decoration: none;
-    text-transform: none;
-    transition: all .15s linear;
-    white-space: normal;
+	background-color: transparent;
+	border: 1px solid #28323c;
+	border-radius: 0;
+	color: #28323c;
+	cursor: pointer;
+	display: inline-block;
+	font-size: 14px;
+	font-weight: 500;
+	letter-spacing: 0;
+	line-height: 1.5;
+	margin-right: var(--grid-gutter);
+	padding: 5px 20px;
+	text-align: center;
+	text-decoration: none;
+	text-transform: none;
+	transition: all 0.15s linear;
+	white-space: normal;
 }
 
 .alt-button:hover {
-    background-color: rgba(0,190,130,0);
-    border-color: #00be82;
-    color: #00be82;
-    text-decoration: none;
-    transform: scale(1);
+	background-color: rgba(0, 190, 130, 0);
+	border-color: #00be82;
+	color: #00be82;
+	text-decoration: none;
+	transform: scale(1);
 }
 
 /* Controls row - contains delete toggle and file actions */
 .controls-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 20px;
-    margin-top: 15px;
-    flex-wrap: wrap;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 20px;
+	margin-top: 15px;
+	flex-wrap: wrap;
 }
 
 /* Delete toggle container */
 .delete-toggle-container {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
 }
 
 /* Auto-check toggle container */
 .auto-check-container {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
 }
 
 /* File actions container */
 .file-actions {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	flex-wrap: wrap;
 }
 
 .toggle-label {
-    font-size: 14px;
-    color: #333;
-    font-weight: 500;
+	font-size: 14px;
+	color: #333;
+	font-weight: 500;
 }
 
 /* Toggle switch styling */
 .toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 50px;
-    height: 24px;
+	position: relative;
+	display: inline-block;
+	width: 50px;
+	height: 24px;
 }
 
 .toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
+	opacity: 0;
+	width: 0;
+	height: 0;
 }
 
 .toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #ccc;
-    transition: 0.3s;
-    border-radius: 24px;
+	position: absolute;
+	cursor: pointer;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: #ccc;
+	transition: 0.3s;
+	border-radius: 24px;
 }
 
 .toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    transition: 0.3s;
-    border-radius: 50%;
+	position: absolute;
+	content: "";
+	height: 18px;
+	width: 18px;
+	left: 3px;
+	bottom: 3px;
+	background-color: white;
+	transition: 0.3s;
+	border-radius: 50%;
 }
 
 .toggle-switch input:checked + .toggle-slider {
-    background-color: #01be83;
+	background-color: #01be83;
 }
 
 .toggle-switch input:checked + .toggle-slider:before {
-    transform: translateX(26px);
+	transform: translateX(26px);
 }
 
 /* Hide delete buttons by default */
 .delete {
-    display: none;
+	display: none;
 }
 
 /* Show delete buttons when toggle is on */
 body.show-delete-buttons .delete {
-    display: inline-block;
+	display: inline-block;
 }
 
 input {
-    padding: 6px;
-    margin: 2px;
-    width: 120px;
+	padding: 6px;
+	margin: 2px;
+	width: 120px;
 }
 
 /* Bottom action buttons section */
 .bottom-actions {
-    padding: 0 20px 20px 20px;
+	padding: 0 20px 20px 20px;
 }
 
 #status {
-    padding: 7px;
-    margin: 10px 0;
+	padding: 7px;
+	margin: 10px 0;
 }
 
 .success {
-    background: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
+	background: #d4edda;
+	color: #155724;
+	border: 1px solid #c3e6cb;
 }
 
 .error {
-    background: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
+	background: #f8d7da;
+	color: #721c24;
+	border: 1px solid #f5c6cb;
 }
 
 .info {
-    background: #d1ecf1;
-    color: #0c5460;
-    border: 1px solid #bee5eb;
+	background: #d1ecf1;
+	color: #0c5460;
+	border: 1px solid #bee5eb;
 }
 
 /* Responsive Design - Media Queries */
 
 /* Tablets and smaller desktops (max-width: 1024px) */
 @media screen and (max-width: 1024px) {
-    .sticky-header {
-        padding: 10px;
-    }
+	.sticky-header {
+		padding: 10px;
+	}
 
-    .header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 15px;
-    }
+	.header {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 15px;
+	}
 
-    .table-wrapper {
-        padding: 0 10px 10px 10px;
-    }
+	.table-wrapper {
+		padding: 0 10px 10px 10px;
+	}
 
-    .credits-container {
-        flex-direction: column;
-        gap: 10px;
-        width: 100%;
-    }
+	.credits-container {
+		flex-direction: column;
+		gap: 10px;
+		width: 100%;
+	}
 
-    .credits-display {
-        width: 100%;
-    }
+	.credits-display {
+		width: 100%;
+	}
 
-    .controls-row {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 15px;
-    }
+	.controls-row {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 15px;
+	}
 
-    .file-actions {
-        width: 100%;
-    }
+	.file-actions {
+		width: 100%;
+	}
 
-    input {
-        width: 100%;
-        max-width: 200px;
-    }
+	input {
+		width: 100%;
+		max-width: 200px;
+	}
 
-    button {
-        font-size: 14px;
-        padding: 6px 12px;
-    }
+	button {
+		font-size: 14px;
+		padding: 6px 12px;
+	}
 }
 
 /* Mobile devices (max-width: 768px) */
 @media screen and (max-width: 768px) {
-    .sticky-header {
-        padding: 5px;
-    }
+	.sticky-header {
+		padding: 5px;
+	}
 
-    .table-wrapper {
-        padding: 0 5px 5px 5px;
-    }
+	.table-wrapper {
+		padding: 0 5px 5px 5px;
+	}
 
-    .header h2 {
-        font-size: 20px;
-    }
+	.header h2 {
+		font-size: 20px;
+	}
 
-    .controls-row {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 10px;
-    }
+	.controls-row {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 10px;
+	}
 
-    .file-actions {
-        flex-direction: column;
-        width: 100%;
-    }
+	.file-actions {
+		flex-direction: column;
+		width: 100%;
+	}
 
-    input {
-        width: 100%;
-        max-width: none;
-        margin: 5px 0;
-    }
+	input {
+		width: 100%;
+		max-width: none;
+		margin: 5px 0;
+	}
 
-    button {
-        width: 100%;
-        margin: 5px 0;
-    }
+	button {
+		width: 100%;
+		margin: 5px 0;
+	}
 
-    th, td {
-        font-size: 12px;
-        padding: 6px;
-    }
+	th,
+	td {
+		font-size: 12px;
+		padding: 6px;
+	}
 
-    .check-eol, .delete {
-        display: block;
-        width: 100%;
-        margin: 2px 0;
-        padding: 6px;
-        font-size: 12px;
-    }
+	.check-eol,
+	.delete {
+		display: block;
+		width: 100%;
+		margin: 2px 0;
+		padding: 6px;
+		font-size: 12px;
+	}
 }
 
 /* Very small devices (max-width: 480px) */
 @media screen and (max-width: 480px) {
-    .header h2 {
-        font-size: 18px;
-    }
+	.header h2 {
+		font-size: 18px;
+	}
 
-    .credits-label {
-        font-size: 12px;
-    }
+	.credits-label {
+		font-size: 12px;
+	}
 
-    th, td {
-        font-size: 11px;
-        padding: 4px;
-    }
+	th,
+	td {
+		font-size: 11px;
+		padding: 4px;
+	}
 
-    table {
-        min-width: 1600px; /* Updated for 14 columns */
-    }
+	table {
+		min-width: 1600px; /* Updated for 14 columns */
+	}
 }

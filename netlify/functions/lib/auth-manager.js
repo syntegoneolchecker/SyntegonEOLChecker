@@ -1,17 +1,17 @@
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const crypto = require('node:crypto');
-const RE2 = require('re2');
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const crypto = require("node:crypto");
+const RE2 = require("re2");
 const {
-    findUserByEmail,
-    createUser,
-    updateUser,
-    storeVerificationToken,
-    getVerificationToken,
-    deleteVerificationToken,
-    recordFailedLogin,
-    clearFailedLogins
-} = require('./user-storage');
+	findUserByEmail,
+	createUser,
+	updateUser,
+	storeVerificationToken,
+	getVerificationToken,
+	deleteVerificationToken,
+	recordFailedLogin,
+	clearFailedLogins
+} = require("./user-storage");
 
 /**
  * Authentication Manager
@@ -23,15 +23,15 @@ const EMAIL_REGEX = new RE2(String.raw`^[^\s@]+@[^\s@]+\.[^\s@]+$`);
 
 // Configuration from environment variables
 if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET environment variable is required but not set');
+	throw new Error("JWT_SECRET environment variable is required but not set");
 }
 const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = '7d'; // 7 days
+const JWT_EXPIRES_IN = "7d"; // 7 days
 const BCRYPT_ROUNDS = 12; // Cost factor for bcrypt
 const VERIFICATION_TOKEN_EXPIRY = 48 * 60 * 60 * 1000; // 48 hours in ms
 const MAX_LOGIN_ATTEMPTS = 5;
 const ACCOUNT_LOCK_DURATION = 15 * 60 * 1000; // 15 minutes in ms
-const ALLOWED_EMAIL_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || 'syntegon.com';
+const ALLOWED_EMAIL_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || "syntegon.com";
 
 /**
  * Validate email domain
@@ -39,8 +39,8 @@ const ALLOWED_EMAIL_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || 'syntegon.com';
  * @returns {boolean} True if email domain is allowed
  */
 function isValidEmailDomain(email) {
-    const domain = email.split('@')[1];
-    return domain === ALLOWED_EMAIL_DOMAIN;
+	const domain = email.split("@")[1];
+	return domain === ALLOWED_EMAIL_DOMAIN;
 }
 
 /**
@@ -49,12 +49,12 @@ function isValidEmailDomain(email) {
  * @returns {boolean} True if email format is valid
  */
 function isValidEmailFormat(email) {
-    // Check for multiple @ symbols (invalid email format)
-    const atCount = (email.match(/@/g) || []).length;
-    if (atCount !== 1) {
-        return false;
-    }
-    return EMAIL_REGEX.test(email);
+	// Check for multiple @ symbols (invalid email format)
+	const atCount = (email.match(/@/g) || []).length;
+	if (atCount !== 1) {
+		return false;
+	}
+	return EMAIL_REGEX.test(email);
 }
 
 /**
@@ -63,19 +63,19 @@ function isValidEmailFormat(email) {
  * @returns {Object} { valid: boolean, message: string }
  */
 function validatePassword(password) {
-    if (password.length < 8) {
-        return { valid: false, message: 'Password must be at least 8 characters long' };
-    }
-    if (!/[A-Z]/.test(password)) {
-        return { valid: false, message: 'Password must contain at least one uppercase letter' };
-    }
-    if (!/[a-z]/.test(password)) {
-        return { valid: false, message: 'Password must contain at least one lowercase letter' };
-    }
-    if (!/\d/.test(password)) {
-        return { valid: false, message: 'Password must contain at least one number' };
-    }
-    return { valid: true, message: 'Password is valid' };
+	if (password.length < 8) {
+		return { valid: false, message: "Password must be at least 8 characters long" };
+	}
+	if (!/[A-Z]/.test(password)) {
+		return { valid: false, message: "Password must contain at least one uppercase letter" };
+	}
+	if (!/[a-z]/.test(password)) {
+		return { valid: false, message: "Password must contain at least one lowercase letter" };
+	}
+	if (!/\d/.test(password)) {
+		return { valid: false, message: "Password must contain at least one number" };
+	}
+	return { valid: true, message: "Password is valid" };
 }
 
 /**
@@ -84,7 +84,7 @@ function validatePassword(password) {
  * @returns {Promise<string>} Hashed password
  */
 async function hashPassword(password) {
-    return await bcrypt.hash(password, BCRYPT_ROUNDS);
+	return await bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
 /**
@@ -94,7 +94,7 @@ async function hashPassword(password) {
  * @returns {Promise<boolean>} True if password matches
  */
 async function verifyPassword(password, hashedPassword) {
-    return await bcrypt.compare(password, hashedPassword);
+	return await bcrypt.compare(password, hashedPassword);
 }
 
 /**
@@ -103,7 +103,7 @@ async function verifyPassword(password, hashedPassword) {
  * @returns {string} JWT token
  */
 function generateJWT(payload) {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+	return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
 
 /**
@@ -112,11 +112,11 @@ function generateJWT(payload) {
  * @returns {Object|null} Decoded payload or null if invalid
  */
 function verifyJWT(token) {
-    try {
-        return jwt.verify(token, JWT_SECRET);
-    } catch {
-        return null;
-    }
+	try {
+		return jwt.verify(token, JWT_SECRET);
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -124,7 +124,7 @@ function verifyJWT(token) {
  * @returns {string} Verification token
  */
 function generateVerificationToken() {
-    return crypto.randomBytes(32).toString('hex');
+	return crypto.randomBytes(32).toString("hex");
 }
 
 /**
@@ -134,56 +134,56 @@ function generateVerificationToken() {
  * @returns {Promise<Object>} { success: boolean, message: string, verificationToken?: string }
  */
 async function registerUser(email, password) {
-    // Validate email format
-    if (!isValidEmailFormat(email)) {
-        return { success: false, message: 'Invalid email format' };
-    }
+	// Validate email format
+	if (!isValidEmailFormat(email)) {
+		return { success: false, message: "Invalid email format" };
+	}
 
-    // Validate email domain
-    if (!isValidEmailDomain(email)) {
-        return {
-            success: false,
-            message: `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are allowed`
-        };
-    }
+	// Validate email domain
+	if (!isValidEmailDomain(email)) {
+		return {
+			success: false,
+			message: `Only @${ALLOWED_EMAIL_DOMAIN} email addresses are allowed`
+		};
+	}
 
-    // Validate password strength
-    const passwordValidation = validatePassword(password);
-    if (!passwordValidation.valid) {
-        return { success: false, message: passwordValidation.message };
-    }
+	// Validate password strength
+	const passwordValidation = validatePassword(password);
+	if (!passwordValidation.valid) {
+		return { success: false, message: passwordValidation.message };
+	}
 
-    // Check if user already exists
-    const existingUser = await findUserByEmail(email);
-    if (existingUser) {
-        return { success: false, message: 'An account with this email already exists' };
-    }
+	// Check if user already exists
+	const existingUser = await findUserByEmail(email);
+	if (existingUser) {
+		return { success: false, message: "An account with this email already exists" };
+	}
 
-    // Hash password
-    const hashedPassword = await hashPassword(password);
+	// Hash password
+	const hashedPassword = await hashPassword(password);
 
-    // Create user (unverified)
-    try {
-        const user = await createUser({ email, hashedPassword });
+	// Create user (unverified)
+	try {
+		const user = await createUser({ email, hashedPassword });
 
-        // Generate verification token
-        const verificationToken = generateVerificationToken();
-        const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_EXPIRY).toISOString();
+		// Generate verification token
+		const verificationToken = generateVerificationToken();
+		const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_EXPIRY).toISOString();
 
-        await storeVerificationToken(verificationToken, {
-            email: user.email,
-            expiresAt
-        });
+		await storeVerificationToken(verificationToken, {
+			email: user.email,
+			expiresAt
+		});
 
-        return {
-            success: true,
-            message: 'Account created. Please check your email to verify your account.',
-            verificationToken, // This will be used to send verification email
-            email: user.email
-        };
-    } catch (error) {
-        return { success: false, message: error.message };
-    }
+		return {
+			success: true,
+			message: "Account created. Please check your email to verify your account.",
+			verificationToken, // This will be used to send verification email
+			email: user.email
+		};
+	} catch (error) {
+		return { success: false, message: error.message };
+	}
 }
 
 /**
@@ -192,24 +192,24 @@ async function registerUser(email, password) {
  * @returns {Promise<Object>} { success: boolean, message: string }
  */
 async function verifyEmail(token) {
-    const tokenData = await getVerificationToken(token);
+	const tokenData = await getVerificationToken(token);
 
-    if (!tokenData) {
-        return { success: false, message: 'Invalid or expired verification token' };
-    }
+	if (!tokenData) {
+		return { success: false, message: "Invalid or expired verification token" };
+	}
 
-    // Update user to verified
-    try {
-        await updateUser(tokenData.email, { verified: true });
-        await deleteVerificationToken(token);
+	// Update user to verified
+	try {
+		await updateUser(tokenData.email, { verified: true });
+		await deleteVerificationToken(token);
 
-        return {
-            success: true,
-            message: 'Email verified successfully. You can now log in.'
-        };
-    } catch (error) {
-        return { success: false, message: error.message };
-    }
+		return {
+			success: true,
+			message: "Email verified successfully. You can now log in."
+		};
+	} catch (error) {
+		return { success: false, message: error.message };
+	}
 }
 
 /**
@@ -218,12 +218,12 @@ async function verifyEmail(token) {
  * @returns {boolean} True if account is locked
  */
 function isAccountLocked(user) {
-    if (!user.lockedUntil) return false;
+	if (!user.lockedUntil) return false;
 
-    const lockExpiry = new Date(user.lockedUntil);
-    const now = new Date();
+	const lockExpiry = new Date(user.lockedUntil);
+	const now = new Date();
 
-    return now < lockExpiry;
+	return now < lockExpiry;
 }
 
 /**
@@ -233,81 +233,81 @@ function isAccountLocked(user) {
  * @returns {Promise<Object>} { success: boolean, message: string, token?: string, user?: Object }
  */
 async function loginUser(email, password) {
-    // Find user
-    const user = await findUserByEmail(email);
+	// Find user
+	const user = await findUserByEmail(email);
 
-    if (!user) {
-        return { success: false, message: 'Invalid email or password' };
-    }
+	if (!user) {
+		return { success: false, message: "Invalid email or password" };
+	}
 
-    // Check if account is verified
-    if (!user.verified) {
-        return {
-            success: false,
-            message: 'Please verify your email address before logging in'
-        };
-    }
+	// Check if account is verified
+	if (!user.verified) {
+		return {
+			success: false,
+			message: "Please verify your email address before logging in"
+		};
+	}
 
-    // Check if account is locked
-    if (isAccountLocked(user)) {
-        const lockExpiry = new Date(user.lockedUntil);
-        const minutesRemaining = Math.ceil((lockExpiry - Date.now()) / 60000);
-        return {
-            success: false,
-            message: `Account is temporarily locked. Please try again in ${minutesRemaining} minute(s).`
-        };
-    }
+	// Check if account is locked
+	if (isAccountLocked(user)) {
+		const lockExpiry = new Date(user.lockedUntil);
+		const minutesRemaining = Math.ceil((lockExpiry - Date.now()) / 60000);
+		return {
+			success: false,
+			message: `Account is temporarily locked. Please try again in ${minutesRemaining} minute(s).`
+		};
+	}
 
-    // Verify password
-    const isPasswordValid = await verifyPassword(password, user.hashedPassword);
+	// Verify password
+	const isPasswordValid = await verifyPassword(password, user.hashedPassword);
 
-    if (!isPasswordValid) {
-        // Record failed attempt
-        const failedAttempts = await recordFailedLogin(email);
+	if (!isPasswordValid) {
+		// Record failed attempt
+		const failedAttempts = await recordFailedLogin(email);
 
-        // Lock account if max attempts reached
-        if (failedAttempts >= MAX_LOGIN_ATTEMPTS) {
-            const lockedUntil = new Date(Date.now() + ACCOUNT_LOCK_DURATION).toISOString();
-            await updateUser(email, {
-                lockedUntil,
-                failedLoginAttempts: failedAttempts
-            });
+		// Lock account if max attempts reached
+		if (failedAttempts >= MAX_LOGIN_ATTEMPTS) {
+			const lockedUntil = new Date(Date.now() + ACCOUNT_LOCK_DURATION).toISOString();
+			await updateUser(email, {
+				lockedUntil,
+				failedLoginAttempts: failedAttempts
+			});
 
-            return {
-                success: false,
-                message: `Too many failed login attempts. Account locked for ${ACCOUNT_LOCK_DURATION / 60000} minutes.`
-            };
-        }
+			return {
+				success: false,
+				message: `Too many failed login attempts. Account locked for ${ACCOUNT_LOCK_DURATION / 60000} minutes.`
+			};
+		}
 
-        return {
-            success: false,
-            message: `Invalid email or password (${failedAttempts}/${MAX_LOGIN_ATTEMPTS} attempts)`
-        };
-    }
+		return {
+			success: false,
+			message: `Invalid email or password (${failedAttempts}/${MAX_LOGIN_ATTEMPTS} attempts)`
+		};
+	}
 
-    // Clear failed login attempts
-    await clearFailedLogins(email);
+	// Clear failed login attempts
+	await clearFailedLogins(email);
 
-    // Clear account lock if it was set
-    if (user.lockedUntil) {
-        await updateUser(email, { lockedUntil: null, failedLoginAttempts: 0 });
-    }
+	// Clear account lock if it was set
+	if (user.lockedUntil) {
+		await updateUser(email, { lockedUntil: null, failedLoginAttempts: 0 });
+	}
 
-    // Generate JWT
-    const token = generateJWT({
-        userId: user.id,
-        email: user.email
-    });
+	// Generate JWT
+	const token = generateJWT({
+		userId: user.id,
+		email: user.email
+	});
 
-    return {
-        success: true,
-        message: 'Login successful',
-        token,
-        user: {
-            id: user.id,
-            email: user.email
-        }
-    };
+	return {
+		success: true,
+		message: "Login successful",
+		token,
+		user: {
+			id: user.id,
+			email: user.email
+		}
+	};
 }
 
 /**
@@ -316,47 +316,47 @@ async function loginUser(email, password) {
  * @returns {Promise<Object>} { valid: boolean, user?: Object, message?: string }
  */
 async function validateAuthToken(token) {
-    if (!token) {
-        return { valid: false, message: 'No authentication token provided' };
-    }
+	if (!token) {
+		return { valid: false, message: "No authentication token provided" };
+	}
 
-    // Verify JWT
-    const decoded = verifyJWT(token);
-    if (!decoded) {
-        return { valid: false, message: 'Invalid or expired token' };
-    }
+	// Verify JWT
+	const decoded = verifyJWT(token);
+	if (!decoded) {
+		return { valid: false, message: "Invalid or expired token" };
+	}
 
-    // Get user from database
-    const user = await findUserByEmail(decoded.email);
-    if (!user) {
-        return { valid: false, message: 'User not found' };
-    }
+	// Get user from database
+	const user = await findUserByEmail(decoded.email);
+	if (!user) {
+		return { valid: false, message: "User not found" };
+	}
 
-    if (!user.verified) {
-        return { valid: false, message: 'User email not verified' };
-    }
+	if (!user.verified) {
+		return { valid: false, message: "User email not verified" };
+	}
 
-    return {
-        valid: true,
-        user: {
-            id: user.id,
-            email: user.email
-        }
-    };
+	return {
+		valid: true,
+		user: {
+			id: user.id,
+			email: user.email
+		}
+	};
 }
 
 module.exports = {
-    isValidEmailDomain,
-    isValidEmailFormat,
-    validatePassword,
-    hashPassword,
-    verifyPassword,
-    generateJWT,
-    verifyJWT,
-    generateVerificationToken,
-    registerUser,
-    verifyEmail,
-    loginUser,
-    validateAuthToken,
-    ALLOWED_EMAIL_DOMAIN
+	isValidEmailDomain,
+	isValidEmailFormat,
+	validatePassword,
+	hashPassword,
+	verifyPassword,
+	generateJWT,
+	verifyJWT,
+	generateVerificationToken,
+	registerUser,
+	verifyEmail,
+	loginUser,
+	validateAuthToken,
+	ALLOWED_EMAIL_DOMAIN
 };

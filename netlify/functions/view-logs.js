@@ -15,235 +15,233 @@ const { requireAuth } = require("./lib/auth-middleware");
 
 // Parameter parsing - separate concern
 const parseParams = (params) => ({
-    date: params.date,
-    source: params.source,
-    level: params.level,
-    search: params.search,
-    format: params.format === "json" ? "json" : "html",
-    offset: Math.max(0, Number.parseInt(params.offset) || 0),
-    limit: Math.min(1000, Math.max(1, Number.parseInt(params.limit) || 100)),
+	date: params.date,
+	source: params.source,
+	level: params.level,
+	search: params.search,
+	format: params.format === "json" ? "json" : "html",
+	offset: Math.max(0, Number.parseInt(params.offset) || 0),
+	limit: Math.min(1000, Math.max(1, Number.parseInt(params.limit) || 100))
 });
 
 /**
  * Fetch logs from Supabase with filters
  */
 const fetchLogsFromSupabase = async (filters) => {
-    const { date, source, level, search, offset, limit } = filters;
+	const { date, source, level, search, offset, limit } = filters;
 
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_API_KEY) {
-        throw new Error('Supabase not configured. Set SUPABASE_URL and SUPABASE_API_KEY environment variables.');
-    }
+	if (!process.env.SUPABASE_URL || !process.env.SUPABASE_API_KEY) {
+		throw new Error(
+			"Supabase not configured. Set SUPABASE_URL and SUPABASE_API_KEY environment variables."
+		);
+	}
 
-    // Build query parameters
-    const params = new URLSearchParams();
+	// Build query parameters
+	const params = new URLSearchParams();
 
-    // Order by timestamp descending
-    params.set('order', 'timestamp.desc');
+	// Order by timestamp descending
+	params.set("order", "timestamp.desc");
 
-    // Pagination
-    params.set('limit', limit.toString());
-    params.set('offset', offset.toString());
+	// Pagination
+	params.set("limit", limit.toString());
+	params.set("offset", offset.toString());
 
-    // Date filter (specific date only)
-    if (date) {
-        const startOfDay = `${date}T00:00:00.000Z`;
-        const endOfDay = `${date}T23:59:59.999Z`;
-        params.set('and', `(timestamp.gte.${startOfDay},timestamp.lte.${endOfDay})`);
-    }
+	// Date filter (specific date only)
+	if (date) {
+		const startOfDay = `${date}T00:00:00.000Z`;
+		const endOfDay = `${date}T23:59:59.999Z`;
+		params.set("and", `(timestamp.gte.${startOfDay},timestamp.lte.${endOfDay})`);
+	}
 
-    // Level filter - INCLUSIVE hierarchy (shows selected level and higher)
-    if (level) {
-        const levelUpper = level.toUpperCase();
-        const levelHierarchy = {
-            'DEBUG': ['DEBUG', 'INFO', 'WARN', 'ERROR'],
-            'INFO': ['INFO', 'WARN', 'ERROR'],
-            'WARN': ['WARN', 'ERROR'],
-            'ERROR': ['ERROR']
-        };
-        const levels = levelHierarchy[levelUpper] || [levelUpper];
+	// Level filter - INCLUSIVE hierarchy (shows selected level and higher)
+	if (level) {
+		const levelUpper = level.toUpperCase();
+		const levelHierarchy = {
+			DEBUG: ["DEBUG", "INFO", "WARN", "ERROR"],
+			INFO: ["INFO", "WARN", "ERROR"],
+			WARN: ["WARN", "ERROR"],
+			ERROR: ["ERROR"]
+		};
+		const levels = levelHierarchy[levelUpper] || [levelUpper];
 
-        if (levels.length === 1) {
-            params.set('level', `eq.${levels[0]}`);
-        } else {
-            // Use 'or' with individual conditions for multiple levels
-            const levelsInHierarchy = (l) => `level.eq.${l}`;
-            params.set('or', `(${levels.map(levelsInHierarchy).join(',')})`);
-        }
-    }
+		if (levels.length === 1) {
+			params.set("level", `eq.${levels[0]}`);
+		} else {
+			// Use 'or' with individual conditions for multiple levels
+			const levelsInHierarchy = (l) => `level.eq.${l}`;
+			params.set("or", `(${levels.map(levelsInHierarchy).join(",")})`);
+		}
+	}
 
-    // Source filter (case-insensitive partial match)
-    if (source) {
-        params.set('source', `ilike.*${source}*`);
-    }
+	// Source filter (case-insensitive partial match)
+	if (source) {
+		params.set("source", `ilike.*${source}*`);
+	}
 
-    // Search filter (search in message field)
-    if (search) {
-        params.set('message', `ilike.*${search}*`);
-    }
+	// Search filter (search in message field)
+	if (search) {
+		params.set("message", `ilike.*${search}*`);
+	}
 
-    // Fetch logs from Supabase
-    const url = `${process.env.SUPABASE_URL}/rest/v1/logs?${params.toString()}`;
+	// Fetch logs from Supabase
+	const url = `${process.env.SUPABASE_URL}/rest/v1/logs?${params.toString()}`;
 
-    const response = await fetch(url, {
-        headers: {
-            'apikey': process.env.SUPABASE_API_KEY,
-            'Content-Type': 'application/json'
-        }
-    });
+	const response = await fetch(url, {
+		headers: {
+			apikey: process.env.SUPABASE_API_KEY,
+			"Content-Type": "application/json"
+		}
+	});
 
-    if (!response.ok) {
-        throw new Error(`Supabase query failed: ${response.status} ${response.statusText}`);
-    }
+	if (!response.ok) {
+		throw new Error(`Supabase query failed: ${response.status} ${response.statusText}`);
+	}
 
-    const logs = await response.json();
+	const logs = await response.json();
 
-    // Get total count for pagination (without limit/offset)
-    const countParams = new URLSearchParams(params);
-    countParams.delete('limit');
-    countParams.delete('offset');
-    countParams.delete('order');
+	// Get total count for pagination (without limit/offset)
+	const countParams = new URLSearchParams(params);
+	countParams.delete("limit");
+	countParams.delete("offset");
+	countParams.delete("order");
 
-    const countUrl = `${process.env.SUPABASE_URL}/rest/v1/logs?${countParams.toString()}`;
-    const countResponse = await fetch(countUrl, {
-        method: 'HEAD',
-        headers: {
-            'apikey': process.env.SUPABASE_API_KEY,
-            'Prefer': 'count=exact'
-        }
-    });
+	const countUrl = `${process.env.SUPABASE_URL}/rest/v1/logs?${countParams.toString()}`;
+	const countResponse = await fetch(countUrl, {
+		method: "HEAD",
+		headers: {
+			apikey: process.env.SUPABASE_API_KEY,
+			Prefer: "count=exact"
+		}
+	});
 
-    const totalCount = Number.parseInt(countResponse.headers.get('content-range')?.split('/')[1] || '0');
+	const totalCount = Number.parseInt(
+		countResponse.headers.get("content-range")?.split("/")[1] || "0"
+	);
 
-    return { logs, totalCount };
+	return { logs, totalCount };
 };
 
 // Response formatting - separate concern
 const formatResponse = (paginatedData, filters, format) => {
-    if (format === "json") {
-        return {
-            statusCode: 200,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(
-                {
-                    count: paginatedData.logs.length,
-                    totalCount: paginatedData.totalCount,
-                    offset: paginatedData.offset,
-                    limit: paginatedData.limit,
-                    hasMore: paginatedData.hasMore,
-                    logs: paginatedData.logs,
-                },
-                null,
-                2
-            ),
-        };
-    }
+	if (format === "json") {
+		return {
+			statusCode: 200,
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(
+				{
+					count: paginatedData.logs.length,
+					totalCount: paginatedData.totalCount,
+					offset: paginatedData.offset,
+					limit: paginatedData.limit,
+					hasMore: paginatedData.hasMore,
+					logs: paginatedData.logs
+				},
+				null,
+				2
+			)
+		};
+	}
 
-    const html = generateHTML(paginatedData, filters);
-    return {
-        statusCode: 200,
-        headers: { "Content-Type": "text/html" },
-        body: html,
-    };
+	const html = generateHTML(paginatedData, filters);
+	return {
+		statusCode: 200,
+		headers: { "Content-Type": "text/html" },
+		body: html
+	};
 };
 
 // Error response - separate concern
 const errorResponse = (error) => {
-    logger.error("Error viewing logs:", error);
-    return {
-        statusCode: 500,
-        headers: { "Content-Type": "text/plain" },
-        body: `Error viewing logs: ${error.message}`,
-    };
+	logger.error("Error viewing logs:", error);
+	return {
+		statusCode: 500,
+		headers: { "Content-Type": "text/plain" },
+		body: `Error viewing logs: ${error.message}`
+	};
 };
 
 // Main handler - orchestrates the workflow
 const viewLogsHandler = async (event) => {
-    try {
-        const params = event.queryStringParameters || {};
-        const { date, source, level, search, format, offset, limit } =
-            parseParams(params);
+	try {
+		const params = event.queryStringParameters || {};
+		const { date, source, level, search, format, offset, limit } = parseParams(params);
 
-        const filters = { date, source, level, search, offset, limit };
+		const filters = { date, source, level, search, offset, limit };
 
-        // Fetch from Supabase
-        const { logs, totalCount } = await fetchLogsFromSupabase(filters);
+		// Fetch from Supabase
+		const { logs, totalCount } = await fetchLogsFromSupabase(filters);
 
-        // Reverse logs to show oldest first within the page (newest pages first)
-        const reversedLogs = [...logs].reverse();
-        const hasMore = offset + limit < totalCount;
+		// Reverse logs to show oldest first within the page (newest pages first)
+		const reversedLogs = [...logs].reverse();
+		const hasMore = offset + limit < totalCount;
 
-        const paginatedData = {
-            logs: reversedLogs,
-            totalCount,
-            offset,
-            limit,
-            hasMore,
-        };
+		const paginatedData = {
+			logs: reversedLogs,
+			totalCount,
+			offset,
+			limit,
+			hasMore
+		};
 
-        return formatResponse(paginatedData, { source, level, search }, format);
-    } catch (error) {
-        return errorResponse(error);
-    }
+		return formatResponse(paginatedData, { source, level, search }, format);
+	} catch (error) {
+		return errorResponse(error);
+	}
 };
 
 // Protect with authentication
 exports.handler = requireAuth(viewLogsHandler);
 
 function formatTimestamp(timestamp) {
-    const utcDate = new Date(timestamp);
-    const jstDate = new Date(utcDate);
-    return (
-        jstDate.toLocaleString("en-US", {
-            timeZone: "Asia/Tokyo",
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false,
-        }) + " JST"
-    );
+	const utcDate = new Date(timestamp);
+	const jstDate = new Date(utcDate);
+	return (
+		jstDate.toLocaleString("en-US", {
+			timeZone: "Asia/Tokyo",
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+			hour12: false
+		}) + " JST"
+	);
 }
 
 function formatMessage(log) {
-    const messageStr =
-        typeof log.message === "string"
-            ? log.message
-            : JSON.stringify(log.message);
+	const messageStr = typeof log.message === "string" ? log.message : JSON.stringify(log.message);
 
-    const contextStr = log.context
-        ? `<pre style="margin: 5px 0 0 0; padding: 8px; background: #f8f9fa; border-radius: 4px; font-size: 12px;">${JSON.stringify(
-              log.context,
-              null,
-              2
-          )}</pre>`
-        : "";
+	const contextStr = log.context
+		? `<pre style="margin: 5px 0 0 0; padding: 8px; background: #f8f9fa; border-radius: 4px; font-size: 12px;">${JSON.stringify(
+				log.context,
+				null,
+				2
+			)}</pre>`
+		: "";
 
-    return { messageStr, contextStr };
+	return { messageStr, contextStr };
 }
 
 function buildQueryString(filters, offset, limit) {
-    const params = new URLSearchParams();
-    if (filters.source) params.set("source", filters.source);
-    if (filters.level) params.set("level", filters.level);
-    if (filters.search) params.set("search", filters.search);
-    if (offset) params.set("offset", offset);
-    if (limit !== 100) params.set("limit", limit);
-    return params.toString() ? "?" + params.toString() : "?";
+	const params = new URLSearchParams();
+	if (filters.source) params.set("source", filters.source);
+	if (filters.level) params.set("level", filters.level);
+	if (filters.search) params.set("search", filters.search);
+	if (offset) params.set("offset", offset);
+	if (limit !== 100) params.set("limit", limit);
+	return params.toString() ? "?" + params.toString() : "?";
 }
 
 function buildLogRow(log, levelColors) {
-    const color = levelColors[log.level] || "#000";
-    const time = formatTimestamp(log.timestamp);
-    const { messageStr, contextStr } = formatMessage(log);
+	const color = levelColors[log.level] || "#000";
+	const time = formatTimestamp(log.timestamp);
+	const { messageStr, contextStr } = formatMessage(log);
 
-    return `
+	return `
       <tr>
         <td style="white-space: nowrap; font-size: 12px; color: #6c757d;">${time}</td>
-        <td style="white-space: nowrap; font-weight: bold; color: ${color};">${
-        log.level
-    }</td>
+        <td style="white-space: nowrap; font-weight: bold; color: ${color};">${log.level}</td>
         <td style="white-space: nowrap; font-size: 13px;">${log.source}</td>
         <td style="font-family: monospace; font-size: 13px;">
           ${escapeHtml(messageStr)}
@@ -254,115 +252,106 @@ function buildLogRow(log, levelColors) {
 }
 
 function getFilterInfo(filters) {
-    const filterInfo = [];
-    if (filters.source) filterInfo.push(`Source: ${filters.source}`);
-    if (filters.level) filterInfo.push(`Level: ${filters.level}`);
-    if (filters.search) filterInfo.push(`Search: "${filters.search}"`);
-    return filterInfo;
+	const filterInfo = [];
+	if (filters.source) filterInfo.push(`Source: ${filters.source}`);
+	if (filters.level) filterInfo.push(`Level: ${filters.level}`);
+	if (filters.search) filterInfo.push(`Search: "${filters.search}"`);
+	return filterInfo;
 }
 
 function getPaginationData(paginatedData, _filters) {
-    const { totalCount, offset, limit } = paginatedData;
-    const currentPage = Math.floor(offset / limit) + 1;
-    const totalPages = Math.ceil(totalCount / limit);
-    const showingFrom = totalCount > 0 ? offset + 1 : 0;
-    const showingTo = Math.min(offset + limit, totalCount);
+	const { totalCount, offset, limit } = paginatedData;
+	const currentPage = Math.floor(offset / limit) + 1;
+	const totalPages = Math.ceil(totalCount / limit);
+	const showingFrom = totalCount > 0 ? offset + 1 : 0;
+	const showingTo = Math.min(offset + limit, totalCount);
 
-    const prevOffset = Math.max(0, offset - limit);
-    const nextOffset = offset + limit;
+	const prevOffset = Math.max(0, offset - limit);
+	const nextOffset = offset + limit;
 
-    return {
-        currentPage,
-        totalPages,
-        showingFrom,
-        showingTo,
-        prevOffset,
-        nextOffset,
-    };
+	return {
+		currentPage,
+		totalPages,
+		showingFrom,
+		showingTo,
+		prevOffset,
+		nextOffset
+	};
 }
 
 function generateHTML(paginatedData, filters) {
-    const { logs, totalCount, offset, limit, hasMore } = paginatedData;
-    const levelColors = {
-        DEBUG: "#6c757d",
-        INFO: "#0d6efd",
-        WARN: "#ffc107",
-        ERROR: "#dc3545",
-    };
+	const { logs, totalCount, offset, limit, hasMore } = paginatedData;
+	const levelColors = {
+		DEBUG: "#6c757d",
+		INFO: "#0d6efd",
+		WARN: "#ffc107",
+		ERROR: "#dc3545"
+	};
 
-    // Process logs
-    const logRows = logs.map((log) => buildLogRow(log, levelColors)).join("");
+	// Process logs
+	const logRows = logs.map((log) => buildLogRow(log, levelColors)).join("");
 
-    // Get filter info
-    const filterInfo = getFilterInfo(filters);
+	// Get filter info
+	const filterInfo = getFilterInfo(filters);
 
-    // Get pagination data
-    const {
-        currentPage,
-        totalPages,
-        showingFrom,
-        showingTo,
-        prevOffset,
-        nextOffset,
-    } = getPaginationData(paginatedData, filters);
+	// Get pagination data
+	const { currentPage, totalPages, showingFrom, showingTo, prevOffset, nextOffset } =
+		getPaginationData(paginatedData, filters);
 
-    // Build query strings
-    const prevLink = buildQueryString(filters, prevOffset, limit);
-    const nextLink = buildQueryString(filters, nextOffset, limit);
-    const exportJsonLink =
-        buildQueryString(filters, offset, limit) +
-        (buildQueryString(filters, offset, limit).includes("?") ? "&" : "?") +
-        "format=json";
+	// Build query strings
+	const prevLink = buildQueryString(filters, prevOffset, limit);
+	const nextLink = buildQueryString(filters, nextOffset, limit);
+	const exportJsonLink =
+		buildQueryString(filters, offset, limit) +
+		(buildQueryString(filters, offset, limit).includes("?") ? "&" : "?") +
+		"format=json";
 
-    // Determine button states
-    const offsetStatement =
-        offset === 0 ? 'style="opacity: 0.5; pointer-events: none;"' : "";
-    const hasMoreStatement = hasMore
-        ? ""
-        : 'style="opacity: 0.5; pointer-events: none;"';
+	// Determine button states
+	const offsetStatement = offset === 0 ? 'style="opacity: 0.5; pointer-events: none;"' : "";
+	const hasMoreStatement = hasMore ? "" : 'style="opacity: 0.5; pointer-events: none;"';
 
-    return generateHTMLTemplate({
-        logs,
-        logRows,
-        filterInfo,
-        currentPage,
-        totalPages,
-        showingFrom,
-        showingTo,
-        prevLink,
-        nextLink,
-        exportJsonLink,
-        offsetStatement,
-        hasMoreStatement,
-        filters,
-        offset,
-        limit,
-        totalCount,
-    });
+	return generateHTMLTemplate({
+		logs,
+		logRows,
+		filterInfo,
+		currentPage,
+		totalPages,
+		showingFrom,
+		showingTo,
+		prevLink,
+		nextLink,
+		exportJsonLink,
+		offsetStatement,
+		hasMoreStatement,
+		filters,
+		offset,
+		limit,
+		totalCount
+	});
 }
 
 function generateHTMLTemplate(data) {
-    const {
-        logs,
-        logRows,
-        filterInfo,
-        currentPage,
-        totalPages,
-        showingFrom,
-        showingTo,
-        prevLink,
-        nextLink,
-        exportJsonLink,
-        offsetStatement,
-        hasMoreStatement,
-        filters,
-        offset,
-        limit,
-        totalCount,
-    } = data;
+	const {
+		logs,
+		logRows,
+		filterInfo,
+		currentPage,
+		totalPages,
+		showingFrom,
+		showingTo,
+		prevLink,
+		nextLink,
+		exportJsonLink,
+		offsetStatement,
+		hasMoreStatement,
+		filters,
+		offset,
+		limit,
+		totalCount
+	} = data;
 
-    // Return the template string (keep this as the final assembly)
-    return `<!DOCTYPE html>
+	// Return the template string (keep this as the final assembly)
+	return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -571,14 +560,14 @@ function generateHTMLTemplate(data) {
     </div>
 
     ${generatePaginationSection(
-        totalPages,
-        currentPage,
-        prevLink,
-        nextLink,
-        offsetStatement,
-        hasMoreStatement,
-        limit
-    )}
+		totalPages,
+		currentPage,
+		prevLink,
+		nextLink,
+		offsetStatement,
+		hasMoreStatement,
+		limit
+	)}
 
     ${generateLogsTable(logs, logRows)}
   </div>
@@ -644,36 +633,28 @@ function generateHTMLTemplate(data) {
 }
 
 function generateFilterControls(filters) {
-    return `
+	return `
         <div class="filter-group">
           <label>Source</label>
           <input type="text" name="source" value="${
-              filters.source || ""
-          }" placeholder="e.g., netlify, render">
+				filters.source || ""
+			}" placeholder="e.g., netlify, render">
         </div>
         <div class="filter-group">
           <label>Level</label>
           <select name="level">
             <option value="">All</option>
-            <option value="DEBUG" ${
-                filters.level === "DEBUG" ? "selected" : ""
-            }>DEBUG</option>
-            <option value="INFO" ${
-                filters.level === "INFO" ? "selected" : ""
-            }>INFO</option>
-            <option value="WARN" ${
-                filters.level === "WARN" ? "selected" : ""
-            }>WARN</option>
-            <option value="ERROR" ${
-                filters.level === "ERROR" ? "selected" : ""
-            }>ERROR</option>
+            <option value="DEBUG" ${filters.level === "DEBUG" ? "selected" : ""}>DEBUG</option>
+            <option value="INFO" ${filters.level === "INFO" ? "selected" : ""}>INFO</option>
+            <option value="WARN" ${filters.level === "WARN" ? "selected" : ""}>WARN</option>
+            <option value="ERROR" ${filters.level === "ERROR" ? "selected" : ""}>ERROR</option>
           </select>
         </div>
         <div class="filter-group">
           <label>Search</label>
           <input type="text" name="search" value="${
-              filters.search || ""
-          }" placeholder="Search in logs">
+				filters.search || ""
+			}" placeholder="Search in logs">
         </div>
         <div class="filter-group">
           <button type="submit">Apply Filters</button>
@@ -682,19 +663,19 @@ function generateFilterControls(filters) {
 }
 
 function generatePaginationSection(
-    totalPages,
-    currentPage,
-    prevLink,
-    nextLink,
-    offsetStatement,
-    hasMoreStatement,
-    limit
+	totalPages,
+	currentPage,
+	prevLink,
+	nextLink,
+	offsetStatement,
+	hasMoreStatement,
+	limit
 ) {
-    if (totalPages <= 1) {
-        return '<div class="pagination"><div></div></div>';
-    }
+	if (totalPages <= 1) {
+		return '<div class="pagination"><div></div></div>';
+	}
 
-    return `
+	return `
     <div class="pagination">
       <div class="pagination-info">
         Page ${currentPage} of ${totalPages}
@@ -718,8 +699,8 @@ function generatePaginationSection(
 }
 
 function generateLogsTable(logs, logRows) {
-    if (logs.length === 0) {
-        return `
+	if (logs.length === 0) {
+		return `
         <div class="logs-container">
           <div class="empty">
             <div class="empty-icon">📭</div>
@@ -728,9 +709,9 @@ function generateLogsTable(logs, logRows) {
           </div>
         </div>
         `;
-    }
+	}
 
-    return `
+	return `
     <div class="logs-container">
       <table>
         <thead>
@@ -750,12 +731,12 @@ function generateLogsTable(logs, logRows) {
 }
 
 function escapeHtml(text) {
-    const map = {
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;",
-    };
-    return text.replaceAll(/[&<>"']/g, (m) => map[m]);
+	const map = {
+		"&": "&amp;",
+		"<": "&lt;",
+		">": "&gt;",
+		'"': "&quot;",
+		"'": "&#039;"
+	};
+	return text.replaceAll(/[&<>"']/g, (m) => map[m]);
 }

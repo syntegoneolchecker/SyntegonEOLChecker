@@ -13,14 +13,14 @@
  * Set SUPABASE_URL and SUPABASE_API_KEY environment variables to enable central logging
  */
 
-const { createLogger } = require('../shared/logger-factory');
+const { createLogger } = require("../shared/logger-factory");
 
 /**
  * Get the function source for Render service
  * Returns a static identifier for the scraping service
  */
 function getFunctionSource() {
-    return 'render/scraping-service';
+	return "render/scraping-service";
 }
 
 // Create logger instance with Render-specific source identifier

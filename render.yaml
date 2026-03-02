@@ -1,23 +1,23 @@
 services:
-  # EOL Scraping Service - Puppeteer-based web scraping
-  - type: web
-    name: eol-scraping-service
-    runtime: docker
-    # CRITICAL: Docker context must be project root to access shared/ directory
-    # The Dockerfile references both scraping-service/ and shared/ directories
-    dockerfilePath: ./scraping-service/Dockerfile
-    dockerContext: .
-    plan: free
-    region: oregon
-    healthCheckPath: /health
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: LOG_LEVEL
-        value: INFO
-      # REQUIRED: Set these in Render dashboard
-      # - SCRAPING_API_KEY: API key for authentication (must match Netlify's SCRAPING_API_KEY)
-      # - ALLOWED_ORIGINS: Your Netlify site URL (e.g., https://your-site.netlify.app)
-      #
-      # OPTIONAL: Set for centralized logging
-      # - SUPABASE_URL and SUPABASE_API_KEY for central logging (gracefully degrades if not set)
+    # EOL Scraping Service - Puppeteer-based web scraping
+    - type: web
+      name: eol-scraping-service
+      runtime: docker
+      # CRITICAL: Docker context must be project root to access shared/ directory
+      # The Dockerfile references both scraping-service/ and shared/ directories
+      dockerfilePath: ./scraping-service/Dockerfile
+      dockerContext: .
+      plan: free
+      region: oregon
+      healthCheckPath: /health
+      envVars:
+          - key: NODE_ENV
+            value: production
+          - key: LOG_LEVEL
+            value: INFO
+          # REQUIRED: Set these in Render dashboard
+          # - SCRAPING_API_KEY: API key for authentication (must match Netlify's SCRAPING_API_KEY)
+          # - ALLOWED_ORIGINS: Your Netlify site URL (e.g., https://your-site.netlify.app)
+          #
+          # OPTIONAL: Set for centralized logging
+          # - SUPABASE_URL and SUPABASE_API_KEY for central logging (gracefully degrades if not set)

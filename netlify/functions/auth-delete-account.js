@@ -1,6 +1,10 @@
-const logger = require('./lib/logger');
-const { getPasswordResetToken, deletePasswordResetToken, deleteUser } = require('./lib/user-storage');
-const { getCorsOrigin } = require('./lib/response-builder');
+const logger = require("./lib/logger");
+const {
+	getPasswordResetToken,
+	deletePasswordResetToken,
+	deleteUser
+} = require("./lib/user-storage");
+const { getCorsOrigin } = require("./lib/response-builder");
 
 /**
  * Account Deletion Endpoint (for password reset flow)
@@ -16,116 +20,118 @@ const { getCorsOrigin } = require('./lib/response-builder');
  */
 
 exports.handler = async (event) => {
-    // Handle CORS preflight
-    if (event.httpMethod === 'OPTIONS') {
-        return {
-            statusCode: 204,
-            headers: {
-                'Access-Control-Allow-Origin': getCorsOrigin(),
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'GET, OPTIONS'
-            },
-            body: ''
-        };
-    }
+	// Handle CORS preflight
+	if (event.httpMethod === "OPTIONS") {
+		return {
+			statusCode: 204,
+			headers: {
+				"Access-Control-Allow-Origin": getCorsOrigin(),
+				"Access-Control-Allow-Headers": "Content-Type",
+				"Access-Control-Allow-Methods": "GET, OPTIONS"
+			},
+			body: ""
+		};
+	}
 
-    // Only allow GET requests
-    if (event.httpMethod !== 'GET') {
-        return {
-            statusCode: 405,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin()
-            },
-            body: JSON.stringify({ error: 'Method not allowed' })
-        };
-    }
+	// Only allow GET requests
+	if (event.httpMethod !== "GET") {
+		return {
+			statusCode: 405,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin()
+			},
+			body: JSON.stringify({ error: "Method not allowed" })
+		};
+	}
 
-    // Extract token from query parameters
-    const token = event.queryStringParameters?.token;
+	// Extract token from query parameters
+	const token = event.queryStringParameters?.token;
 
-    if (!token) {
-        return {
-            statusCode: 400,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin()
-            },
-            body: JSON.stringify({
-                success: false,
-                message: 'No token provided'
-            })
-        };
-    }
+	if (!token) {
+		return {
+			statusCode: 400,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin()
+			},
+			body: JSON.stringify({
+				success: false,
+				message: "No token provided"
+			})
+		};
+	}
 
-    try {
-        // Validate token
-        const tokenData = await getPasswordResetToken(token);
+	try {
+		// Validate token
+		const tokenData = await getPasswordResetToken(token);
 
-        if (!tokenData) {
-            logger.warn(`Invalid or expired password reset token attempted: ${token.substring(0, 8)}...`);
-            return {
-                statusCode: 400,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': getCorsOrigin()
-                },
-                body: JSON.stringify({
-                    success: false,
-                    message: 'Invalid or expired password reset link. Please request a new one.'
-                })
-            };
-        }
+		if (!tokenData) {
+			logger.warn(
+				`Invalid or expired password reset token attempted: ${token.substring(0, 8)}...`
+			);
+			return {
+				statusCode: 400,
+				headers: {
+					"Content-Type": "application/json",
+					"Access-Control-Allow-Origin": getCorsOrigin()
+				},
+				body: JSON.stringify({
+					success: false,
+					message: "Invalid or expired password reset link. Please request a new one."
+				})
+			};
+		}
 
-        // Delete the user account
-        const deleted = await deleteUser(tokenData.email);
+		// Delete the user account
+		const deleted = await deleteUser(tokenData.email);
 
-        if (!deleted) {
-            logger.warn(`Password reset token valid but user not found: ${tokenData.email}`);
-            // Still delete the token
-            await deletePasswordResetToken(token);
-            return {
-                statusCode: 400,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': getCorsOrigin()
-                },
-                body: JSON.stringify({
-                    success: false,
-                    message: 'Account not found. It may have already been deleted.'
-                })
-            };
-        }
+		if (!deleted) {
+			logger.warn(`Password reset token valid but user not found: ${tokenData.email}`);
+			// Still delete the token
+			await deletePasswordResetToken(token);
+			return {
+				statusCode: 400,
+				headers: {
+					"Content-Type": "application/json",
+					"Access-Control-Allow-Origin": getCorsOrigin()
+				},
+				body: JSON.stringify({
+					success: false,
+					message: "Account not found. It may have already been deleted."
+				})
+			};
+		}
 
-        // Delete the password reset token after successful deletion
-        await deletePasswordResetToken(token);
+		// Delete the password reset token after successful deletion
+		await deletePasswordResetToken(token);
 
-        logger.info(`Account deleted via password reset: ${tokenData.email}`);
+		logger.info(`Account deleted via password reset: ${tokenData.email}`);
 
-        return {
-            statusCode: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin()
-            },
-            body: JSON.stringify({
-                success: true,
-                message: 'Your account has been deleted. You can now register again with a new password.'
-            })
-        };
-
-    } catch (error) {
-        logger.error('Account deletion error:', error);
-        return {
-            statusCode: 500,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': getCorsOrigin()
-            },
-            body: JSON.stringify({
-                success: false,
-                message: 'An error occurred while deleting your account'
-            })
-        };
-    }
+		return {
+			statusCode: 200,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin()
+			},
+			body: JSON.stringify({
+				success: true,
+				message:
+					"Your account has been deleted. You can now register again with a new password."
+			})
+		};
+	} catch (error) {
+		logger.error("Account deletion error:", error);
+		return {
+			statusCode: 500,
+			headers: {
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": getCorsOrigin()
+			},
+			body: JSON.stringify({
+				success: false,
+				message: "An error occurred while deleting your account"
+			})
+		};
+	}
 };
