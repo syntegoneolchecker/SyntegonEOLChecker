@@ -88,9 +88,28 @@ describe("Scraping Service - Memory Management", () => {
 	});
 
 	describe("shouldRestartDueToMemory", () => {
+		afterEach(() => {
+			jest.restoreAllMocks();
+		});
+
 		it("should return false when memory is below limit", () => {
-			// In a test process, memory should be well below 450MB
+			jest.spyOn(process, "memoryUsage").mockReturnValue({
+				rss: 200 * 1024 * 1024,
+				heapUsed: 100 * 1024 * 1024,
+				heapTotal: 150 * 1024 * 1024,
+				external: 10 * 1024 * 1024
+			});
 			expect(memory.shouldRestartDueToMemory()).toBe(false);
+		});
+
+		it("should return true when memory is above limit", () => {
+			jest.spyOn(process, "memoryUsage").mockReturnValue({
+				rss: 500 * 1024 * 1024,
+				heapUsed: 400 * 1024 * 1024,
+				heapTotal: 450 * 1024 * 1024,
+				external: 20 * 1024 * 1024
+			});
+			expect(memory.shouldRestartDueToMemory()).toBe(true);
 		});
 	});
 
