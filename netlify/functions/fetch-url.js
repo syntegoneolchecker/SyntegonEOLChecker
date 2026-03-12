@@ -249,6 +249,11 @@ const fetchUrlHandler = async function (event, context) {
 
 // Helper functions
 function constructBaseUrl(headers) {
+	// Prefer the known site URL to avoid UUID-based Netlify domains
+	// that get blocked by Render's SSRF protection
+	if (process.env.URL) {
+		return process.env.URL.replace(/\/$/, "");
+	}
 	const protocol = headers["x-forwarded-proto"] || "https";
 	const host = headers["host"];
 	return `${protocol}://${host}`;
