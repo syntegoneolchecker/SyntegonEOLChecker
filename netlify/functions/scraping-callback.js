@@ -151,10 +151,11 @@ exports.handler = async function (event, context) {
 		logger.debug(`[CALLBACK] ===== CALLBACK START ===== Time: ${invocationTimestamp}`);
 		logger.debug(`[CALLBACK] Job ${jobId}, URL ${urlIndex} (${content?.length || 0} chars)`);
 
-		// Construct base URL from request headers
-		const protocol = event.headers["x-forwarded-proto"] || "https";
-		const host = event.headers["host"];
-		const baseUrl = `${protocol}://${host}`;
+		// Construct base URL - prefer known site URL over Host header
+		// to avoid UUID-based Netlify domains blocked by Render's SSRF protection
+		const baseUrl = process.env.URL
+			? process.env.URL.replace(/\/$/, "")
+			: `${event.headers["x-forwarded-proto"] || "https"}://${event.headers["host"]}`;
 
 		// Save the result WITH RETRY LOGIC
 		let allDone;

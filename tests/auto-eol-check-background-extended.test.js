@@ -127,14 +127,42 @@ function makeRow({
 	infoDate = "",
 	autoCheck = ""
 } = {}) {
-	return [sap, col1, col2, model, manufacturer, status, comment, successor, successorComment, col9, col10, infoDate, autoCheck];
+	return [
+		sap,
+		col1,
+		col2,
+		model,
+		manufacturer,
+		status,
+		comment,
+		successor,
+		successorComment,
+		col9,
+		col10,
+		infoDate,
+		autoCheck
+	];
 }
 
 function makeCSVData(header, rows) {
 	return { success: true, data: [header, ...rows], error: null };
 }
 
-const HEADER_ROW = ["SAP", "Col1", "Col2", "Model", "Manufacturer", "Status", "Comment", "Successor", "SuccComment", "Col9", "Col10", "InfoDate", "AutoCheck"];
+const HEADER_ROW = [
+	"SAP",
+	"Col1",
+	"Col2",
+	"Model",
+	"Manufacturer",
+	"Status",
+	"Comment",
+	"Successor",
+	"SuccComment",
+	"Col9",
+	"Col10",
+	"InfoDate",
+	"AutoCheck"
+];
 
 // ========== TESTS ==========
 
@@ -315,13 +343,13 @@ describe("auto-eol-check-background extended", () => {
 			);
 		});
 
-		test("returns false after 2 minutes of failures", async () => {
+		test("returns false after 5 minutes of failures", async () => {
 			global.fetch = jest.fn().mockRejectedValue(new Error("timeout"));
 
 			const promise = wakeRenderService();
 
-			// Advance past 2 minutes (120s) + buffer
-			await jest.advanceTimersByTimeAsync(150000);
+			// Advance past 5 minutes (300s) + buffer
+			await jest.advanceTimersByTimeAsync(350000);
 
 			const result = await promise;
 			expect(result).toBe(false);
@@ -483,10 +511,12 @@ describe("auto-eol-check-background extended", () => {
 
 		test("returns null when all products have Auto Check disabled (NO)", async () => {
 			mockStoreGet.mockResolvedValue("csv-data");
-			mockParseCSV.mockReturnValue(makeCSVData(HEADER_ROW, [
-				makeRow({ sap: "SAP001", autoCheck: "NO" }),
-				makeRow({ sap: "SAP002", autoCheck: "NO" })
-			]));
+			mockParseCSV.mockReturnValue(
+				makeCSVData(HEADER_ROW, [
+					makeRow({ sap: "SAP001", autoCheck: "NO" }),
+					makeRow({ sap: "SAP002", autoCheck: "NO" })
+				])
+			);
 
 			const result = await findNextProduct();
 			expect(result).toBeNull();
@@ -495,10 +525,12 @@ describe("auto-eol-check-background extended", () => {
 
 		test("returns null when all enabled products are DISCONTINUED", async () => {
 			mockStoreGet.mockResolvedValue("csv-data");
-			mockParseCSV.mockReturnValue(makeCSVData(HEADER_ROW, [
-				makeRow({ sap: "SAP001", status: "DISCONTINUED", autoCheck: "" }),
-				makeRow({ sap: "SAP002", status: "DISCONTINUED", autoCheck: "YES" })
-			]));
+			mockParseCSV.mockReturnValue(
+				makeCSVData(HEADER_ROW, [
+					makeRow({ sap: "SAP001", status: "DISCONTINUED", autoCheck: "" }),
+					makeRow({ sap: "SAP002", status: "DISCONTINUED", autoCheck: "YES" })
+				])
+			);
 
 			const result = await findNextProduct();
 			expect(result).toBeNull();
@@ -542,11 +574,17 @@ describe("auto-eol-check-background extended", () => {
 
 		test("skips disabled and discontinued, returns valid product", async () => {
 			const disabledRow = makeRow({ sap: "SAP001", autoCheck: "NO" });
-			const discontinuedRow = makeRow({ sap: "SAP002", status: "DISCONTINUED", autoCheck: "" });
+			const discontinuedRow = makeRow({
+				sap: "SAP002",
+				status: "DISCONTINUED",
+				autoCheck: ""
+			});
 			const validRow = makeRow({ sap: "SAP003", infoDate: "", autoCheck: "" });
 
 			mockStoreGet.mockResolvedValue("csv-data");
-			mockParseCSV.mockReturnValue(makeCSVData(HEADER_ROW, [disabledRow, discontinuedRow, validRow]));
+			mockParseCSV.mockReturnValue(
+				makeCSVData(HEADER_ROW, [disabledRow, discontinuedRow, validRow])
+			);
 
 			const result = await findNextProduct();
 			expect(result[0]).toBe("SAP003");
@@ -594,9 +632,7 @@ describe("auto-eol-check-background extended", () => {
 
 			const result = await executeEOLCheck(product, siteUrl);
 			expect(result).toBe(false);
-			expect(mockLogger.info).toHaveBeenCalledWith(
-				expect.stringContaining("Missing model")
-			);
+			expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining("Missing model"));
 		});
 
 		test("returns false and disables auto-check when manufacturer is missing", async () => {
@@ -662,11 +698,10 @@ describe("auto-eol-check-background extended", () => {
 			const product = makeRow({ sap: "SAP001", model: "Model-X", manufacturer: "MakerA" });
 
 			// init-job succeeds
-			global.fetch = jest.fn()
-				.mockResolvedValueOnce({
-					ok: true,
-					json: () => Promise.resolve({ jobId: "job-123" })
-				});
+			global.fetch = jest.fn().mockResolvedValueOnce({
+				ok: true,
+				json: () => Promise.resolve({ jobId: "job-123" })
+			});
 
 			// JobPoller.poll will call jobStore.get which returns null repeatedly
 			mockStoreGet.mockResolvedValue(null);
@@ -691,7 +726,8 @@ describe("auto-eol-check-background extended", () => {
 			};
 
 			// init-job succeeds
-			global.fetch = jest.fn()
+			global.fetch = jest
+				.fn()
 				.mockResolvedValueOnce({
 					ok: true,
 					json: () => Promise.resolve({ jobId: "job-123" })
@@ -890,7 +926,7 @@ describe("auto-eol-check-background extended", () => {
 				poller.logProgress();
 				// logProgress only logs for attempts % 30 === 0
 				const infoCalls = mockLogger.info.mock.calls.filter(
-					call => typeof call[0] === "string" && call[0].includes("Polling attempt")
+					(call) => typeof call[0] === "string" && call[0].includes("Polling attempt")
 				);
 				expect(infoCalls.length).toBe(0);
 			});
@@ -950,7 +986,9 @@ describe("auto-eol-check-background extended", () => {
 				} catch (err) {
 					expect(err.isHealthCheckFailure).toBe(true);
 					expect(err.result.status).toBe("UNKNOWN");
-					expect(err.result.explanation).toContain("scraping service appears to have crashed");
+					expect(err.result.explanation).toContain(
+						"scraping service appears to have crashed"
+					);
 				}
 			});
 
@@ -1027,7 +1065,15 @@ describe("auto-eol-check-background extended", () => {
 			test("triggers fetch when status is urls_ready and not yet triggered", async () => {
 				const job = {
 					status: "urls_ready",
-					urls: [{ index: 0, url: "https://example.com/page", title: "Page", snippet: "test", scrapingMethod: "render" }]
+					urls: [
+						{
+							index: 0,
+							url: "https://example.com/page",
+							title: "Page",
+							snippet: "test",
+							scrapingMethod: "render"
+						}
+					]
 				};
 
 				mockUpdateJobStatus.mockResolvedValue();
@@ -1041,7 +1087,10 @@ describe("auto-eol-check-background extended", () => {
 
 			test("does not trigger fetch when already triggered", async () => {
 				poller.fetchTriggered = true;
-				const job = { status: "urls_ready", urls: [{ index: 0, url: "https://example.com" }] };
+				const job = {
+					status: "urls_ready",
+					urls: [{ index: 0, url: "https://example.com" }]
+				};
 
 				await poller.triggerFetchIfNeeded(job);
 
@@ -1060,13 +1109,15 @@ describe("auto-eol-check-background extended", () => {
 		describe("triggerFetchUrl()", () => {
 			test("updates job status and fires fetch request", async () => {
 				const job = {
-					urls: [{
-						index: 0,
-						url: "https://example.com/page",
-						title: "Page Title",
-						snippet: "Some snippet",
-						scrapingMethod: "render"
-					}]
+					urls: [
+						{
+							index: 0,
+							url: "https://example.com/page",
+							title: "Page Title",
+							snippet: "Some snippet",
+							scrapingMethod: "render"
+						}
+					]
 				};
 
 				mockUpdateJobStatus.mockResolvedValue();
@@ -1138,17 +1189,17 @@ describe("auto-eol-check-background extended", () => {
 			test("triggers analysis when all URLs complete and not yet triggered", async () => {
 				const job = {
 					status: "fetching",
-					urls: [
-						{ status: "complete" },
-						{ status: "complete" }
-					]
+					urls: [{ status: "complete" }, { status: "complete" }]
 				};
 
 				global.fetch = jest.fn().mockResolvedValue({
 					ok: true,
 					json: () => Promise.resolve({ result: { status: "ACTIVE" } })
 				});
-				mockStoreGet.mockResolvedValue({ status: "complete", finalResult: { status: "ACTIVE" } });
+				mockStoreGet.mockResolvedValue({
+					status: "complete",
+					finalResult: { status: "ACTIVE" }
+				});
 
 				await poller.triggerAnalysisIfNeeded(job);
 
@@ -1171,10 +1222,7 @@ describe("auto-eol-check-background extended", () => {
 			test("does not trigger when URLs are not all complete", async () => {
 				const job = {
 					status: "fetching",
-					urls: [
-						{ status: "complete" },
-						{ status: "pending" }
-					]
+					urls: [{ status: "complete" }, { status: "pending" }]
 				};
 
 				global.fetch = jest.fn();
@@ -1246,7 +1294,9 @@ describe("auto-eol-check-background extended", () => {
 					text: () => Promise.resolve("Internal error")
 				});
 
-				await expect(poller.callAnalyzeJob()).rejects.toThrow("analyze-job failed: 500 - Internal error");
+				await expect(poller.callAnalyzeJob()).rejects.toThrow(
+					"analyze-job failed: 500 - Internal error"
+				);
 			});
 		});
 
@@ -1331,7 +1381,9 @@ describe("auto-eol-check-background extended", () => {
 		describe("orchestrateWorkflow()", () => {
 			test("calls triggerFetchIfNeeded and triggerAnalysisIfNeeded", async () => {
 				const fetchSpy = jest.spyOn(poller, "triggerFetchIfNeeded").mockResolvedValue();
-				const analyzeSpy = jest.spyOn(poller, "triggerAnalysisIfNeeded").mockResolvedValue();
+				const analyzeSpy = jest
+					.spyOn(poller, "triggerAnalysisIfNeeded")
+					.mockResolvedValue();
 
 				const job = { status: "processing", urls: [] };
 				await poller.orchestrateWorkflow(job);
@@ -1377,7 +1429,9 @@ describe("auto-eol-check-background extended", () => {
 				} catch (thrown) {
 					expect(thrown.isHealthCheckFailure).toBe(true);
 					expect(thrown.result.status).toBe("UNKNOWN");
-					expect(thrown.result.explanation).toContain("scraping service appears to have crashed");
+					expect(thrown.result.explanation).toContain(
+						"scraping service appears to have crashed"
+					);
 				}
 			});
 		});
@@ -1447,9 +1501,7 @@ describe("auto-eol-check-background extended", () => {
 
 		test("handles missing product in database", async () => {
 			mockStoreGet.mockResolvedValue("csv-data");
-			mockParseCSV.mockReturnValue(makeCSVData(HEADER_ROW, [
-				makeRow({ sap: "SAP999" })
-			]));
+			mockParseCSV.mockReturnValue(makeCSVData(HEADER_ROW, [makeRow({ sap: "SAP999" })]));
 
 			await updateProduct("SAP001", result);
 
@@ -1526,9 +1578,7 @@ describe("auto-eol-check-background extended", () => {
 
 		test("handles missing product", async () => {
 			mockStoreGet.mockResolvedValue("csv-data");
-			mockParseCSV.mockReturnValue(makeCSVData(HEADER_ROW, [
-				makeRow({ sap: "SAP999" })
-			]));
+			mockParseCSV.mockReturnValue(makeCSVData(HEADER_ROW, [makeRow({ sap: "SAP999" })]));
 
 			await disableAutoCheckForMissingData("SAP001", "model");
 
@@ -1592,7 +1642,13 @@ describe("auto-eol-check-background extended", () => {
 			const state = { enabled: true, dailyCounter: 15, lastResetDate: "2024-06-15" };
 			// lastResetDate doesn't match current GMT+9 date
 			const store = {
-				get: jest.fn().mockResolvedValue({ enabled: true, dailyCounter: 0, lastResetDate: currentGMT9 })
+				get: jest
+					.fn()
+					.mockResolvedValue({
+						enabled: true,
+						dailyCounter: 0,
+						lastResetDate: currentGMT9
+					})
 			};
 
 			const result = await validateAndPrepareForCheck(state, siteUrl, store);
@@ -1665,12 +1721,19 @@ describe("auto-eol-check-background extended", () => {
 
 		test("stops chain when auto-check disabled before EOL check", async () => {
 			// findNextProduct returns a product
-			const product = makeRow({ sap: "SAP001", model: "Model-X", manufacturer: "MakerA", infoDate: "" });
+			const product = makeRow({
+				sap: "SAP001",
+				model: "Model-X",
+				manufacturer: "MakerA",
+				infoDate: ""
+			});
 			mockStoreGet.mockResolvedValueOnce("csv-data"); // findNextProduct: csvStore.get
 			mockParseCSV.mockReturnValue(makeCSVData(HEADER_ROW, [product]));
 
 			const store = {
-				get: jest.fn().mockResolvedValue({ enabled: false, dailyCounter: 5, isRunning: true })
+				get: jest
+					.fn()
+					.mockResolvedValue({ enabled: false, dailyCounter: 5, isRunning: true })
 			};
 
 			global.fetch = jest.fn().mockResolvedValue({ ok: true });
@@ -1683,7 +1746,12 @@ describe("auto-eol-check-background extended", () => {
 		});
 
 		test("executes check and increments counter on success", async () => {
-			const product = makeRow({ sap: "SAP001", model: "Model-X", manufacturer: "MakerA", infoDate: "" });
+			const product = makeRow({
+				sap: "SAP001",
+				model: "Model-X",
+				manufacturer: "MakerA",
+				infoDate: ""
+			});
 			const finalResult = {
 				status: "ACTIVE",
 				explanation: "Active product",
@@ -1691,17 +1759,20 @@ describe("auto-eol-check-background extended", () => {
 			};
 
 			// findNextProduct
-			mockStoreGet
-				.mockResolvedValueOnce("csv-data"); // findNextProduct: csvStore.get
+			mockStoreGet.mockResolvedValueOnce("csv-data"); // findNextProduct: csvStore.get
 			mockParseCSV.mockReturnValueOnce(makeCSVData(HEADER_ROW, [product]));
 
 			const store = {
-				get: jest.fn().mockResolvedValue({ enabled: true, dailyCounter: 5, isRunning: true })
+				get: jest
+					.fn()
+					.mockResolvedValue({ enabled: true, dailyCounter: 5, isRunning: true })
 			};
 
 			// executeEOLCheck: init-job
-			global.fetch = jest.fn()
-				.mockResolvedValueOnce({ // init-job
+			global.fetch = jest
+				.fn()
+				.mockResolvedValueOnce({
+					// init-job
 					ok: true,
 					json: () => Promise.resolve({ jobId: "job-123" })
 				})
@@ -1726,18 +1797,26 @@ describe("auto-eol-check-background extended", () => {
 		});
 
 		test("increments counter even when EOL check fails", async () => {
-			const product = makeRow({ sap: "SAP001", model: "Model-X", manufacturer: "MakerA", infoDate: "" });
+			const product = makeRow({
+				sap: "SAP001",
+				model: "Model-X",
+				manufacturer: "MakerA",
+				infoDate: ""
+			});
 
 			// findNextProduct
 			mockStoreGet.mockResolvedValueOnce("csv-data");
 			mockParseCSV.mockReturnValueOnce(makeCSVData(HEADER_ROW, [product]));
 
 			const store = {
-				get: jest.fn().mockResolvedValue({ enabled: true, dailyCounter: 3, isRunning: true })
+				get: jest
+					.fn()
+					.mockResolvedValue({ enabled: true, dailyCounter: 3, isRunning: true })
 			};
 
 			// executeEOLCheck: init-job fails
-			global.fetch = jest.fn()
+			global.fetch = jest
+				.fn()
 				.mockResolvedValueOnce({
 					ok: false,
 					status: 500,
@@ -1753,16 +1832,24 @@ describe("auto-eol-check-background extended", () => {
 		});
 
 		test("uses pre-check state counter for incrementing", async () => {
-			const product = makeRow({ sap: "SAP001", model: "Model-X", manufacturer: "MakerA", infoDate: "" });
+			const product = makeRow({
+				sap: "SAP001",
+				model: "Model-X",
+				manufacturer: "MakerA",
+				infoDate: ""
+			});
 
 			mockStoreGet.mockResolvedValueOnce("csv-data");
 			mockParseCSV.mockReturnValueOnce(makeCSVData(HEADER_ROW, [product]));
 
 			const store = {
-				get: jest.fn().mockResolvedValue({ enabled: true, dailyCounter: 10, isRunning: true })
+				get: jest
+					.fn()
+					.mockResolvedValue({ enabled: true, dailyCounter: 10, isRunning: true })
 			};
 
-			global.fetch = jest.fn()
+			global.fetch = jest
+				.fn()
 				.mockResolvedValueOnce({
 					ok: false,
 					status: 500,
@@ -1785,7 +1872,9 @@ describe("auto-eol-check-background extended", () => {
 
 		test("triggers next check when enabled and under limit", async () => {
 			const store = {
-				get: jest.fn().mockResolvedValue({ enabled: true, dailyCounter: 5, isRunning: true })
+				get: jest
+					.fn()
+					.mockResolvedValue({ enabled: true, dailyCounter: 5, isRunning: true })
 			};
 
 			global.fetch = jest.fn().mockResolvedValue({ ok: true });
@@ -1799,7 +1888,9 @@ describe("auto-eol-check-background extended", () => {
 
 		test("stops chain when daily limit reached", async () => {
 			const store = {
-				get: jest.fn().mockResolvedValue({ enabled: true, dailyCounter: 20, isRunning: true })
+				get: jest
+					.fn()
+					.mockResolvedValue({ enabled: true, dailyCounter: 20, isRunning: true })
 			};
 
 			global.fetch = jest.fn().mockResolvedValue({ ok: true });
@@ -1813,7 +1904,9 @@ describe("auto-eol-check-background extended", () => {
 
 		test("stops chain when disabled", async () => {
 			const store = {
-				get: jest.fn().mockResolvedValue({ enabled: false, dailyCounter: 5, isRunning: true })
+				get: jest
+					.fn()
+					.mockResolvedValue({ enabled: false, dailyCounter: 5, isRunning: true })
 			};
 
 			global.fetch = jest.fn().mockResolvedValue({ ok: true });
@@ -1827,7 +1920,9 @@ describe("auto-eol-check-background extended", () => {
 
 		test("stops chain when both disabled and at limit", async () => {
 			const store = {
-				get: jest.fn().mockResolvedValue({ enabled: false, dailyCounter: 20, isRunning: true })
+				get: jest
+					.fn()
+					.mockResolvedValue({ enabled: false, dailyCounter: 20, isRunning: true })
 			};
 
 			global.fetch = jest.fn().mockResolvedValue({ ok: true });
@@ -1998,7 +2093,9 @@ describe("auto-eol-check-background extended", () => {
 		test("calls updateAutoCheckState with isRunning: false using siteUrl from event", async () => {
 			global.fetch = jest.fn().mockResolvedValue({ ok: true });
 
-			await handleErrorState({ body: JSON.stringify({ siteUrl: "https://my-site.example.com" }) });
+			await handleErrorState({
+				body: JSON.stringify({ siteUrl: "https://my-site.example.com" })
+			});
 
 			expect(global.fetch).toHaveBeenCalledWith(
 				"https://my-site.example.com/.netlify/functions/set-auto-check-state",
@@ -2038,7 +2135,10 @@ describe("auto-eol-check-background extended", () => {
 		test("sends POST request to set-auto-check-state endpoint", async () => {
 			global.fetch = jest.fn().mockResolvedValue({ ok: true });
 
-			await updateAutoCheckState("https://site.example.com", { isRunning: false, dailyCounter: 5 });
+			await updateAutoCheckState("https://site.example.com", {
+				isRunning: false,
+				dailyCounter: 5
+			});
 
 			expect(global.fetch).toHaveBeenCalledWith(
 				"https://site.example.com/.netlify/functions/set-auto-check-state",

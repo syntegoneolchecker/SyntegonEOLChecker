@@ -1,5 +1,5 @@
 # Syntegon EOL Checker
-
+ 
 An automated End-of-Life (EOL) status checker for machine parts. The system uses web search in combination with AI analysis to determine if products are discontinued and identifies direct successor products.
 
 Why may the repository be public?

@@ -30,12 +30,13 @@ function getGMT9DateTime() {
 }
 
 // Helper: Wake up Render scraping service (cold start)
-// Tries for up to 2 minutes with health checks every 30 seconds
+// Tries for up to 5 minutes with health checks every 15 seconds
+// Increased from former 2 minutes with health checks every 30 seconds to increase stability
 async function wakeRenderService() {
 	logger.info("Waking up Render scraping service...");
 	const overallStartTime = Date.now();
-	const maxDuration = 120000; // 2 minutes total
-	const healthCheckInterval = 30000; // Check every 30 seconds
+	const maxDuration = 300000; // 5 minutes total
+	const healthCheckInterval = 15000; // Check every 15 seconds
 	let attempt = 0;
 
 	while (Date.now() - overallStartTime < maxDuration) {
