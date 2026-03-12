@@ -87,7 +87,7 @@ async function updateRowWithEOLResults(rowIndex, result) {
 	row[6] = result.explanation || "";
 	row[7] = result.successor?.model || "";
 	row[8] = result.successor?.explanation || "";
-	row[11] = new Date().toLocaleString();
+	row[11] = new Date().toLocaleString("en-GB", { timeZone: "Asia/Tokyo" });
 
 	updateRowInOriginalData(row);
 

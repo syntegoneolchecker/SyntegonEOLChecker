@@ -221,8 +221,8 @@ describe("auto-eol-check-background extended", () => {
 		test("uses Asia/Tokyo timezone", () => {
 			jest.setSystemTime(new Date("2024-06-15T12:30:00.000Z"));
 			const result = getGMT9DateTime();
-			// 12:30 UTC => 21:30 JST
-			expect(result).toContain("9:30");
+			// 12:30 UTC => 21:30 JST (en-GB uses 24h format)
+			expect(result).toContain("21:30");
 		});
 	});
 
@@ -1642,13 +1642,11 @@ describe("auto-eol-check-background extended", () => {
 			const state = { enabled: true, dailyCounter: 15, lastResetDate: "2024-06-15" };
 			// lastResetDate doesn't match current GMT+9 date
 			const store = {
-				get: jest
-					.fn()
-					.mockResolvedValue({
-						enabled: true,
-						dailyCounter: 0,
-						lastResetDate: currentGMT9
-					})
+				get: jest.fn().mockResolvedValue({
+					enabled: true,
+					dailyCounter: 0,
+					lastResetDate: currentGMT9
+				})
 			};
 
 			const result = await validateAndPrepareForCheck(state, siteUrl, store);

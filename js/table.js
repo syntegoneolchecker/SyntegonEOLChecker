@@ -105,8 +105,14 @@ export function render() {
  */
 function compareValues(aVal, bVal, columnIndex, direction) {
 	if (columnIndex === 11) {
-		const aDate = aVal ? new Date(aVal) : new Date(0);
-		const bDate = bVal ? new Date(bVal) : new Date(0);
+		const parseDate = (val) => {
+			if (!val) return new Date(0);
+			const [datePart, timePart] = val.split(", ");
+			const [day, month, year] = datePart.split("/");
+			return new Date(`${year}-${month}-${day}T${timePart}`);
+		};
+		const aDate = parseDate(aVal);
+		const bDate = parseDate(bVal);
 		return direction === "asc" ? aDate - bDate : bDate - aDate;
 	}
 
