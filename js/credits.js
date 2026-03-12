@@ -212,8 +212,8 @@ export async function checkRenderHealth() {
 	const renderServiceUrl = "https://eolscrapingservice.onrender.com";
 
 	try {
-		renderStatusElement.textContent = "Checking...";
-		renderStatusElement.classList.remove("credits-high", "credits-medium", "credits-low");
+		renderStatusElement.textContent = "Waking Service...";
+		renderStatusElement.classList.add("credits-medium");
 
 		const overallStartTime = Date.now();
 
@@ -245,8 +245,6 @@ export async function checkRenderHealth() {
 			);
 
 			if (attempt < maxAttempts) {
-				renderStatusElement.textContent = `Waking service (attempt ${attempt}/${maxAttempts})...`;
-				renderStatusElement.classList.add("credits-medium");
 				await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
 			}
 		}
