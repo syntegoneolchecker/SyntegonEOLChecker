@@ -26,7 +26,7 @@ function getGMT9Date() {
 function getGMT9DateTime() {
 	const now = new Date();
 	// Use Asia/Tokyo timezone to match GMT+9
-	return now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" });
+	return now.toLocaleString("en-GB", { timeZone: "Asia/Tokyo" });
 }
 
 // Helper: Wake up Render scraping service (cold start)

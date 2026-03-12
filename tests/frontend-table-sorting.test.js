@@ -69,7 +69,7 @@ describe("js/table.js - Table Sorting", () => {
 			"",
 			"",
 			"50",
-			"2024-01-15",
+			"15/01/2024, 12:00:00",
 			"true"
 		],
 		[
@@ -84,7 +84,7 @@ describe("js/table.js - Table Sorting", () => {
 			"",
 			"",
 			"0",
-			"2023-06-10",
+			"10/06/2023, 12:00:00",
 			"false"
 		],
 		[
@@ -99,7 +99,7 @@ describe("js/table.js - Table Sorting", () => {
 			"",
 			"",
 			"25",
-			"2025-02-28",
+			"28/02/2025, 12:00:00",
 			"true"
 		]
 	];
@@ -228,17 +228,17 @@ describe("js/table.js - Table Sorting", () => {
 		expect(state.currentSort.direction).toBe("asc");
 
 		// Ascending: earliest first
-		expect(state.data[1][11]).toBe("2023-06-10");
-		expect(state.data[2][11]).toBe("2024-01-15");
-		expect(state.data[3][11]).toBe("2025-02-28");
+		expect(state.data[1][11]).toBe("10/06/2023, 12:00:00");
+		expect(state.data[2][11]).toBe("15/01/2024, 12:00:00");
+		expect(state.data[3][11]).toBe("28/02/2025, 12:00:00");
 
 		// Sort descending
 		sortTable(11);
 		expect(state.currentSort.direction).toBe("desc");
 
 		// Descending: latest first
-		expect(state.data[1][11]).toBe("2025-02-28");
-		expect(state.data[2][11]).toBe("2024-01-15");
-		expect(state.data[3][11]).toBe("2023-06-10");
+		expect(state.data[1][11]).toBe("28/02/2025, 12:00:00");
+		expect(state.data[2][11]).toBe("15/01/2024, 12:00:00");
+		expect(state.data[3][11]).toBe("10/06/2023, 12:00:00");
 	});
 });
