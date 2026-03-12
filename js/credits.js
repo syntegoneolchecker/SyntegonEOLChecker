@@ -203,7 +203,11 @@ function updateRenderStatus(element, elapsed, data) {
  * Check Render scraping service health
  */
 export async function checkRenderHealth() {
-	showStatus("Waiting for response from Render health check...");
+	const maxAttempts = 10;
+	const timeoutMs = 10000;
+	const retryDelayMs = 5000;
+
+	showStatus(`Waiting for response from Render health check (Attempt 1 of ${maxAttempts})...`);
 	const renderStatusElement = document.getElementById("render-status");
 	const renderServiceUrl = "https://eolscrapingservice.onrender.com";
 
@@ -213,43 +217,46 @@ export async function checkRenderHealth() {
 
 		const overallStartTime = Date.now();
 
-		console.log("Render health check: Attempt 1/2...");
-		const firstAttempt = await attemptHealthCheck(renderServiceUrl, 60000);
+		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+			console.log(`Render health check: Attempt ${attempt}/${maxAttempts}...`);
+			showStatus(
+				`Waiting for response from Render health check (Attempt ${attempt} of ${maxAttempts})...`
+			);
 
-		if (firstAttempt.success) {
-			updateRenderStatus(renderStatusElement, firstAttempt.elapsed, firstAttempt.data);
-			showStatus("Render health check returned healthy.");
-			return;
+			const result = await attemptHealthCheck(renderServiceUrl, timeoutMs);
+
+			if (result.success) {
+				const totalElapsed = ((Date.now() - overallStartTime) / 1000).toFixed(1);
+				if (attempt === 1) {
+					updateRenderStatus(renderStatusElement, result.elapsed, result.data);
+				} else {
+					console.log(
+						`Render health check: OK after ${attempt} attempts (total: ${totalElapsed}s)`
+					);
+					renderStatusElement.textContent = `Ready after retry (${totalElapsed}s total)`;
+					renderStatusElement.classList.add("credits-medium");
+				}
+				showStatus("Render health check returned healthy.");
+				return;
+			}
+
+			console.warn(
+				`Render health check: Attempt ${attempt} failed after ${result.elapsed}s (${result.error})`
+			);
+
+			if (attempt < maxAttempts) {
+				renderStatusElement.textContent = `Waking service (attempt ${attempt}/${maxAttempts})...`;
+				renderStatusElement.classList.add("credits-medium");
+				await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+			}
 		}
-
-		console.warn(
-			`Render health check: Attempt 1 failed after ${firstAttempt.elapsed}s (${firstAttempt.error})`
-		);
-
-		renderStatusElement.textContent = "Waking service, retrying...";
-		renderStatusElement.classList.add("credits-medium");
-
-		console.log("Render health check: Waiting 30s before retry...");
-		await new Promise((resolve) => setTimeout(resolve, 30000));
-
-		console.log("Render health check: Attempt 2/2...");
-		renderStatusElement.textContent = "Retrying...";
-		const secondAttempt = await attemptHealthCheck(renderServiceUrl, 60000);
 
 		const totalElapsed = ((Date.now() - overallStartTime) / 1000).toFixed(1);
-
-		if (secondAttempt.success) {
-			console.log(`Render health check: OK after retry (total: ${totalElapsed}s)`);
-			renderStatusElement.textContent = `Ready after retry (${totalElapsed}s total)`;
-			renderStatusElement.classList.remove("credits-medium");
-			renderStatusElement.classList.add("credits-medium");
-			showStatus("Render health check returned healthy.");
-			return;
-		}
-
 		showStatus("Render health check returned no response, please reload the page.", "error");
-		console.error(`Render health check: Failed after 2 attempts (total: ${totalElapsed}s)`);
-		renderStatusElement.textContent = `Offline after ${totalElapsed}s (${secondAttempt.error})`;
+		console.error(
+			`Render health check: Failed after ${maxAttempts} attempts (total: ${totalElapsed}s)`
+		);
+		renderStatusElement.textContent = `Offline after ${totalElapsed}s`;
 		renderStatusElement.classList.remove("credits-medium");
 		renderStatusElement.classList.add("credits-low");
 	} catch (error) {
