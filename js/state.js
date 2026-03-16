@@ -45,6 +45,10 @@ export const state = {
 	// Grace period in ms to skip syncs after user toggle
 	toggleSyncGracePeriod: 15000,
 
+	// Pagination state
+	currentPage: 1,
+	rowsPerPage: 50,
+
 	// Init completion flag
 	initComplete: false,
 

@@ -7,23 +7,29 @@ import { sortTable } from "../js/table.js";
 
 // Mock document for render() and updateCheckEOLButtons() calls
 beforeAll(() => {
-	global.document = {
-		getElementById: jest.fn(() => ({
-			innerHTML: "",
+	const mockElement = {
+		innerHTML: "",
+		textContent: "",
+		className: "",
+		disabled: false,
+		checked: false,
+		parentNode: {
+			insertBefore: jest.fn()
+		},
+		nextSibling: null,
+		classList: {
+			add: jest.fn(),
+			remove: jest.fn()
+		},
+		querySelector: jest.fn(() => ({
 			textContent: "",
-			className: "",
-			disabled: false,
-			checked: false,
-			classList: {
-				add: jest.fn(),
-				remove: jest.fn()
-			},
-			querySelector: jest.fn(() => ({
-				textContent: "",
-				disabled: false
-			})),
-			querySelectorAll: jest.fn(() => [])
+			disabled: false
 		})),
+		querySelectorAll: jest.fn(() => [])
+	};
+	global.document = {
+		getElementById: jest.fn(() => mockElement),
+		createElement: jest.fn(() => ({ ...mockElement, parentNode: null })),
 		querySelectorAll: jest.fn(() => [])
 	};
 	global.fetch = jest.fn(() =>

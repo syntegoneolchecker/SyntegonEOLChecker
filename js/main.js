@@ -4,7 +4,7 @@
 
 import { setInitComplete } from "./state.js";
 import { loadFromServer, manualSaveDatabase } from "./api.js";
-import { sortTable } from "./table.js";
+import { sortTable, changePage } from "./table.js";
 import { loadSerpAPICredits, loadGroqUsage, checkRenderHealth } from "./credits.js";
 import {
 	loadAutoCheckState,
@@ -71,6 +71,7 @@ globalThis.clearDatabase = clearDatabase;
 globalThis.toggleAutoCheck = toggleAutoCheck;
 globalThis.manualTriggerAutoCheck = manualTriggerAutoCheck;
 globalThis.sortTable = sortTable;
+globalThis.changePage = changePage;
 
 // ============================================================================
 // START APP
