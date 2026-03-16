@@ -215,4 +215,16 @@ describe("toCSV", () => {
 	test("handles empty array", () => {
 		expect(toCSV([])).toBe("");
 	});
+
+	test("escapes double quotes within cell values", () => {
+		const data = [['Seal 4"', "normal"]];
+		expect(toCSV(data)).toBe('"Seal 4""","normal"');
+	});
+
+	test("roundtrips cells containing quotes through toCSV and parseLine", () => {
+		const original = [['He said "hello"', "comma, here", "plain"]];
+		const csv = toCSV(original);
+		const { cells } = parseLine(csv.split("\n")[0]);
+		expect(cells).toEqual(['He said "hello"', "comma, here", "plain"]);
+	});
 });
