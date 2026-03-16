@@ -49,7 +49,7 @@ function enqueuePuppeteerTask(task) {
 async function handlePuppeteerScraping(url, callbackUrl, callbackData, _res) {
 	return enqueuePuppeteerTask(async () => {
 		let browser = null;
-		const callbackSent = false;
+		let callbackSent = false;
 
 		try {
 			browser = await launchBrowser();
@@ -123,6 +123,7 @@ async function handlePuppeteerScraping(url, callbackUrl, callbackData, _res) {
 				content: finalContent,
 				title: pageTitle
 			});
+			callbackSent = true;
 
 			// Cleanup
 			performCleanup();
