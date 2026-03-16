@@ -311,6 +311,12 @@ function getManufacturerUrl(maker, model) {
 				model: model // Pass model for search
 			};
 
+		case "BOSCH REXROTH":
+			return {
+				url: `https://www.boschrexroth.com/en/us/search.html?q=${encodedModel}`,
+				scrapingMethod: "browserql" // Use BrowserQL to bypass content obfuscation
+			};
+
 		default:
 			return null; // No direct URL strategy - use SerpAPI search
 	}
