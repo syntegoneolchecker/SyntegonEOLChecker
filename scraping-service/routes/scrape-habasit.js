@@ -199,7 +199,7 @@ async function handleHabasitScrapeRequest(req, res) {
 	enqueuePuppeteerTask(async () => {
 		logger.debug(`[HABASIT] Task ${taskId} - Starting execution in queue`);
 		let browser = null;
-		const callbackSent = false;
+		let callbackSent = false;
 
 		try {
 			logger.debug(`[HABASIT] Task ${taskId} - In try block, about to launch browser`);
@@ -238,6 +238,7 @@ async function handleHabasitScrapeRequest(req, res) {
 						snippet: `HABASIT search result for ${model}`,
 						url: HABASIT_PORTAL_URL
 					});
+					callbackSent = true;
 				}
 
 				forceGarbageCollection();
@@ -284,6 +285,7 @@ async function handleHabasitScrapeRequest(req, res) {
 					snippet: `HABASIT product page for ${model}`,
 					url: productUrl
 				});
+				callbackSent = true;
 				logger.debug(`[HABASIT] Task ${taskId} - Success callback sent`);
 			}
 

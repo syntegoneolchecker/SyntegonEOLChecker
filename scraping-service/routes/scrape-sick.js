@@ -190,7 +190,7 @@ async function handleSickScrapeRequest(req, res) {
 	enqueuePuppeteerTask(async () => {
 		logger.debug(`[SICK] Task ${taskId} - Starting execution in queue`);
 		let browser = null;
-		const callbackSent = false;
+		let callbackSent = false;
 
 		try {
 			logger.debug(`[SICK] Task ${taskId} - In try block, about to launch browser`);
@@ -232,6 +232,7 @@ async function handleSickScrapeRequest(req, res) {
 						snippet: `SICK search result for ${model}`,
 						url: SICK_BASE_URL
 					});
+					callbackSent = true;
 				}
 
 				forceGarbageCollection();
@@ -278,6 +279,7 @@ async function handleSickScrapeRequest(req, res) {
 					snippet: `SICK product page for ${model}`,
 					url: productUrl
 				});
+				callbackSent = true;
 				logger.debug(`[SICK] Task ${taskId} - Success callback sent`);
 			}
 
