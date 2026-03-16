@@ -128,6 +128,63 @@ async function extractSickContent(page) {
 }
 
 /**
+ * Safely close a Puppeteer browser, logging any errors
+ * @param {Browser|null} browser - Browser instance to close
+ * @param {string} context - Logging context string
+ */
+async function closeBrowserSafely(browser, context) {
+	if (!browser) return;
+	try {
+		await browser.close();
+	} catch (error) {
+		logger.error(`${context} - Error closing browser:`, error.message);
+	}
+}
+
+/**
+ * Search all SICK categories for a product match
+ * @param {Page} page - Puppeteer page
+ * @param {string} model - Product model to search
+ * @returns {Promise<string|null>} Product URL or null
+ */
+async function findProductInCategories(page, model) {
+	for (const category of SICK_CATEGORIES) {
+		const productUrl = await searchSickCategory(page, model, category.id, category.name);
+		if (productUrl) return productUrl;
+	}
+	return null;
+}
+
+/**
+ * Validate and build final content string from extracted text
+ * @param {string} text - Extracted text content
+ * @param {string} productUrl - URL of the product page
+ * @returns {string} Final content string
+ */
+function buildSickFinalContent(text, productUrl) {
+	if (text && text.length >= 50) {
+		return text;
+	}
+	const charCount = text ? text.length : 0;
+	logger.warn(
+		`Empty or invalid SICK content (${charCount} chars), adding explanation`
+	);
+	return `[SICK product page at ${productUrl} extracted only ${charCount} characters. The page may be unavailable or blocking automated access.]`;
+}
+
+/**
+ * Send callback if callbackUrl is provided
+ * @param {string|null} callbackUrl - Callback URL
+ * @param {Object} data - Callback payload
+ * @returns {Promise<boolean>} Whether callback was sent
+ */
+async function sendSickCallback(callbackUrl, data) {
+	if (!callbackUrl) return false;
+	await sendCallback(callbackUrl, data);
+	return true;
+}
+
+/**
  * SICK-specific scraping endpoint handler
  */
 async function handleSickScrapeRequest(req, res) {
@@ -209,31 +266,21 @@ async function handleSickScrapeRequest(req, res) {
 			});
 
 			// Search categories sequentially: Products first, then Archive
-			let productUrl = null;
-			for (const category of SICK_CATEGORIES) {
-				productUrl = await searchSickCategory(page, model, category.id, category.name);
-				if (productUrl) break;
-			}
+			const productUrl = await findProductInCategories(page, model);
 
 			if (!productUrl) {
 				logger.info(`SICK: No matching product found for model ${model} in any category`);
-
-				// Close browser before callback
 				await browser.close();
 				browser = null;
 
-				// Send callback with no-results message (triggers SerpAPI fallback in pipeline)
-				if (callbackUrl) {
-					await sendCallback(callbackUrl, {
-						jobId,
-						urlIndex,
-						content: `[SICK Search: No results found for model "${model}" in Products or Archive categories on sick.com. No product with matching name was found in the search results.]`,
-						title: "SICK Search - No Results",
-						snippet: `SICK search result for ${model}`,
-						url: SICK_BASE_URL
-					});
-					callbackSent = true;
-				}
+				callbackSent = await sendSickCallback(callbackUrl, {
+					jobId,
+					urlIndex,
+					content: `[SICK Search: No results found for model "${model}" in Products or Archive categories on sick.com. No product with matching name was found in the search results.]`,
+					title: "SICK Search - No Results",
+					snippet: `SICK search result for ${model}`,
+					url: SICK_BASE_URL
+				});
 
 				forceGarbageCollection();
 				trackMemoryUsage(`sick_noresults_${requestCount}`);
@@ -252,14 +299,7 @@ async function handleSickScrapeRequest(req, res) {
 			await new Promise((resolve) => setTimeout(resolve, 3000));
 
 			const { text, title } = await extractSickContent(page);
-
-			let finalContent = text;
-			if (!text || text.length < 50) {
-				logger.warn(
-					`Empty or invalid SICK content (${text ? text.length : 0} chars), adding explanation`
-				);
-				finalContent = `[SICK product page at ${productUrl} extracted only ${text ? text.length : 0} characters. The page may be unavailable or blocking automated access.]`;
-			}
+			const finalContent = buildSickFinalContent(text, productUrl);
 
 			// Close browser before callback
 			await browser.close();
@@ -267,21 +307,18 @@ async function handleSickScrapeRequest(req, res) {
 			logger.debug(`[SICK] Task ${taskId} - Browser closed, memory freed`);
 
 			// Send callback with product page content
-			if (callbackUrl) {
-				logger.debug(
-					`[SICK] Task ${taskId} - Sending success callback to ${callbackUrl}`
-				);
-				await sendCallback(callbackUrl, {
-					jobId,
-					urlIndex,
-					content: finalContent,
-					title: title,
-					snippet: `SICK product page for ${model}`,
-					url: productUrl
-				});
-				callbackSent = true;
-				logger.debug(`[SICK] Task ${taskId} - Success callback sent`);
-			}
+			logger.debug(
+				`[SICK] Task ${taskId} - Sending success callback to ${callbackUrl}`
+			);
+			callbackSent = await sendSickCallback(callbackUrl, {
+				jobId,
+				urlIndex,
+				content: finalContent,
+				title: title,
+				snippet: `SICK product page for ${model}`,
+				url: productUrl
+			});
+			logger.debug(`[SICK] Task ${taskId} - Success callback sent`);
 
 			// Cleanup
 			forceGarbageCollection();
@@ -292,25 +329,12 @@ async function handleSickScrapeRequest(req, res) {
 			logger.error(`[SICK] Task ${taskId} - SICK scraping error:`, error);
 			logger.error(`[SICK] Task ${taskId} - Error details:`, error.message);
 
-			// Close browser
-			if (browser) {
-				try {
-					await browser.close();
-					logger.debug(
-						`[SICK] Task ${taskId} - Browser closed after error, memory freed`
-					);
-				} catch (closeError) {
-					logger.error(
-						`[SICK] Task ${taskId} - Error closing browser after SICK scraping error:`,
-						closeError
-					);
-				}
-			}
+			await closeBrowserSafely(browser, `[SICK] Task ${taskId}`);
+			browser = null;
 
-			// Send error callback
-			if (callbackUrl && !callbackSent) {
+			if (!callbackSent) {
 				logger.debug(`[SICK] Task ${taskId} - Sending error callback to ${callbackUrl}`);
-				await sendCallback(callbackUrl, {
+				await sendSickCallback(callbackUrl, {
 					jobId,
 					urlIndex,
 					content: `[SICK search failed: ${error.message}]`,
@@ -328,14 +352,7 @@ async function handleSickScrapeRequest(req, res) {
 			setShutdownState(true);
 			scheduleRestartIfNeeded();
 		} finally {
-			// Ensure browser is always closed
-			if (browser) {
-				try {
-					await browser.close();
-				} catch (error_) {
-					logger.error("Failed to close browser in finally block:", error_.message);
-				}
-			}
+			await closeBrowserSafely(browser, "[SICK] finally block");
 		}
 	}).catch((error) => {
 		logger.error(
