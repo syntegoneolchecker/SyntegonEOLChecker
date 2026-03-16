@@ -304,6 +304,26 @@ function getManufacturerUrl(maker, model) {
 				model: model // Pass model for preprocessing (remove 'x' and '-')
 			};
 
+		case "HABASIT":
+			return {
+				url: "https://portal.habasit.com", // Base URL (search is interactive)
+				scrapingMethod: "habasit_interactive", // Two-step: navigate + search, then extract product URL
+				model: model // Pass model for search
+			};
+
+		case "BOSCH REXROTH":
+			return {
+				url: `https://www.boschrexroth.com/en/us/search.html?q=${encodedModel}`,
+				scrapingMethod: "browserql" // Use BrowserQL to bypass content obfuscation
+			};
+
+		case "SICK":
+			return {
+				url: `https://www.sick.com/ag/en/search?text=${encodedModel}&category=g568268`, // Products category
+				scrapingMethod: "sick_interactive", // Two-step: search Products then Archive, extract product URL
+				model: model // Pass model for exact match search
+			};
+
 		default:
 			return null; // No direct URL strategy - use SerpAPI search
 	}

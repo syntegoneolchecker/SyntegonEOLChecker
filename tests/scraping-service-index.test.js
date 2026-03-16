@@ -46,6 +46,21 @@ jest.mock("../scraping-service/routes/scrape-keyence", () => ({
 	handleKeyenceScrapeRequest: (...args) => mockHandleKeyenceScrapeRequest(...args)
 }));
 
+const mockHandleHabasitScrapeRequest = jest.fn((req, res) => {
+	res.json({ success: true, handler: "scrape-habasit" });
+});
+const mockHandleSickScrapeRequest = jest.fn((req, res) => {
+	res.json({ success: true, handler: "scrape-sick" });
+});
+
+jest.mock("../scraping-service/routes/scrape-habasit", () => ({
+	handleHabasitScrapeRequest: (...args) => mockHandleHabasitScrapeRequest(...args)
+}));
+
+jest.mock("../scraping-service/routes/scrape-sick", () => ({
+	handleSickScrapeRequest: (...args) => mockHandleSickScrapeRequest(...args)
+}));
+
 jest.mock("../scraping-service/utils/logger", () => ({
 	info: jest.fn(),
 	warn: jest.fn(),
@@ -187,6 +202,38 @@ describe("scraping-service index.js", () => {
 			expect(mockHandleKeyenceScrapeRequest).toHaveBeenCalled();
 		});
 
+		test("rejects /scrape-habasit without API key (401)", async () => {
+			const res = await request(app)
+				.post("/scrape-habasit")
+				.send({ model: "HB-100" });
+			expect(res.status).toBe(401);
+		});
+
+		test("allows /scrape-habasit with correct API key", async () => {
+			const res = await request(app)
+				.post("/scrape-habasit")
+				.set("x-api-key", "test-api-key-12345")
+				.send({ model: "HB-100" });
+			expect(res.status).toBe(200);
+			expect(mockHandleHabasitScrapeRequest).toHaveBeenCalled();
+		});
+
+		test("rejects /scrape-sick without API key (401)", async () => {
+			const res = await request(app)
+				.post("/scrape-sick")
+				.send({ model: "WTB27-3P2461" });
+			expect(res.status).toBe(401);
+		});
+
+		test("allows /scrape-sick with correct API key", async () => {
+			const res = await request(app)
+				.post("/scrape-sick")
+				.set("x-api-key", "test-api-key-12345")
+				.send({ model: "WTB27-3P2461" });
+			expect(res.status).toBe(200);
+			expect(mockHandleSickScrapeRequest).toHaveBeenCalled();
+		});
+
 		test("allows /health without auth", async () => {
 			const res = await request(app).get("/health");
 			expect(res.status).toBe(200);
@@ -215,6 +262,24 @@ describe("scraping-service index.js", () => {
 				.post("/scrape-keyence")
 				.set("x-api-key", "test-api-key-12345")
 				.send({ model: "ABC-100" });
+			expect(res.status).toBe(503);
+		});
+
+		test("rejects /scrape-habasit with 503 during shutdown", async () => {
+			mockGetShutdownState.mockReturnValue(true);
+			const res = await request(app)
+				.post("/scrape-habasit")
+				.set("x-api-key", "test-api-key-12345")
+				.send({ model: "HB-100" });
+			expect(res.status).toBe(503);
+		});
+
+		test("rejects /scrape-sick with 503 during shutdown", async () => {
+			mockGetShutdownState.mockReturnValue(true);
+			const res = await request(app)
+				.post("/scrape-sick")
+				.set("x-api-key", "test-api-key-12345")
+				.send({ model: "WTB27-3P2461" });
 			expect(res.status).toBe(503);
 		});
 
