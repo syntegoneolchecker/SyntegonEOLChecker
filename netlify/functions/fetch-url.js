@@ -177,142 +177,6 @@ async function scrapeNBKProductWithBrowserQL(productUrl) {
 	};
 }
 
-/**
- * Scrape SICK search page using BrowserQL to extract product URL
- * Two-step category search: Products (g568268) first, then Archive (g575879)
- * Matches product by checking .compact divs for exact model name
- * @param {string} model - Model number to search
- * @param {string} categoryId - SICK category ID (g568268 for Products, g575879 for Archive)
- * @returns {Promise<Object>} Search result with hasResults and productUrl
- */
-async function scrapeSICKSearchWithBrowserQL(model, categoryId) {
-	const browserqlApiKey = process.env.BROWSERQL_API_KEY;
-
-	if (!browserqlApiKey) {
-		throw new Error("BROWSERQL_API_KEY environment variable not set");
-	}
-
-	const encodedModel = encodeURIComponent(model);
-	const searchUrl = `https://www.sick.com/ag/en/search?text=${encodedModel}&category=${categoryId}`;
-
-	logger.info(`SICK BrowserQL: Searching category ${categoryId} at ${searchUrl}`);
-
-	const escapedSearchUrlLiteral = JSON.stringify(searchUrl);
-
-	// BrowserQL GraphQL query with SICK-specific DOM extraction
-	// Searches .compact divs for exact model name match in innerHTML
-	const query = `
-        mutation ScrapeSICKSearch {
-            goto(
-                url: ${escapedSearchUrlLiteral}
-                waitUntil: networkIdle
-            ) {
-                status
-            }
-
-            searchInfo: evaluate(content: """
-                (() => {
-                    try {
-                        const compactDivs = document.querySelectorAll('.compact');
-                        const searchModel = ${JSON.stringify(model)};
-                        const pattern = '>' + searchModel + '<';
-
-                        let productUrl = null;
-                        for (const div of compactDivs) {
-                            if (div.innerHTML.includes(pattern)) {
-                                const nameLink = div.querySelector('a.name');
-                                if (nameLink) {
-                                    const href = nameLink.getAttribute('href') || '';
-                                    productUrl = href.startsWith('http')
-                                        ? href
-                                        : 'https://www.sick.com' + href;
-                                    break;
-                                }
-                            }
-                        }
-
-                        return JSON.stringify({
-                            hasResults: productUrl !== null,
-                            productUrl: productUrl,
-                            totalCompactDivs: compactDivs.length,
-                            error: null
-                        });
-                    } catch (e) {
-                        return JSON.stringify({
-                            hasResults: false,
-                            productUrl: null,
-                            totalCompactDivs: 0,
-                            error: e?.message ?? String(e)
-                        });
-                    }
-                })()
-            """) {
-                value
-            }
-        }
-    `;
-
-	const response = await fetch(
-		`https://production-sfo.browserless.io/stealth/bql?token=${browserqlApiKey}`,
-		{
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ query })
-		}
-	);
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(`SICK BrowserQL search failed: ${response.status} - ${errorText}`);
-	}
-
-	const result = await response.json();
-
-	if (result.errors) {
-		throw new Error(`SICK BrowserQL search errors: ${JSON.stringify(result.errors)}`);
-	}
-
-	if (!result.data?.searchInfo) {
-		throw new Error("SICK BrowserQL search returned no data");
-	}
-
-	const searchInfo = JSON.parse(result.data.searchInfo.value);
-	logger.info(`SICK BrowserQL: Category ${categoryId} results:`, searchInfo);
-
-	if (searchInfo.error) {
-		throw new Error(`SICK search page evaluation error: ${searchInfo.error}`);
-	}
-
-	return {
-		hasResults: searchInfo.hasResults,
-		productUrl: searchInfo.productUrl,
-		categoryId: categoryId
-	};
-}
-
-/**
- * Scrape SICK product page using shared BrowserQL scraper
- * Step 2: Product page scraping after URL extracted from search
- */
-async function scrapeSICKProductWithBrowserQL(productUrl) {
-	logger.info(`SICK BrowserQL: Scraping product page: ${productUrl}`);
-
-	const result = await scrapeWithBrowserQL(productUrl);
-
-	if (!result.content) {
-		throw new Error("SICK BrowserQL returned empty content");
-	}
-
-	logger.info(
-		`SICK BrowserQL: Successfully scraped product page (${result.content.length} characters)`
-	);
-
-	return {
-		content: result.content,
-		success: true
-	};
-}
-
 const fetchUrlHandler = async function (event, context) {
 	if (event.httpMethod !== "POST") {
 		return methodNotAllowedResponse();
@@ -632,118 +496,30 @@ async function handleNbkSuccess(params) {
 }
 
 async function handleSickInteractive(params) {
-	const { jobId, urlIndex, model, url, snippet, baseUrl, context } = params;
-	logger.info(`Using SICK two-step BrowserQL search for model: ${model}`);
+	const { jobId, urlIndex, model, baseUrl } = params;
+	logger.info(`Using SICK interactive search for model: ${model}`);
 
-	try {
-		// Step 1: Search Products category (g568268)
-		logger.info(`SICK: Searching Products category for model ${model}`);
-		const productsResult = await scrapeSICKSearchWithBrowserQL(model, "g568268");
+	const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
+	const scrapingServiceUrl =
+		process.env.SCRAPING_SERVICE_URL || config.DEFAULT_SCRAPING_SERVICE_URL;
 
-		let searchResult = productsResult;
+	const sickPayload = {
+		model: model,
+		callbackUrl,
+		jobId,
+		urlIndex
+	};
 
-		// Step 2: If not found in Products, search Archive category (g575879)
-		if (!productsResult.hasResults || !productsResult.productUrl) {
-			logger.info(`SICK: No match in Products category, trying Archive category`);
-			searchResult = await scrapeSICKSearchWithBrowserQL(model, "g575879");
-		}
-
-		if (!searchResult.hasResults || !searchResult.productUrl) {
-			logger.info(`SICK: No results found in either category for model ${model}`);
-			return await handleSickNoResults({
-				jobId,
-				urlIndex,
-				url,
-				snippet,
-				model,
-				baseUrl,
-				context
-			});
-		}
-
-		logger.info(
-			`SICK: Product URL found in category ${searchResult.categoryId}, scraping: ${searchResult.productUrl}`
-		);
-		const productResult = await scrapeSICKProductWithBrowserQL(searchResult.productUrl);
-
-		if (!productResult.success || !productResult.content) {
-			throw new Error("SICK product page scraping returned no content");
-		}
-
-		logger.info(
-			`SICK: Successfully scraped product page (${productResult.content.length} characters)`
-		);
-		return await handleSickSuccess({
-			jobId,
-			urlIndex,
-			productUrl: searchResult.productUrl,
-			snippet,
-			content: productResult.content,
-			baseUrl,
-			context
-		});
-	} catch (error) {
-		logger.error(`SICK search failed:`, error);
-		return await handleCommonError({
-			...params,
-			error,
-			method: "sick_search"
-		});
-	}
-}
-
-async function handleSickNoResults(params) {
-	const { jobId, urlIndex, url, snippet, model, baseUrl, context } = params;
-
-	const allDone = await saveUrlResult(
+	const sickResult = await handleRenderServiceCall({
+		payload: sickPayload,
+		serviceUrl: scrapingServiceUrl,
+		endpoint: "scrape-sick",
 		jobId,
 		urlIndex,
-		{
-			url,
-			title: "SICK Search - No Results",
-			snippet,
-			fullContent: `[SICK Search: No results found for model "${model}" in Products or Archive categories on sick.com. No product with matching name was found in the search results.]`
-		},
-		context
-	);
+		methodName: "SICK invocation"
+	});
 
-	logger.info(`SICK: No results saved for URL ${urlIndex}. All done: ${allDone}`);
-
-	await continuePipelineAfterError({ jobId, urlIndex, allDone, baseUrl, context });
-
-	return {
-		statusCode: 200,
-		body: JSON.stringify({
-			success: true,
-			method: "sick_no_results",
-			noResults: true
-		})
-	};
-}
-
-async function handleSickSuccess(params) {
-	const { jobId, urlIndex, productUrl, snippet, content, baseUrl, context } = params;
-
-	const allDone = await saveUrlResult(
-		jobId,
-		urlIndex,
-		{
-			url: productUrl,
-			title: "SICK Product Page",
-			snippet,
-			fullContent: content
-		},
-		context
-	);
-
-	logger.info(`SICK: Product page saved for URL ${urlIndex}. All done: ${allDone}`);
-
-	await continuePipelineAfterSuccess({ jobId, urlIndex, allDone, baseUrl, context });
-
-	return {
-		statusCode: 200,
-		body: JSON.stringify({ success: true, method: "sick_browserql_complete" })
-	};
+	return handleRenderServiceResult(sickResult, "sick");
 }
 
 async function handleHabasitInteractive(params) {
