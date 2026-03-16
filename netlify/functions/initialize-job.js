@@ -315,7 +315,7 @@ function getManufacturerUrl(maker, model) {
 			return {
 				url: `https://www.boschrexroth.com/en/us/search.html?q=${encodedModel}`,
 				scrapingMethod: "browserql", // Use BrowserQL to bypass content obfuscation
-				waitForSelector: "dc-ops-results.hydrated" // Wait for product search web component to hydrate
+				waitForSelector: "div.pt_results" // Wait for actual product search results to render inside the web component
 			};
 
 		case "SICK":
