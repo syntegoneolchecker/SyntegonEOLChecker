@@ -137,6 +137,49 @@ async function extractHabasitContent(page) {
 }
 
 /**
+ * Safely close a Puppeteer browser, logging any errors
+ * @param {Browser|null} browser - Browser instance to close
+ * @param {string} context - Logging context string
+ */
+async function closeBrowserSafely(browser, context) {
+	if (!browser) return;
+	try {
+		await browser.close();
+	} catch (error) {
+		logger.error(`${context} - Error closing browser:`, error.message);
+	}
+}
+
+/**
+ * Validate and build final content string from extracted text
+ * @param {string} text - Extracted text content
+ * @param {string} productUrl - URL of the product page
+ * @returns {string} Final content string
+ */
+function buildHabasitFinalContent(text, productUrl) {
+	if (text && text.length >= 50) {
+		return text;
+	}
+	const charCount = text ? text.length : 0;
+	logger.warn(
+		`Empty or invalid HABASIT content (${charCount} chars), adding explanation`
+	);
+	return `[HABASIT product page at ${productUrl} extracted only ${charCount} characters. The page may be unavailable or blocking automated access.]`;
+}
+
+/**
+ * Send callback if callbackUrl is provided
+ * @param {string|null} callbackUrl - Callback URL
+ * @param {Object} data - Callback payload
+ * @returns {Promise<boolean>} Whether callback was sent
+ */
+async function sendHabasitCallback(callbackUrl, data) {
+	if (!callbackUrl) return false;
+	await sendCallback(callbackUrl, data);
+	return true;
+}
+
+/**
  * HABASIT-specific scraping endpoint handler
  */
 async function handleHabasitScrapeRequest(req, res) {
@@ -223,23 +266,17 @@ async function handleHabasitScrapeRequest(req, res) {
 
 			if (!productHref) {
 				logger.info(`HABASIT: No matching product found for model ${model}`);
-
-				// Close browser before callback
 				await browser.close();
 				browser = null;
 
-				// Send callback with no-results message (triggers SerpAPI fallback in pipeline)
-				if (callbackUrl) {
-					await sendCallback(callbackUrl, {
-						jobId,
-						urlIndex,
-						content: `[HABASIT Search: No results found for model "${model}" on the Habasit Product Portal. No product with matching item number was found in the search results.]`,
-						title: "HABASIT Search - No Results",
-						snippet: `HABASIT search result for ${model}`,
-						url: HABASIT_PORTAL_URL
-					});
-					callbackSent = true;
-				}
+				callbackSent = await sendHabasitCallback(callbackUrl, {
+					jobId,
+					urlIndex,
+					content: `[HABASIT Search: No results found for model "${model}" on the Habasit Product Portal. No product with matching item number was found in the search results.]`,
+					title: "HABASIT Search - No Results",
+					snippet: `HABASIT search result for ${model}`,
+					url: HABASIT_PORTAL_URL
+				});
 
 				forceGarbageCollection();
 				trackMemoryUsage(`habasit_noresults_${requestCount}`);
@@ -258,14 +295,7 @@ async function handleHabasitScrapeRequest(req, res) {
 
 			// Extract content from product page
 			const { text, title } = await extractHabasitContent(page);
-
-			let finalContent = text;
-			if (!text || text.length < 50) {
-				logger.warn(
-					`Empty or invalid HABASIT content (${text ? text.length : 0} chars), adding explanation`
-				);
-				finalContent = `[HABASIT product page at ${productUrl} extracted only ${text ? text.length : 0} characters. The page may be unavailable or blocking automated access.]`;
-			}
+			const finalContent = buildHabasitFinalContent(text, productUrl);
 
 			// Close browser before callback
 			await browser.close();
@@ -273,21 +303,18 @@ async function handleHabasitScrapeRequest(req, res) {
 			logger.debug(`[HABASIT] Task ${taskId} - Browser closed, memory freed`);
 
 			// Send callback with product page content
-			if (callbackUrl) {
-				logger.debug(
-					`[HABASIT] Task ${taskId} - Sending success callback to ${callbackUrl}`
-				);
-				await sendCallback(callbackUrl, {
-					jobId,
-					urlIndex,
-					content: finalContent,
-					title: title,
-					snippet: `HABASIT product page for ${model}`,
-					url: productUrl
-				});
-				callbackSent = true;
-				logger.debug(`[HABASIT] Task ${taskId} - Success callback sent`);
-			}
+			logger.debug(
+				`[HABASIT] Task ${taskId} - Sending success callback to ${callbackUrl}`
+			);
+			callbackSent = await sendHabasitCallback(callbackUrl, {
+				jobId,
+				urlIndex,
+				content: finalContent,
+				title: title,
+				snippet: `HABASIT product page for ${model}`,
+				url: productUrl
+			});
+			logger.debug(`[HABASIT] Task ${taskId} - Success callback sent`);
 
 			// Cleanup
 			forceGarbageCollection();
@@ -298,25 +325,12 @@ async function handleHabasitScrapeRequest(req, res) {
 			logger.error(`[HABASIT] Task ${taskId} - HABASIT scraping error:`, error);
 			logger.error(`[HABASIT] Task ${taskId} - Error details:`, error.message);
 
-			// Close browser
-			if (browser) {
-				try {
-					await browser.close();
-					logger.debug(
-						`[HABASIT] Task ${taskId} - Browser closed after error, memory freed`
-					);
-				} catch (closeError) {
-					logger.error(
-						`[HABASIT] Task ${taskId} - Error closing browser after HABASIT scraping error:`,
-						closeError
-					);
-				}
-			}
+			await closeBrowserSafely(browser, `[HABASIT] Task ${taskId}`);
+			browser = null;
 
-			// Send error callback
-			if (callbackUrl && !callbackSent) {
+			if (!callbackSent) {
 				logger.debug(`[HABASIT] Task ${taskId} - Sending error callback to ${callbackUrl}`);
-				await sendCallback(callbackUrl, {
+				await sendHabasitCallback(callbackUrl, {
 					jobId,
 					urlIndex,
 					content: `[HABASIT search failed: ${error.message}]`,
@@ -334,14 +348,7 @@ async function handleHabasitScrapeRequest(req, res) {
 			setShutdownState(true);
 			scheduleRestartIfNeeded();
 		} finally {
-			// Ensure browser is always closed
-			if (browser) {
-				try {
-					await browser.close();
-				} catch (error_) {
-					logger.error("Failed to close browser in finally block:", error_.message);
-				}
-			}
+			await closeBrowserSafely(browser, "[HABASIT] finally block");
 		}
 	}).catch((error) => {
 		logger.error(
