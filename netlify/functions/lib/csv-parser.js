@@ -144,7 +144,9 @@ function toCSV(data) {
 		return "";
 	}
 
-	return data.map((row) => row.map((cell) => `"${String(cell).replaceAll(/"/g, '""')}"`).join(",")).join("\n");
+	return data
+		.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
+		.join("\n");
 }
 
 module.exports = {
