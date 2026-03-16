@@ -49,6 +49,13 @@ async function scrapeWithBrowserQL(url) {
                     try {
                         const scripts = document.querySelectorAll('script, style, noscript');
                         scripts.forEach(el => el.remove());
+                        document.querySelectorAll('[style]').forEach(el => {
+                            if (el.style.visibility === 'hidden') el.style.visibility = 'visible';
+                            if (el.style.display === 'none') el.style.display = '';
+                        });
+                        document.querySelectorAll('[aria-hidden="true"]').forEach(el => {
+                            el.removeAttribute('aria-hidden');
+                        });
                         return JSON.stringify({ text: document.body.innerText, error: null });
                     } catch (e) {
                         return JSON.stringify({ text: null, error: e?.message ?? String(e) });
