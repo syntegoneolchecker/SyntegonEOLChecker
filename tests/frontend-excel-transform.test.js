@@ -3,8 +3,19 @@
  */
 
 // Mock document before importing modules
+const mockElement = {
+	textContent: "",
+	className: "",
+	value: "",
+	innerHTML: "",
+	parentNode: { insertBefore: jest.fn() },
+	nextSibling: null,
+	querySelectorAll: jest.fn(() => [])
+};
 global.document = {
-	getElementById: jest.fn(() => ({ textContent: "", className: "", value: "" }))
+	getElementById: jest.fn(() => mockElement),
+	createElement: jest.fn(() => ({ ...mockElement, parentNode: null })),
+	querySelectorAll: jest.fn(() => [])
 };
 
 // Mock XLSX global (loaded via script tag in browser)

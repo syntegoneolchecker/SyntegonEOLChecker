@@ -107,12 +107,12 @@ describe("js/utils.js - Pure Utility Functions", () => {
 			expect(result).toBe("1-234-567-890");
 		});
 
-		test('strips non-digits and reformats already-formatted input', () => {
+		test('strips non-alphanumeric and reformats already-formatted input', () => {
 			const result = formatID("1-234-567-890");
 			expect(result).toBe("1-234-567-890");
 		});
 
-		test('returns null for input with fewer than 10 digits', () => {
+		test('returns null for input with fewer than 10 alphanumeric characters', () => {
 			const result = formatID("12345");
 			expect(result).toBeNull();
 		});
@@ -122,14 +122,34 @@ describe("js/utils.js - Pure Utility Functions", () => {
 			expect(result).toBeNull();
 		});
 
-		test('returns null for input with more than 10 digits', () => {
+		test('returns null for input with more than 10 alphanumeric characters', () => {
 			const result = formatID("12345678901");
 			expect(result).toBeNull();
 		});
 
-		test('handles input with mixed characters and digits', () => {
-			const result = formatID("abc1def234ghi567jkl890");
-			expect(result).toBe("1-234-567-890");
+		test('formats alphanumeric SAP numbers with letters', () => {
+			const result = formatID("R412004414");
+			expect(result).toBe("R-412-004-414");
+		});
+
+		test('handles already-formatted alphanumeric SAP number', () => {
+			const result = formatID("R-412-004-414");
+			expect(result).toBe("R-412-004-414");
+		});
+
+		test('converts lowercase letters to uppercase', () => {
+			const result = formatID("r412004414");
+			expect(result).toBe("R-412-004-414");
+		});
+
+		test('handles mixed letters and digits', () => {
+			const result = formatID("A1B2C3D4E5");
+			expect(result).toBe("A-1B2-C3D-4E5");
+		});
+
+		test('strips special characters but keeps letters and digits', () => {
+			const result = formatID("R-412-004-414");
+			expect(result).toBe("R-412-004-414");
 		});
 	});
 
