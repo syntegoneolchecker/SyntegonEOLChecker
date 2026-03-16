@@ -235,6 +235,7 @@ const fetchUrlHandler = async function (event, context) {
 		const methodHandlers = {
 			keyence_interactive: handleKeyenceInteractive,
 			nbk_interactive: handleNbkInteractive,
+			habasit_interactive: handleHabasitInteractive,
 			browserql: handleBrowserQL,
 			default: handleRenderDefault
 		};
@@ -491,6 +492,33 @@ async function handleNbkSuccess(params) {
 		statusCode: 200,
 		body: JSON.stringify({ success: true, method: "nbk_browserql_complete" })
 	};
+}
+
+async function handleHabasitInteractive(params) {
+	const { jobId, urlIndex, model, baseUrl } = params;
+	logger.info(`Using HABASIT interactive search for model: ${model}`);
+
+	const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
+	const scrapingServiceUrl =
+		process.env.SCRAPING_SERVICE_URL || config.DEFAULT_SCRAPING_SERVICE_URL;
+
+	const habasitPayload = {
+		model: model,
+		callbackUrl,
+		jobId,
+		urlIndex
+	};
+
+	const habasitResult = await handleRenderServiceCall({
+		payload: habasitPayload,
+		serviceUrl: scrapingServiceUrl,
+		endpoint: "scrape-habasit",
+		jobId,
+		urlIndex,
+		methodName: "HABASIT invocation"
+	});
+
+	return handleRenderServiceResult(habasitResult, "habasit");
 }
 
 async function handleBrowserQL(params) {

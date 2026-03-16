@@ -16,6 +16,7 @@ const { validateEnvironmentVariables, validateAllowedOrigins } = require("./util
 // Import route handlers
 const { handleScrapeRequest } = require("./routes/scrape");
 const { handleKeyenceScrapeRequest } = require("./routes/scrape-keyence");
+const { handleHabasitScrapeRequest } = require("./routes/scrape-habasit");
 const logger = require("./utils/logger");
 
 // Validate environment variables at startup
@@ -91,7 +92,7 @@ app.get("/status", (req, res) => {
 });
 
 // Middleware: API Key authentication for scraping endpoints
-const PROTECTED_ENDPOINTS = new Set(["/scrape", "/scrape-keyence"]);
+const PROTECTED_ENDPOINTS = new Set(["/scrape", "/scrape-keyence", "/scrape-habasit"]);
 
 app.use((req, res, next) => {
 	// Only protect scraping endpoints, not health/status
@@ -130,6 +131,7 @@ app.use((req, res, next) => {
 // Route handlers
 app.post("/scrape", handleScrapeRequest);
 app.post("/scrape-keyence", handleKeyenceScrapeRequest);
+app.post("/scrape-habasit", handleHabasitScrapeRequest);
 
 // Start server
 const server = app.listen(PORT, () => {

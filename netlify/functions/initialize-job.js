@@ -304,6 +304,13 @@ function getManufacturerUrl(maker, model) {
 				model: model // Pass model for preprocessing (remove 'x' and '-')
 			};
 
+		case "HABASIT":
+			return {
+				url: "https://portal.habasit.com", // Base URL (search is interactive)
+				scrapingMethod: "habasit_interactive", // Two-step: navigate + search, then extract product URL
+				model: model // Pass model for search
+			};
+
 		default:
 			return null; // No direct URL strategy - use SerpAPI search
 	}
