@@ -317,6 +317,13 @@ function getManufacturerUrl(maker, model) {
 				scrapingMethod: "browserql" // Use BrowserQL to bypass content obfuscation
 			};
 
+		case "SICK":
+			return {
+				url: `https://www.sick.com/ag/en/search?text=${encodedModel}&category=g568268`, // Products category
+				scrapingMethod: "sick_interactive", // Two-step: search Products then Archive, extract product URL
+				model: model // Pass model for exact match search
+			};
+
 		default:
 			return null; // No direct URL strategy - use SerpAPI search
 	}
