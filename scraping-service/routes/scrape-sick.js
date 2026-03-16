@@ -329,9 +329,6 @@ async function handleSickScrapeRequest(req, res) {
 			logger.error(`[SICK] Task ${taskId} - SICK scraping error:`, error);
 			logger.error(`[SICK] Task ${taskId} - Error details:`, error.message);
 
-			await closeBrowserSafely(browser, `[SICK] Task ${taskId}`);
-			browser = null;
-
 			if (!callbackSent) {
 				logger.debug(`[SICK] Task ${taskId} - Sending error callback to ${callbackUrl}`);
 				await sendSickCallback(callbackUrl, {

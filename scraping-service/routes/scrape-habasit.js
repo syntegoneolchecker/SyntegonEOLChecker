@@ -325,9 +325,6 @@ async function handleHabasitScrapeRequest(req, res) {
 			logger.error(`[HABASIT] Task ${taskId} - HABASIT scraping error:`, error);
 			logger.error(`[HABASIT] Task ${taskId} - Error details:`, error.message);
 
-			await closeBrowserSafely(browser, `[HABASIT] Task ${taskId}`);
-			browser = null;
-
 			if (!callbackSent) {
 				logger.debug(`[HABASIT] Task ${taskId} - Sending error callback to ${callbackUrl}`);
 				await sendHabasitCallback(callbackUrl, {
