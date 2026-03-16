@@ -199,7 +199,8 @@ const fetchUrlHandler = async function (event, context) {
 			model,
 			jpUrl,
 			usUrl,
-			fallbackUrl
+			fallbackUrl,
+			waitForSelector
 		} = requestBody;
 
 		logger.debug(
@@ -227,6 +228,7 @@ const fetchUrlHandler = async function (event, context) {
 			jpUrl,
 			usUrl,
 			fallbackUrl,
+			waitForSelector,
 			baseUrl,
 			context
 		};
@@ -550,12 +552,12 @@ async function handleHabasitInteractive(params) {
 }
 
 async function handleBrowserQL(params) {
-	const { jobId, urlIndex, url, snippet, baseUrl, context } = params;
+	const { jobId, urlIndex, url, snippet, waitForSelector, baseUrl, context } = params;
 	logger.debug(`[BROWSERQL] Using BrowserQL for URL ${urlIndex} in job ${jobId}`);
 
 	try {
-		logger.debug(`[BROWSERQL] Starting BrowserQL scrape for ${url}`);
-		const result = await scrapeWithBrowserQL(url);
+		logger.debug(`[BROWSERQL] Starting BrowserQL scrape for ${url}${waitForSelector ? ` (waitForSelector: ${waitForSelector})` : ""}`);
+		const result = await scrapeWithBrowserQL(url, { waitForSelector });
 		logger.debug(
 			`[BROWSERQL] BrowserQL scrape completed, content length: ${result.content.length}`
 		);

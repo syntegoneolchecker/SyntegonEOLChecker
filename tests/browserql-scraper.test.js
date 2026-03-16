@@ -183,6 +183,27 @@ describe("BrowserQL Scraper", () => {
 		expect(callBody.query).not.toContain('q="test"');
 	});
 
+	test("should include visibility unhiding in evaluate script", async () => {
+		global.fetch.mockResolvedValue({
+			ok: true,
+			json: () =>
+				Promise.resolve({
+					data: {
+						pageContent: {
+							value: JSON.stringify({ text: "Content", error: null })
+						}
+					}
+				})
+		});
+
+		await scrapeWithBrowserQL("https://example.com");
+
+		const callBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+		// Verify the evaluate script unhides hidden elements before extracting text
+		expect(callBody.query).toContain("visibility");
+		expect(callBody.query).toContain("aria-hidden");
+	});
+
 	test("should escape backslashes in URL", async () => {
 		global.fetch.mockResolvedValue({
 			ok: true,
