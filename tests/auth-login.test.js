@@ -2,6 +2,12 @@
  * Tests for netlify/functions/auth-login.js
  */
 
+jest.mock("nodemailer", () => ({
+	createTransport: jest.fn(() => ({
+		sendMail: jest.fn().mockResolvedValue(true)
+	}))
+}));
+
 jest.mock("../netlify/functions/lib/auth-manager", () => ({
 	loginUser: jest.fn()
 }));
@@ -38,8 +44,19 @@ const { recordAttempt, clearRateLimit } = require("../netlify/functions/lib/rate
 const { validateAuthRequest } = require("../netlify/functions/lib/auth-helpers");
 
 describe("auth-login handler", () => {
+	const originalEnv = process.env;
+
 	beforeEach(() => {
 		jest.clearAllMocks();
+		process.env = {
+			...originalEnv,
+			EMAIL_USER: "test@gmail.com",
+			EMAIL_PASSWORD: "app-password"
+		};
+	});
+
+	afterEach(() => {
+		process.env = originalEnv;
 	});
 
 	test("returns validation error when validateAuthRequest fails", async () => {
@@ -105,6 +122,68 @@ describe("auth-login handler", () => {
 		expect(body.user.email).toBe("test@syntegon.com");
 		expect(result.headers["Set-Cookie"]).toContain("auth_token");
 		expect(clearRateLimit).toHaveBeenCalledWith("login", "1.2.3.4");
+	});
+
+	test("returns 403 and sends verification email for unverified account", async () => {
+		validateAuthRequest.mockResolvedValue({
+			email: "unverified@syntegon.com",
+			password: "correct",
+			clientIP: "1.2.3.4"
+		});
+		loginUser.mockResolvedValue({
+			success: false,
+			needsVerification: true,
+			verificationToken: "abc123token",
+			email: "unverified@syntegon.com",
+			message: "Your account is not yet verified. A new verification email has been sent."
+		});
+
+		const event = {
+			httpMethod: "POST",
+			body: JSON.stringify({ email: "unverified@syntegon.com", password: "correct" }),
+			headers: { host: "example.netlify.app", "x-forwarded-proto": "https" }
+		};
+		const result = await handler(event);
+
+		expect(result.statusCode).toBe(403);
+		const body = JSON.parse(result.body);
+		expect(body.success).toBe(false);
+		expect(body.needsVerification).toBe(true);
+		expect(body.emailSent).toBe(true);
+		expect(recordAttempt).not.toHaveBeenCalled();
+	});
+
+	test("returns 403 with fallback message when verification email fails to send", async () => {
+		// Remove email credentials to simulate email failure
+		delete process.env.EMAIL_USER;
+		delete process.env.EMAIL_PASSWORD;
+
+		validateAuthRequest.mockResolvedValue({
+			email: "unverified@syntegon.com",
+			password: "correct",
+			clientIP: "1.2.3.4"
+		});
+		loginUser.mockResolvedValue({
+			success: false,
+			needsVerification: true,
+			verificationToken: "abc123token",
+			email: "unverified@syntegon.com",
+			message: "Your account is not yet verified. A new verification email has been sent."
+		});
+
+		const event = {
+			httpMethod: "POST",
+			body: JSON.stringify({ email: "unverified@syntegon.com", password: "correct" }),
+			headers: { host: "example.netlify.app", "x-forwarded-proto": "https" }
+		};
+		const result = await handler(event);
+
+		expect(result.statusCode).toBe(403);
+		const body = JSON.parse(result.body);
+		expect(body.success).toBe(false);
+		expect(body.needsVerification).toBe(true);
+		expect(body.emailSent).toBe(false);
+		expect(body.message).toContain("could not be sent");
 	});
 
 	test("returns 500 on internal error", async () => {

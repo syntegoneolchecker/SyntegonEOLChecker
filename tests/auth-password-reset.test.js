@@ -136,20 +136,20 @@ describe("auth-password-reset handler", () => {
 		expect(storePasswordResetToken).not.toHaveBeenCalled();
 	});
 
-	test("returns same success message for unverified user", async () => {
+	test("sends password reset email for unverified user", async () => {
 		findUserByEmail.mockResolvedValue({ email: "unverified@syntegon.com", verified: false });
 
 		const event = {
 			httpMethod: "POST",
 			body: JSON.stringify({ email: "unverified@syntegon.com" }),
-			headers: { host: "example.netlify.app" }
+			headers: { host: "example.netlify.app", "x-forwarded-proto": "https" }
 		};
 		const result = await handler(event);
 
 		expect(result.statusCode).toBe(200);
 		const body = JSON.parse(result.body);
 		expect(body.success).toBe(true);
-		expect(storePasswordResetToken).not.toHaveBeenCalled();
+		expect(storePasswordResetToken).toHaveBeenCalled();
 	});
 
 	test("returns 500 on internal error", async () => {

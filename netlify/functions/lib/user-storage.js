@@ -193,6 +193,31 @@ async function deleteVerificationToken(token) {
 }
 
 /**
+ * Delete all verification tokens for a given email
+ * @param {string} email - User email
+ * @returns {Promise<number>} Number of tokens removed
+ */
+async function deleteVerificationTokensByEmail(email) {
+	const store = getAuthStore();
+	const tokens = (await store.get(TOKENS_BLOB_KEY, { type: "json" })) || {};
+	const normalizedEmail = normalizeEmail(email);
+
+	let removedCount = 0;
+	for (const [token, data] of Object.entries(tokens)) {
+		if (data.email === normalizedEmail) {
+			delete tokens[token];
+			removedCount++;
+		}
+	}
+
+	if (removedCount > 0) {
+		await store.setJSON(TOKENS_BLOB_KEY, tokens);
+	}
+
+	return removedCount;
+}
+
+/**
  * Store password reset token
  * @param {string} token - Password reset token
  * @param {Object} data - Token data (email, expiresAt)
@@ -348,6 +373,7 @@ module.exports = {
 	storeVerificationToken,
 	getVerificationToken,
 	deleteVerificationToken,
+	deleteVerificationTokensByEmail,
 	storePasswordResetToken,
 	getPasswordResetToken,
 	deletePasswordResetToken,

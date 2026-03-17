@@ -9,6 +9,7 @@ const {
 	getVerificationToken,
 	updateUser,
 	deleteVerificationToken,
+	deleteVerificationTokensByEmail,
 	recordFailedLogin,
 	clearFailedLogins
 } = require("../netlify/functions/lib/user-storage");
@@ -280,13 +281,43 @@ describe("loginUser", () => {
 			message: "Invalid email or password"
 		});
 	});
-	it("should reject unverified users", async () => {
-		findUserByEmail.mockResolvedValue({ verified: false });
+	it("should return needsVerification with new token for unverified user with correct password", async () => {
+		const email = "unverified@syntegon.com";
+		const password = "Password1"; // NOSONAR
+		const hashedPassword = await bcrypt.hash(password, 1);
 
-		expect(await loginUser("unverified@syntegon.com", "Password1")).toEqual({
-			success: false,
-			message: "Please verify your email address before logging in"
+		findUserByEmail.mockResolvedValue({
+			id: "123",
+			email: email,
+			verified: false,
+			hashedPassword: hashedPassword
 		});
+		deleteVerificationTokensByEmail.mockResolvedValue(1);
+		storeVerificationToken.mockResolvedValue();
+
+		const result = await loginUser(email, password);
+		expect(result.success).toBe(false);
+		expect(result.needsVerification).toBe(true);
+		expect(result.verificationToken).toMatch(/^[a-f0-9]{64}$/);
+		expect(result.email).toBe(email);
+		expect(deleteVerificationTokensByEmail).toHaveBeenCalledWith(email);
+		expect(storeVerificationToken).toHaveBeenCalled();
+	});
+	it("should return generic error for unverified user with wrong password", async () => {
+		const email = "unverified@syntegon.com";
+		const hashedPassword = await bcrypt.hash("CorrectPassword1", 1);
+
+		findUserByEmail.mockResolvedValue({
+			id: "123",
+			email: email,
+			verified: false,
+			hashedPassword: hashedPassword
+		});
+
+		const result = await loginUser(email, "WrongPassword1");
+		expect(result.success).toBe(false);
+		expect(result.needsVerification).toBeUndefined();
+		expect(result.message).toBe("Invalid email or password");
 	});
 	it("should reject users with locked accounts", async () => {
 		const now = Date.now();
