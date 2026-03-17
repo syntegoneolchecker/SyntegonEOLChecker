@@ -304,6 +304,26 @@ function getManufacturerUrl(maker, model) {
 				model: model // Pass model for preprocessing (remove 'x' and '-')
 			};
 
+		case "HABASIT":
+			return {
+				url: "https://portal.habasit.com", // Base URL (search is interactive)
+				scrapingMethod: "habasit_interactive", // Two-step: navigate + search, then extract product URL
+				model: model // Pass model for search
+			};
+
+		case "BOSCH REXROTH":
+			return {
+				url: `https://buyrexroth.com/category?q=${encodedModel}`,
+				scrapingMethod: "render"
+			};
+
+		case "SICK":
+			return {
+				url: `https://www.sick.com/ag/en/search?text=${encodedModel}&category=g568268`, // Products category
+				scrapingMethod: "sick_interactive", // Two-step: search Products then Archive, extract product URL
+				model: model // Pass model for exact match search
+			};
+
 		default:
 			return null; // No direct URL strategy - use SerpAPI search
 	}
@@ -642,6 +662,7 @@ async function handleDirectUrlStrategy(maker, model, jobId, strategy, context) {
 	if (strategy.jpUrl) urlEntry.jpUrl = strategy.jpUrl;
 	if (strategy.usUrl) urlEntry.usUrl = strategy.usUrl;
 	if (strategy.fallbackUrl) urlEntry.fallbackUrl = strategy.fallbackUrl;
+	if (strategy.waitForSelector) urlEntry.waitForSelector = strategy.waitForSelector;
 
 	const urls = [urlEntry];
 	await saveJobUrls(jobId, urls, context);

@@ -17,20 +17,39 @@ const logger = require("./logger");
  * This is a synchronous scraping method that returns content directly
  *
  * @param {string} url - URL to scrape
+ * @param {object} [options] - Optional configuration
+ * @param {string} [options.waitForSelector] - CSS selector to wait for before extracting content (for dynamically loaded pages)
+ * @param {number} [options.waitForTimeout] - Max time in ms to wait for the selector (default: 15000)
  * @returns {Promise<{content: string, title: string|null, success: boolean}>} Scraped content
  * @throws {Error} If BROWSERQL_API_KEY is not set or scraping fails
  */
-async function scrapeWithBrowserQL(url) {
+async function scrapeWithBrowserQL(url, options = {}) {
 	const browserqlApiKey = process.env.BROWSERQL_API_KEY;
 
 	if (!browserqlApiKey) {
 		throw new Error("BROWSERQL_API_KEY environment variable not set");
 	}
 
-	logger.info(`Scraping with BrowserQL: ${url}`);
+	const { waitForSelector, waitForTimeout = 15000 } = options;
+
+	logger.info(`Scraping with BrowserQL: ${url}${waitForSelector ? ` (waiting for: ${waitForSelector})` : ""}`);
 
 	// Escape URL for GraphQL to prevent injection
 	const escapedUrl = url.replaceAll("\\", "\\\\").replaceAll('"', String.raw`\"`);
+
+	// Build optional waitForSelector step
+	// This waits for a specific CSS selector to appear in the DOM before extracting content.
+	// Used for pages where dynamic content (e.g. product results) loads after networkIdle.
+	const waitForStep = waitForSelector
+		? `
+            waitForDynamic: waitForSelector(
+                selector: "${waitForSelector.replaceAll('"', String.raw`\"`)}"
+                timeout: ${waitForTimeout}
+            ) {
+                time
+            }
+        `
+		: "";
 
 	// BrowserQL GraphQL mutation using evaluate() to match Render's extraction
 	// This uses the exact same JavaScript code as the Render scraping service
@@ -44,11 +63,20 @@ async function scrapeWithBrowserQL(url) {
                 status
             }
 
+            ${waitForStep}
+
             pageContent: evaluate(content: """
                 (() => {
                     try {
                         const scripts = document.querySelectorAll('script, style, noscript');
                         scripts.forEach(el => el.remove());
+                        document.querySelectorAll('[style]').forEach(el => {
+                            if (el.style.visibility === 'hidden') el.style.visibility = 'visible';
+                            if (el.style.display === 'none') el.style.display = '';
+                        });
+                        document.querySelectorAll('[aria-hidden="true"]').forEach(el => {
+                            el.removeAttribute('aria-hidden');
+                        });
                         return JSON.stringify({ text: document.body.innerText, error: null });
                     } catch (e) {
                         return JSON.stringify({ text: null, error: e?.message ?? String(e) });

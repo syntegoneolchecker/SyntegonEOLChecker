@@ -199,7 +199,7 @@ async function handleKeyenceScrapeRequest(req, res) {
 	enqueuePuppeteerTask(async () => {
 		logger.debug(`[KEYENCE] Task ${taskId} - Starting execution in queue`);
 		let browser = null;
-		const callbackSent = false;
+		let callbackSent = false;
 
 		try {
 			logger.debug(`[KEYENCE] Task ${taskId} - In try block, about to launch browser`);
@@ -251,6 +251,7 @@ async function handleKeyenceScrapeRequest(req, res) {
 					snippet: `KEYENCE search result for ${model}`,
 					url: finalUrl
 				});
+				callbackSent = true;
 				logger.debug(`[KEYENCE] Task ${taskId} - Success callback sent`);
 			}
 

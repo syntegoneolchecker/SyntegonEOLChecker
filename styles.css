@@ -441,6 +441,27 @@ input {
 	border: 1px solid #bee5eb;
 }
 
+/* Pagination controls */
+.pagination-controls {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 20px;
+}
+
+.pagination-info {
+	font-size: 14px;
+	color: #333;
+	font-weight: 500;
+	min-width: 200px;
+	text-align: center;
+}
+
+.pagination-controls button {
+	min-width: 60px;
+}
+
 /* Responsive Design - Media Queries */
 
 /* Tablets and smaller desktops (max-width: 1024px) */

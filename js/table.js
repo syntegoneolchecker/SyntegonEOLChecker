@@ -72,26 +72,86 @@ export function updateCheckEOLButtons(isRunning) {
 }
 
 /**
+ * Get total number of pages
+ */
+export function getTotalPages() {
+	const totalRows = state.data.length - 1; // exclude header
+	return Math.max(1, Math.ceil(totalRows / state.rowsPerPage));
+}
+
+/**
+ * Change to a specific page
+ */
+export function changePage(page) {
+	const totalPages = getTotalPages();
+	state.currentPage = Math.max(1, Math.min(page, totalPages));
+	render();
+	const wrapper = document.querySelector('.table-wrapper');
+    if (wrapper) wrapper.scrollTop = wrapper.scrollHeight;
+}
+
+/**
+ * Render pagination controls
+ */
+function renderPaginationControls() {
+	const totalRows = state.data.length - 1;
+	const totalPages = getTotalPages();
+
+	if (totalRows <= state.rowsPerPage) return "";
+
+	const start = (state.currentPage - 1) * state.rowsPerPage + 1;
+	const end = Math.min(state.currentPage * state.rowsPerPage, totalRows);
+
+	return `<div class="pagination-controls">
+		<button onclick="changePage(1)" ${state.currentPage === 1 ? "disabled" : ""}>First</button>
+		<button onclick="changePage(${state.currentPage - 1})" ${state.currentPage === 1 ? "disabled" : ""}>Prev</button>
+		<span class="pagination-info">Rows ${start}-${end} of ${totalRows} (Page ${state.currentPage}/${totalPages})</span>
+		<button onclick="changePage(${state.currentPage + 1})" ${state.currentPage === totalPages ? "disabled" : ""}>Next</button>
+		<button onclick="changePage(${totalPages})" ${state.currentPage === totalPages ? "disabled" : ""}>Last</button>
+	</div>`;
+}
+
+/**
  * Render the table
  */
 export function render() {
 	const sortableColumns = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
+	// Clamp current page to valid range
+	const totalPages = getTotalPages();
+	if (state.currentPage > totalPages) state.currentPage = totalPages;
+
+	// Calculate page slice indices into state.data (1-based, since 0 is header)
+	const startIdx = (state.currentPage - 1) * state.rowsPerPage + 1;
+	const endIdx = Math.min(state.currentPage * state.rowsPerPage, state.data.length - 1);
+
+	const header = state.data[0];
+	const pageRows = state.data.slice(startIdx, endIdx + 1);
+
 	const t = document.getElementById("table");
-	t.innerHTML = state.data
-		.map(
-			(r, i) =>
-				`<tr id="row-${i}">${r
-					.map((c, j) => {
-						if (i === 0) {
-							return renderTableHeader(c, j, sortableColumns);
-						} else {
-							return renderTableCell(c);
-						}
-					})
-					.join("")}${i > 0 ? renderActionButtons(i) : "<th>Actions</th>"}</tr>`
-		)
+	const headerHtml = `<tr id="row-0">${header
+		.map((c, j) => renderTableHeader(c, j, sortableColumns))
+		.join("")}<th>Actions</th></tr>`;
+
+	const rowsHtml = pageRows
+		.map((r, pageIdx) => {
+			const dataIndex = startIdx + pageIdx; // real index into state.data
+			return `<tr id="row-${dataIndex}">${r
+				.map((c) => renderTableCell(c))
+				.join("")}${renderActionButtons(dataIndex)}</tr>`;
+		})
 		.join("");
+
+	t.innerHTML = headerHtml + rowsHtml;
+
+	// Render pagination controls
+	let paginationContainer = document.getElementById("pagination");
+	if (!paginationContainer) {
+		paginationContainer = document.createElement("div");
+		paginationContainer.id = "pagination";
+		t.parentNode.insertBefore(paginationContainer, t.nextSibling);
+	}
+	paginationContainer.innerHTML = renderPaginationControls();
 
 	updateButtonStates();
 }

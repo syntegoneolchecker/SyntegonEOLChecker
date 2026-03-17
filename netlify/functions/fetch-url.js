@@ -199,7 +199,8 @@ const fetchUrlHandler = async function (event, context) {
 			model,
 			jpUrl,
 			usUrl,
-			fallbackUrl
+			fallbackUrl,
+			waitForSelector
 		} = requestBody;
 
 		logger.debug(
@@ -227,6 +228,7 @@ const fetchUrlHandler = async function (event, context) {
 			jpUrl,
 			usUrl,
 			fallbackUrl,
+			waitForSelector,
 			baseUrl,
 			context
 		};
@@ -235,6 +237,8 @@ const fetchUrlHandler = async function (event, context) {
 		const methodHandlers = {
 			keyence_interactive: handleKeyenceInteractive,
 			nbk_interactive: handleNbkInteractive,
+			habasit_interactive: handleHabasitInteractive,
+			sick_interactive: handleSickInteractive,
 			browserql: handleBrowserQL,
 			default: handleRenderDefault
 		};
@@ -493,13 +497,67 @@ async function handleNbkSuccess(params) {
 	};
 }
 
+async function handleSickInteractive(params) {
+	const { jobId, urlIndex, model, baseUrl } = params;
+	logger.info(`Using SICK interactive search for model: ${model}`);
+
+	const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
+	const scrapingServiceUrl =
+		process.env.SCRAPING_SERVICE_URL || config.DEFAULT_SCRAPING_SERVICE_URL;
+
+	const sickPayload = {
+		model: model,
+		callbackUrl,
+		jobId,
+		urlIndex
+	};
+
+	const sickResult = await handleRenderServiceCall({
+		payload: sickPayload,
+		serviceUrl: scrapingServiceUrl,
+		endpoint: "scrape-sick",
+		jobId,
+		urlIndex,
+		methodName: "SICK invocation"
+	});
+
+	return handleRenderServiceResult(sickResult, "sick");
+}
+
+async function handleHabasitInteractive(params) {
+	const { jobId, urlIndex, model, baseUrl } = params;
+	logger.info(`Using HABASIT interactive search for model: ${model}`);
+
+	const callbackUrl = `${baseUrl}/.netlify/functions/scraping-callback`;
+	const scrapingServiceUrl =
+		process.env.SCRAPING_SERVICE_URL || config.DEFAULT_SCRAPING_SERVICE_URL;
+
+	const habasitPayload = {
+		model: model,
+		callbackUrl,
+		jobId,
+		urlIndex
+	};
+
+	const habasitResult = await handleRenderServiceCall({
+		payload: habasitPayload,
+		serviceUrl: scrapingServiceUrl,
+		endpoint: "scrape-habasit",
+		jobId,
+		urlIndex,
+		methodName: "HABASIT invocation"
+	});
+
+	return handleRenderServiceResult(habasitResult, "habasit");
+}
+
 async function handleBrowserQL(params) {
-	const { jobId, urlIndex, url, snippet, baseUrl, context } = params;
+	const { jobId, urlIndex, url, snippet, waitForSelector, baseUrl, context } = params;
 	logger.debug(`[BROWSERQL] Using BrowserQL for URL ${urlIndex} in job ${jobId}`);
 
 	try {
-		logger.debug(`[BROWSERQL] Starting BrowserQL scrape for ${url}`);
-		const result = await scrapeWithBrowserQL(url);
+		logger.debug(`[BROWSERQL] Starting BrowserQL scrape for ${url}${waitForSelector ? ` (waitForSelector: ${waitForSelector})` : ""}`);
+		const result = await scrapeWithBrowserQL(url, { waitForSelector });
 		logger.debug(
 			`[BROWSERQL] BrowserQL scrape completed, content length: ${result.content.length}`
 		);

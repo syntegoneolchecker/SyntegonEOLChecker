@@ -14,16 +14,16 @@ export function showStatus(message, type = "success", _permanent = true) {
 }
 
 /**
- * Format SAP Number to X-XXX-XXX-XXX format (10 digits)
+ * Format SAP Number to X-XXX-XXX-XXX format (10 alphanumeric characters)
  */
 export function formatID(input) {
-	const digits = input.replaceAll(/\D/g, "");
+	const chars = input.replaceAll(/[^a-zA-Z0-9]/g, "");
 
-	if (digits.length !== 10) {
+	if (chars.length !== 10) {
 		return null;
 	}
 
-	return `${digits.slice(0, 1)}-${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7, 10)}`;
+	return `${chars.slice(0, 1)}-${chars.slice(1, 4)}-${chars.slice(4, 7)}-${chars.slice(7, 10)}`.toUpperCase();
 }
 
 /**
@@ -91,7 +91,7 @@ export function validateAndFormatSAPNumber(idInput) {
 	const formattedID = formatID(idInput);
 	if (!formattedID) {
 		showStatus(
-			"Error: SAP Part Number must be exactly 10 digits (e.g., 8-114-463-187 or 8114463187)",
+			"Error: SAP Part Number must be exactly 10 alphanumeric characters (e.g., 8-114-463-187 or R-412-004-414)",
 			"error"
 		);
 		return null;

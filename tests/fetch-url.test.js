@@ -106,7 +106,7 @@ describe("fetch-url handler", () => {
 		expect(result.statusCode).toBe(200);
 		const body = JSON.parse(result.body);
 		expect(body.method).toBe("browserql");
-		expect(scrapeWithBrowserQL).toHaveBeenCalledWith("https://example.com");
+		expect(scrapeWithBrowserQL).toHaveBeenCalledWith("https://example.com", { waitForSelector: undefined });
 		expect(saveUrlResult).toHaveBeenCalled();
 	});
 
