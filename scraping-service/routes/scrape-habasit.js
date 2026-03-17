@@ -289,9 +289,12 @@ async function handleHabasitScrapeRequest(req, res) {
 			logger.info(`HABASIT: Found product URL: ${productUrl}, navigating to product page...`);
 
 			await page.goto(productUrl, {
-				waitUntil: "networkidle2",
+				waitUntil: "networkidle0",
 				timeout: 30000
 			});
+
+			// Wait for SPA to render product details after network settles
+			await new Promise((resolve) => setTimeout(resolve, 3000));
 
 			// Extract content from product page
 			const { text, title } = await extractHabasitContent(page);
