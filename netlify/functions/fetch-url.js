@@ -556,7 +556,10 @@ async function handleBrowserQL(params) {
 	logger.debug(`[BROWSERQL] Using BrowserQL for URL ${urlIndex} in job ${jobId}`);
 
 	try {
-		logger.debug(`[BROWSERQL] Starting BrowserQL scrape for ${url}${waitForSelector ? ` (waitForSelector: ${waitForSelector})` : ""}`);
+		const selectorLiteral = ` (waitForSelector: ${waitForSelector})`;
+		logger.debug(
+			`[BROWSERQL] Starting BrowserQL scrape for ${url}${waitForSelector ? selectorLiteral : ""}`
+		);
 		const result = await scrapeWithBrowserQL(url, { waitForSelector });
 		logger.debug(
 			`[BROWSERQL] BrowserQL scrape completed, content length: ${result.content.length}`
