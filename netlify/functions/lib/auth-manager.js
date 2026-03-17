@@ -9,6 +9,7 @@ const {
 	storeVerificationToken,
 	getVerificationToken,
 	deleteVerificationToken,
+	deleteVerificationTokensByEmail,
 	recordFailedLogin,
 	clearFailedLogins
 } = require("./user-storage");
@@ -242,9 +243,27 @@ async function loginUser(email, password) {
 
 	// Check if account is verified
 	if (!user.verified) {
+		// Verify password before revealing account status
+		const isPasswordValid = await verifyPassword(password, user.hashedPassword);
+		if (!isPasswordValid) {
+			return { success: false, message: "Invalid email or password" };
+		}
+
+		// Password is correct — issue a new verification token
+		await deleteVerificationTokensByEmail(user.email);
+		const verificationToken = generateVerificationToken();
+		const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_EXPIRY).toISOString();
+		await storeVerificationToken(verificationToken, {
+			email: user.email,
+			expiresAt
+		});
+
 		return {
 			success: false,
-			message: "Please verify your email address before logging in"
+			needsVerification: true,
+			verificationToken,
+			email: user.email,
+			message: "Your account is not yet verified. A new verification email has been sent."
 		};
 	}
 

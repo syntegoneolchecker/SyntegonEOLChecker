@@ -121,7 +121,7 @@ exports.handler = async (event) => {
 		// Check if user exists (don't reveal this in response)
 		const user = await findUserByEmail(email);
 
-		if (user?.verified) {
+		if (user) {
 			// Generate password reset token
 			const token = crypto.randomBytes(32).toString("hex");
 			const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(); // 48 hours
@@ -139,10 +139,10 @@ exports.handler = async (event) => {
 			// Send password reset email
 			await sendPasswordResetEmail(normalizedEmail, deletionUrl);
 		} else {
-			// User doesn't exist or is not verified - don't reveal this
+			// User doesn't exist - don't reveal this
 			// Just log for monitoring purposes
 			logger.info(
-				`Password reset requested for non-existent or unverified account: ${normalizedEmail}`
+				`Password reset requested for non-existent account: ${normalizedEmail}`
 			);
 		}
 
