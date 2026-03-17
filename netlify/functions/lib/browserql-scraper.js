@@ -32,7 +32,8 @@ async function scrapeWithBrowserQL(url, options = {}) {
 
 	const { waitForSelector, waitForTimeout = 15000 } = options;
 
-	logger.info(`Scraping with BrowserQL: ${url}${waitForSelector ? ` (waiting for: ${waitForSelector})` : ""}`);
+	const selectorLiteral = ` (waiting for: ${waitForSelector})`;
+	logger.info(`Scraping with BrowserQL: ${url}${waitForSelector ? selectorLiteral : ""}`);
 
 	// Escape URL for GraphQL to prevent injection
 	const escapedUrl = url.replaceAll("\\", "\\\\").replaceAll('"', String.raw`\"`);
