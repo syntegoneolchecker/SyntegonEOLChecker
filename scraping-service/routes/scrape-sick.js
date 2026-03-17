@@ -1,6 +1,6 @@
 // SICK-specific scraping endpoint handler
 // Two-step category search: Products (g568268) first, then Archive (g575879)
-// Matches product by checking .compact divs for exact model name, extracts product URL, scrapes product page
+// Matches product by checking .compact divs for exact part number via textContent, extracts product URL, scrapes product page
 const {
 	launchBrowser,
 	configureStandardPage,
@@ -39,7 +39,7 @@ function buildSickSearchUrl(model, categoryId) {
 
 /**
  * Search a single SICK category for exact model match
- * Navigates to search URL and checks .compact divs for >{modelName}< pattern
+ * Navigates to search URL and checks .compact divs for matching part number via textContent
  * @param {Page} page - Puppeteer page
  * @param {string} model - Product model to search
  * @param {string} categoryId - SICK category ID
@@ -52,9 +52,12 @@ async function searchSickCategory(page, model, categoryId, categoryName) {
 
 	// codeql[js/request-forgery] SSRF Justification: URL constructed from hardcoded SICK base URL with user-provided model name (search parameter only).
 	await page.goto(searchUrl, {
-		waitUntil: "networkidle2",
+		waitUntil: "networkidle0",
 		timeout: 30000
 	});
+
+	// Additional wait after network idle for Angular SPA initialization
+	await new Promise((resolve) => setTimeout(resolve, 3000));
 
 	// Wait for Angular SPA to render search results
 	logger.info(`SICK: Waiting for ${categoryName} search results to render...`);
@@ -63,10 +66,28 @@ async function searchSickCategory(page, model, categoryId, categoryName) {
 	// Extract product URL from .compact divs by checking for exact model match
 	const productUrl = await page.evaluate((searchModel) => {
 		const compactDivs = document.querySelectorAll(".compact");
-		const pattern = ">" + searchModel + "<";
 
 		for (const div of compactDivs) {
-			if (div.innerHTML.includes(pattern)) {
+			// Primary: match part number via textContent (handles Angular whitespace)
+			const partNumberEls = div.querySelectorAll(".part .font-bold");
+			let isMatch = false;
+
+			for (const el of partNumberEls) {
+				if (el.textContent.trim() === searchModel) {
+					isMatch = true;
+					break;
+				}
+			}
+
+			if (!isMatch) {
+				// Fallback: check innerHTML pattern for backward compatibility
+				const pattern = ">" + searchModel + "<";
+				if (div.innerHTML.includes(pattern)) {
+					isMatch = true;
+				}
+			}
+
+			if (isMatch) {
 				const nameLink = div.querySelector("a.name");
 				if (nameLink) {
 					const href = nameLink.getAttribute("href") || "";
@@ -291,9 +312,12 @@ async function handleSickScrapeRequest(req, res) {
 			// Navigate to product page and extract content
 			logger.info(`SICK: Navigating to product page: ${productUrl}`);
 			await page.goto(productUrl, {
-				waitUntil: "networkidle2",
+				waitUntil: "networkidle0",
 				timeout: 30000
 			});
+
+			// Additional wait after network idle for Angular SPA initialization
+			await new Promise((resolve) => setTimeout(resolve, 3000));
 
 			// Wait for Angular SPA to render product page
 			await new Promise((resolve) => setTimeout(resolve, 3000));
