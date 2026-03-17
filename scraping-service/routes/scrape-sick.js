@@ -66,36 +66,23 @@ async function searchSickCategory(page, model, categoryId, categoryName) {
 	// Extract product URL from .compact divs by checking for exact model match
 	const productUrl = await page.evaluate((searchModel) => {
 		const compactDivs = document.querySelectorAll(".compact");
+		const pattern = ">" + searchModel + "<";
 
 		for (const div of compactDivs) {
 			// Primary: match part number via textContent (handles Angular whitespace)
 			const partNumberEls = div.querySelectorAll(".part .font-bold");
-			let isMatch = false;
+			const hasTextMatch = Array.from(partNumberEls).some(
+				(el) => el.textContent.trim() === searchModel
+			);
 
-			for (const el of partNumberEls) {
-				if (el.textContent.trim() === searchModel) {
-					isMatch = true;
-					break;
-				}
-			}
+			// Fallback: check innerHTML pattern for backward compatibility
+			if (!hasTextMatch && !div.innerHTML.includes(pattern)) continue;
 
-			if (!isMatch) {
-				// Fallback: check innerHTML pattern for backward compatibility
-				const pattern = ">" + searchModel + "<";
-				if (div.innerHTML.includes(pattern)) {
-					isMatch = true;
-				}
-			}
+			const nameLink = div.querySelector("a.name");
+			if (!nameLink) continue;
 
-			if (isMatch) {
-				const nameLink = div.querySelector("a.name");
-				if (nameLink) {
-					const href = nameLink.getAttribute("href") || "";
-					return href.startsWith("http")
-						? href
-						: "https://www.sick.com" + href;
-				}
-			}
+			const href = nameLink.getAttribute("href") || "";
+			return href.startsWith("http") ? href : "https://www.sick.com" + href;
 		}
 
 		return null;
