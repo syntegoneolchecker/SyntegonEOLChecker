@@ -16,6 +16,7 @@ const {
 	storeVerificationToken,
 	getVerificationToken,
 	deleteVerificationToken,
+	deleteVerificationTokensByEmail,
 	storePasswordResetToken,
 	getPasswordResetToken,
 	deletePasswordResetToken,
@@ -258,6 +259,32 @@ describe("User Storage", () => {
 			mockStore.get.mockResolvedValue({});
 			const token = await getVerificationToken("nonexistent");
 			expect(token).toBeNull();
+		});
+
+		it("should delete all verification tokens for a given email", async () => {
+			mockStore.get.mockResolvedValue({
+				token1: { email: "user@syntegon.com" },
+				token2: { email: "user@syntegon.com" },
+				token3: { email: "other@syntegon.com" }
+			});
+
+			const removedCount = await deleteVerificationTokensByEmail("user@syntegon.com");
+			expect(removedCount).toBe(2);
+
+			const savedTokens = mockStore.setJSON.mock.calls[0][1];
+			expect(savedTokens["token1"]).toBeUndefined();
+			expect(savedTokens["token2"]).toBeUndefined();
+			expect(savedTokens["token3"]).toBeDefined();
+		});
+
+		it("should return 0 when no tokens match the email", async () => {
+			mockStore.get.mockResolvedValue({
+				token1: { email: "other@syntegon.com" }
+			});
+
+			const removedCount = await deleteVerificationTokensByEmail("user@syntegon.com");
+			expect(removedCount).toBe(0);
+			expect(mockStore.setJSON).not.toHaveBeenCalled();
 		});
 
 		it("should delete verification token", async () => {
