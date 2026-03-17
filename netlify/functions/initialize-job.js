@@ -313,9 +313,8 @@ function getManufacturerUrl(maker, model) {
 
 		case "BOSCH REXROTH":
 			return {
-				url: `https://www.boschrexroth.com/en/us/search.html?q=${encodedModel}`,
-				scrapingMethod: "browserql", // Use BrowserQL to bypass content obfuscation
-				waitForSelector: "div.identifier-area" // Wait for actual product search results to render inside the web component
+				url: `https://buyrexroth.com/category?q=${encodedModel}`,
+				scrapingMethod: "render"
 			};
 
 		case "SICK":
