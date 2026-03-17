@@ -86,6 +86,7 @@ export function changePage(page) {
 	const totalPages = getTotalPages();
 	state.currentPage = Math.max(1, Math.min(page, totalPages));
 	render();
+	window.scrollTo(0, document.body.scrollHeight);
 }
 
 /**
