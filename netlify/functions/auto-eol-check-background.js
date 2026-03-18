@@ -243,7 +243,7 @@ async function executeEOLCheck(product, siteUrl) {
 		// Disable Auto Check and update database with explanation
 		await disableAutoCheckForMissingData(sapNumber, missingField);
 
-		return false;
+		return "skipped";
 	}
 
 	try {
@@ -910,23 +910,28 @@ async function processNextProduct(state, siteUrl, store) {
 	logger.info("✓ Slider still enabled, proceeding with EOL check");
 
 	// Execute ONE EOL check
-	const success = await executeEOLCheck(product, siteUrl);
+	const result = await executeEOLCheck(product, siteUrl);
 
-	// Increment counter and update activity time
-	const newCounter = preCheckState.dailyCounter + 1;
-	await updateAutoCheckState(siteUrl, {
-		dailyCounter: newCounter,
-		lastActivityTime: new Date().toISOString(),
-		isRunning: true // Explicitly maintain running state during chain
-	});
+	// Skip counter increment for entries that were skipped (e.g. missing manufacturer/model)
+	// These don't consume external resources and shouldn't count toward the daily limit
+	if (result === "skipped") {
+		logger.info("Product skipped (missing data), counter not incremented");
+	} else {
+		const newCounter = preCheckState.dailyCounter + 1;
+		await updateAutoCheckState(siteUrl, {
+			dailyCounter: newCounter,
+			lastActivityTime: new Date().toISOString(),
+			isRunning: true // Explicitly maintain running state during chain
+		});
 
-	logger.info(
-		`Check ${success ? "succeeded" : "failed"}, counter now: ${newCounter}/${config.MAX_AUTO_CHECKS_PER_DAY}`
-	);
+		logger.info(
+			`Check ${result === true ? "succeeded" : "failed"}, counter now: ${newCounter}/${config.MAX_AUTO_CHECKS_PER_DAY}`
+		);
+	}
 
 	return {
 		shouldStopChain: false,
-		newCounter,
+		newCounter: result === "skipped" ? preCheckState.dailyCounter : preCheckState.dailyCounter + 1,
 		shouldContinue: true
 	};
 }
