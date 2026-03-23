@@ -249,6 +249,101 @@ https://www.nbk1560.com/search/?q={preprocessedModel}&SelectedLanguage=ja-JP&pag
 
 ---
 
+### 10. HABASIT
+
+**Strategy Type:** Interactive search via Render service (special endpoint)
+
+**URL Pattern:**
+
+```
+https://portal.habasit.com (base URL only)
+```
+
+**Scraping Method:** `habasit_interactive`
+
+**Flow:**
+
+1. Job initialized → base URL saved with `scrapingMethod: 'habasit_interactive'`
+2. Model number passed separately in `model` field
+3. `fetch-url` routes to `handleHabasitInteractive()` function
+4. Calls Render service's `/scrape-habasit` endpoint with:
+    - `model`: Product model to search
+    - `callbackUrl`: Callback for results
+    - `jobId`, `urlIndex`: Job tracking
+5. Render service performs interactive search:
+    - Navigates to Habasit Product Portal
+    - Types model into search input (`input.form-control[placeholder='Search...']`)
+    - Waits for auto-search results to load
+    - Searches `.details` divs for exact model match via `<b>` tag text content
+    - Extracts product href from matching details div
+6. Navigates to extracted product page and scrapes content
+7. Results returned via callback
+8. Content analyzed by LLM
+
+**Notes:** Two-step interactive process similar to KEYENCE. Requires browser automation because the Habasit Product Portal search is not accessible via direct URL parameters.
+
+---
+
+### 11. BOSCH REXROTH
+
+**Strategy Type:** Direct URL with Render scraping
+
+**URL Pattern:**
+
+```
+https://buyrexroth.com/category?q={model}
+```
+
+**Flow:**
+
+1. Job initialized → search URL constructed with encoded model number
+2. URL saved to job with `scrapingMethod: 'render'`
+3. `fetch-url` sends request to Render service
+4. Render service scrapes search results page
+5. Content analyzed by LLM
+
+**Notes:** Uses buyrexroth.com commerce site search endpoint. Simple direct URL strategy with no validation required.
+
+---
+
+### 12. SICK
+
+**Strategy Type:** Interactive two-step category search via Render service (special endpoint)
+
+**URL Pattern:**
+
+```
+https://www.sick.com/ag/en/search?text={model}&category=g568268
+```
+
+**Scraping Method:** `sick_interactive`
+
+**Categories searched:**
+- Products (`g568268`) — searched first
+- Archive (`g575879`) — searched if Products yields no match
+
+**Flow:**
+
+1. Job initialized → search URL constructed with `scrapingMethod: 'sick_interactive'`
+2. Model number passed separately in `model` field
+3. `fetch-url` routes to `handleSickInteractive()` function
+4. Calls Render service's `/scrape-sick` endpoint with:
+    - `model`: Product model to search
+    - `callbackUrl`: Callback for results
+    - `jobId`, `urlIndex`: Job tracking
+5. Render service performs two-step category search:
+    - **Step 1 — Products:** Navigates to Products category search URL, waits for Angular SPA results
+    - Checks `.compact` divs for exact part number match via `.part .font-bold` text content
+    - If match found: extracts product URL from `a.name` element
+    - **Step 2 — Archive:** If no match in Products, repeats search in Archive category (`g575879`)
+6. Navigates to extracted product URL and scrapes full product page
+7. Results returned via callback
+8. Content analyzed by LLM
+
+**Notes:** SICK uses an Angular SPA requiring additional wait time for results to render. The two-step category search ensures discontinued products in the Archive are also found.
+
+---
+
 ## Default Case (SerpAPI Search)
 
 When no manufacturer strategy matches, the system falls back to SerpAPI search:
@@ -283,6 +378,9 @@ When no manufacturer strategy matches, the system falls back to SerpAPI search:
 | NISSIN ELECTRONIC | 404 Check     | render              | Yes - 404 check        | Direct product URL          |
 | MURR              | Direct URL    | render              | No                     | US shop search              |
 | NBK               | Interactive   | nbk_interactive     | No                     | Two-step BrowserQL          |
+| HABASIT           | Interactive   | habasit_interactive | No                     | Portal interactive search   |
+| BOSCH REXROTH     | Direct URL    | render              | No                     | buyrexroth.com search       |
+| SICK              | Interactive   | sick_interactive    | No                     | Two-step category search    |
 | (default)         | SerpAPI       | render              | PDF screening          | Fallback for unknown makers |
 
 ---
@@ -295,3 +393,5 @@ When no manufacturer strategy matches, the system falls back to SerpAPI search:
 | `browserql`           | `handleBrowserQL()`          | Browserless stealth mode for Cloudflare sites |
 | `keyence_interactive` | `handleKeyenceInteractive()` | Render service `/scrape-keyence` endpoint     |
 | `nbk_interactive`     | `handleNbkInteractive()`     | Full BrowserQL with custom DOM extraction     |
+| `habasit_interactive` | `handleHabasitInteractive()` | Render service `/scrape-habasit` endpoint     |
+| `sick_interactive`    | `handleSickInteractive()`    | Render service `/scrape-sick` endpoint        |

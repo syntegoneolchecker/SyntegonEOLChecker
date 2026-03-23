@@ -621,7 +621,7 @@ describe("auto-eol-check-background extended", () => {
 	describe("executeEOLCheck", () => {
 		const siteUrl = "https://test-site.example.com";
 
-		test("returns false and disables auto-check when model is missing", async () => {
+		test("returns 'skipped' and disables auto-check when model is missing", async () => {
 			const product = makeRow({ sap: "SAP001", model: "", manufacturer: "MakerA" });
 
 			// Mock disableAutoCheckForMissingData's store calls
@@ -631,11 +631,11 @@ describe("auto-eol-check-background extended", () => {
 			mockStoreSet.mockResolvedValue();
 
 			const result = await executeEOLCheck(product, siteUrl);
-			expect(result).toBe(false);
+			expect(result).toBe("skipped");
 			expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining("Missing model"));
 		});
 
-		test("returns false and disables auto-check when manufacturer is missing", async () => {
+		test("returns 'skipped' and disables auto-check when manufacturer is missing", async () => {
 			const product = makeRow({ sap: "SAP001", model: "Model-X", manufacturer: "" });
 
 			mockStoreGet.mockResolvedValue("csv-data");
@@ -644,13 +644,13 @@ describe("auto-eol-check-background extended", () => {
 			mockStoreSet.mockResolvedValue();
 
 			const result = await executeEOLCheck(product, siteUrl);
-			expect(result).toBe(false);
+			expect(result).toBe("skipped");
 			expect(mockLogger.info).toHaveBeenCalledWith(
 				expect.stringContaining("Missing manufacturer")
 			);
 		});
 
-		test("returns false and disables auto-check when both model and manufacturer missing", async () => {
+		test("returns 'skipped' and disables auto-check when both model and manufacturer missing", async () => {
 			const product = makeRow({ sap: "SAP001", model: "", manufacturer: "" });
 
 			mockStoreGet.mockResolvedValue("csv-data");
@@ -659,7 +659,7 @@ describe("auto-eol-check-background extended", () => {
 			mockStoreSet.mockResolvedValue();
 
 			const result = await executeEOLCheck(product, siteUrl);
-			expect(result).toBe(false);
+			expect(result).toBe("skipped");
 			expect(mockLogger.info).toHaveBeenCalledWith(
 				expect.stringContaining("Missing manufacturer/model")
 			);
@@ -1827,6 +1827,43 @@ describe("auto-eol-check-background extended", () => {
 
 			expect(result.shouldStopChain).toBe(false);
 			expect(result.newCounter).toBe(4);
+		});
+
+		test("does not increment counter when product is skipped (missing data)", async () => {
+			const product = makeRow({
+				sap: "SAP001",
+				model: "",
+				manufacturer: "MakerA",
+				infoDate: ""
+			});
+
+			// findNextProduct
+			mockStoreGet.mockResolvedValueOnce("csv-data");
+			mockParseCSV.mockReturnValueOnce(makeCSVData(HEADER_ROW, [product]));
+
+			const store = {
+				get: jest
+					.fn()
+					.mockResolvedValue({ enabled: true, dailyCounter: 5, isRunning: true })
+			};
+
+			global.fetch = jest.fn().mockResolvedValue({ ok: true });
+
+			// disableAutoCheckForMissingData mocks
+			mockStoreGet.mockResolvedValueOnce("csv-data");
+			mockParseCSV.mockReturnValueOnce(makeCSVData(HEADER_ROW, [product]));
+			mockToCSV.mockReturnValue("updated-csv");
+			mockStoreSet.mockResolvedValue();
+
+			const state = { enabled: true, dailyCounter: 5 };
+			const result = await processNextProduct(state, siteUrl, store);
+
+			expect(result.shouldStopChain).toBe(false);
+			expect(result.newCounter).toBe(5); // Counter should NOT increment
+			expect(result.shouldContinue).toBe(true);
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				"Product skipped (missing data), counter not incremented"
+			);
 		});
 
 		test("uses pre-check state counter for incrementing", async () => {
