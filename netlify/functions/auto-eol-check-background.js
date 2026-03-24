@@ -916,6 +916,9 @@ async function processNextProduct(state, siteUrl, store) {
 	// These don't consume external resources and shouldn't count toward the daily limit
 	if (result === "skipped") {
 		logger.info("Product skipped (missing data), counter not incremented");
+		await updateAutoCheckState(siteUrl, {
+			lastActivityTime: new Date().toISOString()
+		});
 	} else {
 		const newCounter = preCheckState.dailyCounter + 1;
 		await updateAutoCheckState(siteUrl, {
@@ -966,21 +969,26 @@ async function triggerNextCheck(siteUrl) {
 	const nextCheckUrl = `${siteUrl}/.netlify/functions/auto-eol-check-background`;
 
 	try {
-		// Fire and forget - don't wait for response
-		fetch(nextCheckUrl, {
+		const response = await fetch(nextCheckUrl, {
 			method: "POST",
 			headers: getInternalAuthHeaders(),
 			body: JSON.stringify({
 				triggeredBy: "chain",
 				siteUrl: siteUrl
 			})
-		}).catch((err) => {
-			logger.error("Failed to trigger next check:", err.message);
 		});
 
-		logger.info("Next check triggered");
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => "Unknown error");
+			logger.error(`Next check trigger failed: ${response.status} - ${errorText}`);
+			await updateAutoCheckState(siteUrl, { isRunning: false });
+			return;
+		}
+
+		logger.info("Next check triggered successfully");
 	} catch (error) {
 		logger.error("Error triggering next check:", error.message);
+		await updateAutoCheckState(siteUrl, { isRunning: false });
 	}
 }
 

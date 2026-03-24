@@ -101,7 +101,8 @@ describe("scheduled-eol-check", () => {
 				enabled: true,
 				dailyCounter: 0,
 				isRunning: true,
-				lastResetDate: "2025-01-15"
+				lastResetDate: "2025-01-15",
+				lastActivityTime: new Date().toISOString()
 			});
 
 			const event = { rawUrl: "https://test.netlify.app/.netlify/functions/scheduled-eol-check" };

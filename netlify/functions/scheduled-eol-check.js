@@ -121,13 +121,29 @@ const handler = async (event, context) => {
 			};
 		}
 
-		// Check if already running
+		// Check if already running (with stuck-state recovery)
 		if (state.isRunning) {
-			logger.info("Auto-check already running, skipping");
-			return {
-				statusCode: 200,
-				body: JSON.stringify({ message: "Already running" })
-			};
+			const STUCK_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+			const lastActivity = state.lastActivityTime ? new Date(state.lastActivityTime) : new Date(0);
+			const msSinceActivity = Date.now() - lastActivity.getTime();
+
+			if (msSinceActivity <= STUCK_THRESHOLD_MS) {
+				logger.info(`Auto-check is running (last activity ${(msSinceActivity / 1000 / 60).toFixed(1)} min ago), skipping`);
+				return {
+					statusCode: 200,
+					body: JSON.stringify({ message: "Already running" })
+				};
+			}
+
+			// Stuck state detected - recover and proceed
+			logger.warn(`Stuck isRunning detected (no activity for ${(msSinceActivity / 1000 / 60).toFixed(1)} min), resetting`);
+			await fetch(`${siteUrl}/.netlify/functions/set-auto-check-state`, {
+				method: "POST",
+				headers: getInternalAuthHeaders(),
+				body: JSON.stringify({ isRunning: false })
+			});
+			state = await store.get("state", { type: "json" });
+			logger.info("Recovered from stuck state, proceeding with scheduled check");
 		}
 
 		// Check if we need to reset the daily counter (new day in GMT+9)
