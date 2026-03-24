@@ -236,9 +236,9 @@ The auto-check background function wakes up Render on the first daily check.
 
 **Current monthly costs** (all free tiers):
 
-- Netlify: Free (100GB bandwidth, 300 build minutes)
+- Netlify: Free (300 credits/month)
 - Render: Free (512MB RAM, 750 instance hours/month)
 - SerpAPI: Free (250 searches/month)
-- Groq: Free (rate-limited but no hard cap)
+- Groq: Free (8000 tokens/minutes, 200000 tokens/day)
 - BrowserQL: Free (1000 credits/month)
 - Supabase: Free (500MB database, 2GB bandwidth/month)
