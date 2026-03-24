@@ -2215,20 +2215,43 @@ describe("auto-eol-check-background extended", () => {
 					body: expect.stringContaining("chain")
 				})
 			);
-			expect(mockLogger.info).toHaveBeenCalledWith("Next check triggered");
+			expect(mockLogger.info).toHaveBeenCalledWith("Next check triggered successfully");
 		});
 
-		test("logs error when fetch call throws in outer try-catch", async () => {
-			// The inner .catch handles promise rejection, test the outer catch
-			global.fetch = jest.fn().mockImplementation(() => {
-				throw new Error("Sync error");
-			});
+		test("sets isRunning false when fetch returns non-ok response", async () => {
+			global.fetch = jest.fn()
+				.mockResolvedValueOnce({ ok: false, status: 500, text: () => Promise.resolve("Server Error") })
+				.mockResolvedValueOnce({ ok: true });
+
+			await triggerNextCheck("https://site.example.com");
+
+			expect(mockLogger.error).toHaveBeenCalledWith(
+				expect.stringContaining("Next check trigger failed: 500")
+			);
+			expect(global.fetch).toHaveBeenCalledWith(
+				"https://site.example.com/.netlify/functions/set-auto-check-state",
+				expect.objectContaining({
+					body: JSON.stringify({ isRunning: false })
+				})
+			);
+		});
+
+		test("sets isRunning false when fetch throws network error", async () => {
+			global.fetch = jest.fn()
+				.mockRejectedValueOnce(new Error("Network error"))
+				.mockResolvedValueOnce({ ok: true });
 
 			await triggerNextCheck("https://site.example.com");
 
 			expect(mockLogger.error).toHaveBeenCalledWith(
 				"Error triggering next check:",
-				"Sync error"
+				"Network error"
+			);
+			expect(global.fetch).toHaveBeenCalledWith(
+				"https://site.example.com/.netlify/functions/set-auto-check-state",
+				expect.objectContaining({
+					body: JSON.stringify({ isRunning: false })
+				})
 			);
 		});
 	});
