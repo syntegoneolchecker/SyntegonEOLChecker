@@ -780,11 +780,29 @@ const autoEolCheckBackgroundHandler = async function (event, _context) {
 			}
 		}
 
-		// Prepare for EOL check
+		// Find next product and handle skips without touching Groq
+		const findResult = await findAndValidateProduct(store, siteUrl);
+
+		if (findResult.shouldStopChain) {
+			return { statusCode: 200, body: findResult.reason };
+		}
+
+		if (findResult.skipped) {
+			// Product was missing data, already handled — skip to chain continuation
+			await determineChainContinuation(siteUrl, store);
+			return {
+				statusCode: 202,
+				body: JSON.stringify({ message: "Product skipped", nextTriggered: true })
+			};
+		}
+
+		// Only prepare Groq tokens for real EOL checks
 		await prepareForEOLCheck(siteUrl);
 
-		// Find and process next product
-		const checkResult = await processNextProduct(state, siteUrl, store);
+		// Execute the actual EOL check
+		const checkResult = await executeAndRecordCheck(
+			findResult.product, findResult.preCheckState, siteUrl
+		);
 
 		if (checkResult.shouldStopChain) {
 			return { statusCode: 200, body: checkResult.reason };
@@ -880,7 +898,7 @@ async function prepareForEOLCheck(siteUrl) {
 	await new Promise((resolve) => setTimeout(resolve, 2000));
 }
 
-async function processNextProduct(state, siteUrl, store) {
+async function findAndValidateProduct(store, siteUrl) {
 	// Find next product to check
 	const product = await findNextProduct();
 	if (!product) {
@@ -909,11 +927,36 @@ async function processNextProduct(state, siteUrl, store) {
 
 	logger.info("✓ Slider still enabled, proceeding with EOL check");
 
+	// Check for missing manufacturer/model BEFORE preparing Groq tokens
+	const model = product[3];
+	const manufacturer = product[4];
+	const sapNumber = product[0];
+
+	if (!model || !manufacturer) {
+		const missingModelOrManufacturer = model ? "manufacturer" : "model";
+		const missingField =
+			!model && !manufacturer ? "manufacturer/model" : missingModelOrManufacturer;
+		logger.info(`Missing ${missingField}, disabling Auto Check for this product`);
+		logger.info(`Executing EOL check for: ${manufacturer} ${model} (SAP: ${sapNumber})`);
+
+		await disableAutoCheckForMissingData(sapNumber, missingField);
+
+		logger.info("Product skipped (missing data), counter not incremented");
+		await updateAutoCheckState(siteUrl, {
+			lastActivityTime: new Date().toISOString()
+		});
+
+		return { skipped: true };
+	}
+
+	return { product, preCheckState };
+}
+
+async function executeAndRecordCheck(product, preCheckState, siteUrl) {
 	// Execute ONE EOL check
 	const result = await executeEOLCheck(product, siteUrl);
 
-	// Skip counter increment for entries that were skipped (e.g. missing manufacturer/model)
-	// These don't consume external resources and shouldn't count toward the daily limit
+	// Skip counter increment for entries that were skipped (defensive guard)
 	if (result === "skipped") {
 		logger.info("Product skipped (missing data), counter not incremented");
 		await updateAutoCheckState(siteUrl, {
@@ -1038,7 +1081,8 @@ exports._internal = {
 	autoEolCheckBackgroundHandler,
 	initializeFromEvent,
 	validateAndPrepareForCheck,
-	processNextProduct,
+	findAndValidateProduct,
+	executeAndRecordCheck,
 	determineChainContinuation,
 	handleErrorState,
 	updateAutoCheckState,
