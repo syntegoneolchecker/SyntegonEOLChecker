@@ -101,7 +101,8 @@ const {
 	autoEolCheckBackgroundHandler,
 	initializeFromEvent,
 	validateAndPrepareForCheck,
-	processNextProduct,
+	findAndValidateProduct,
+	executeAndRecordCheck,
 	determineChainContinuation,
 	handleErrorState,
 	updateAutoCheckState,
@@ -1698,9 +1699,9 @@ describe("auto-eol-check-background extended", () => {
 	});
 
 	// =========================================================================
-	// 10. processNextProduct
+	// 10. findAndValidateProduct + executeAndRecordCheck
 	// =========================================================================
-	describe("processNextProduct", () => {
+	describe("findAndValidateProduct", () => {
 		const siteUrl = "https://test-site.example.com";
 
 		test("stops chain when no product found", async () => {
@@ -1708,24 +1709,22 @@ describe("auto-eol-check-background extended", () => {
 			// findNextProduct returns null
 			mockStoreGet.mockResolvedValue(null);
 
-			const state = { enabled: true, dailyCounter: 5 };
 			const store = { get: jest.fn() };
 
-			const result = await processNextProduct(state, siteUrl, store);
+			const result = await findAndValidateProduct(store, siteUrl);
 
 			expect(result.shouldStopChain).toBe(true);
 			expect(result.reason).toBe("No products to check");
 		});
 
 		test("stops chain when auto-check disabled before EOL check", async () => {
-			// findNextProduct returns a product
 			const product = makeRow({
 				sap: "SAP001",
 				model: "Model-X",
 				manufacturer: "MakerA",
 				infoDate: ""
 			});
-			mockStoreGet.mockResolvedValueOnce("csv-data"); // findNextProduct: csvStore.get
+			mockStoreGet.mockResolvedValueOnce("csv-data");
 			mockParseCSV.mockReturnValue(makeCSVData(HEADER_ROW, [product]));
 
 			const store = {
@@ -1736,100 +1735,13 @@ describe("auto-eol-check-background extended", () => {
 
 			global.fetch = jest.fn().mockResolvedValue({ ok: true });
 
-			const state = { enabled: true, dailyCounter: 5 };
-			const result = await processNextProduct(state, siteUrl, store);
+			const result = await findAndValidateProduct(store, siteUrl);
 
 			expect(result.shouldStopChain).toBe(true);
 			expect(result.reason).toBe("Disabled before check");
 		});
 
-		test("executes check and increments counter on success", async () => {
-			const product = makeRow({
-				sap: "SAP001",
-				model: "Model-X",
-				manufacturer: "MakerA",
-				infoDate: ""
-			});
-			const finalResult = {
-				status: "ACTIVE",
-				explanation: "Active product",
-				successor: { model: null, explanation: "" }
-			};
-
-			// findNextProduct
-			mockStoreGet.mockResolvedValueOnce("csv-data"); // findNextProduct: csvStore.get
-			mockParseCSV.mockReturnValueOnce(makeCSVData(HEADER_ROW, [product]));
-
-			const store = {
-				get: jest
-					.fn()
-					.mockResolvedValue({ enabled: true, dailyCounter: 5, isRunning: true })
-			};
-
-			// executeEOLCheck: init-job
-			global.fetch = jest
-				.fn()
-				.mockResolvedValueOnce({
-					// init-job
-					ok: true,
-					json: () => Promise.resolve({ jobId: "job-123" })
-				})
-				.mockResolvedValue({ ok: true }); // subsequent calls
-
-			// JobPoller: job store returns complete
-			mockStoreGet
-				.mockResolvedValueOnce({ status: "complete", finalResult }) // poll
-				.mockResolvedValueOnce("csv-data"); // updateProduct: csvStore.get
-			mockParseCSV.mockReturnValueOnce(makeCSVData(HEADER_ROW, [product]));
-			mockToCSV.mockReturnValue("updated-csv");
-			mockStoreSet.mockResolvedValue();
-
-			const state = { enabled: true, dailyCounter: 5 };
-			const promise = processNextProduct(state, siteUrl, store);
-			await jest.advanceTimersByTimeAsync(5000);
-			const result = await promise;
-
-			expect(result.shouldStopChain).toBe(false);
-			expect(result.newCounter).toBe(6);
-			expect(result.shouldContinue).toBe(true);
-		});
-
-		test("increments counter even when EOL check fails", async () => {
-			const product = makeRow({
-				sap: "SAP001",
-				model: "Model-X",
-				manufacturer: "MakerA",
-				infoDate: ""
-			});
-
-			// findNextProduct
-			mockStoreGet.mockResolvedValueOnce("csv-data");
-			mockParseCSV.mockReturnValueOnce(makeCSVData(HEADER_ROW, [product]));
-
-			const store = {
-				get: jest
-					.fn()
-					.mockResolvedValue({ enabled: true, dailyCounter: 3, isRunning: true })
-			};
-
-			// executeEOLCheck: init-job fails
-			global.fetch = jest
-				.fn()
-				.mockResolvedValueOnce({
-					ok: false,
-					status: 500,
-					text: () => Promise.resolve("Error")
-				})
-				.mockResolvedValue({ ok: true });
-
-			const state = { enabled: true, dailyCounter: 3 };
-			const result = await processNextProduct(state, siteUrl, store);
-
-			expect(result.shouldStopChain).toBe(false);
-			expect(result.newCounter).toBe(4);
-		});
-
-		test("does not increment counter when product is skipped (missing data)", async () => {
+		test("returns skipped when product has missing data", async () => {
 			const product = makeRow({
 				sap: "SAP001",
 				model: "",
@@ -1855,15 +1767,106 @@ describe("auto-eol-check-background extended", () => {
 			mockToCSV.mockReturnValue("updated-csv");
 			mockStoreSet.mockResolvedValue();
 
-			const state = { enabled: true, dailyCounter: 5 };
-			const result = await processNextProduct(state, siteUrl, store);
+			const result = await findAndValidateProduct(store, siteUrl);
 
-			expect(result.shouldStopChain).toBe(false);
-			expect(result.newCounter).toBe(5); // Counter should NOT increment
-			expect(result.shouldContinue).toBe(true);
+			expect(result.skipped).toBe(true);
 			expect(mockLogger.info).toHaveBeenCalledWith(
 				"Product skipped (missing data), counter not incremented"
 			);
+		});
+
+		test("returns product and preCheckState when product is valid", async () => {
+			const product = makeRow({
+				sap: "SAP001",
+				model: "Model-X",
+				manufacturer: "MakerA",
+				infoDate: ""
+			});
+			mockStoreGet.mockResolvedValueOnce("csv-data");
+			mockParseCSV.mockReturnValueOnce(makeCSVData(HEADER_ROW, [product]));
+
+			const preCheckState = { enabled: true, dailyCounter: 5, isRunning: true };
+			const store = {
+				get: jest.fn().mockResolvedValue(preCheckState)
+			};
+
+			global.fetch = jest.fn().mockResolvedValue({ ok: true });
+
+			const result = await findAndValidateProduct(store, siteUrl);
+
+			expect(result.product).toBeDefined();
+			expect(result.preCheckState).toEqual(preCheckState);
+			expect(result.skipped).toBeUndefined();
+			expect(result.shouldStopChain).toBeUndefined();
+		});
+	});
+
+	describe("executeAndRecordCheck", () => {
+		const siteUrl = "https://test-site.example.com";
+
+		test("increments counter on success", async () => {
+			const product = makeRow({
+				sap: "SAP001",
+				model: "Model-X",
+				manufacturer: "MakerA",
+				infoDate: ""
+			});
+			const finalResult = {
+				status: "ACTIVE",
+				explanation: "Active product",
+				successor: { model: null, explanation: "" }
+			};
+
+			// executeEOLCheck: init-job
+			global.fetch = jest
+				.fn()
+				.mockResolvedValueOnce({
+					ok: true,
+					json: () => Promise.resolve({ jobId: "job-123" })
+				})
+				.mockResolvedValue({ ok: true });
+
+			// JobPoller: job store returns complete
+			mockStoreGet
+				.mockResolvedValueOnce({ status: "complete", finalResult })
+				.mockResolvedValueOnce("csv-data");
+			mockParseCSV.mockReturnValueOnce(makeCSVData(HEADER_ROW, [product]));
+			mockToCSV.mockReturnValue("updated-csv");
+			mockStoreSet.mockResolvedValue();
+
+			const preCheckState = { enabled: true, dailyCounter: 5, isRunning: true };
+			const promise = executeAndRecordCheck(product, preCheckState, siteUrl);
+			await jest.advanceTimersByTimeAsync(5000);
+			const result = await promise;
+
+			expect(result.shouldStopChain).toBe(false);
+			expect(result.newCounter).toBe(6);
+			expect(result.shouldContinue).toBe(true);
+		});
+
+		test("increments counter even when EOL check fails", async () => {
+			const product = makeRow({
+				sap: "SAP001",
+				model: "Model-X",
+				manufacturer: "MakerA",
+				infoDate: ""
+			});
+
+			// executeEOLCheck: init-job fails
+			global.fetch = jest
+				.fn()
+				.mockResolvedValueOnce({
+					ok: false,
+					status: 500,
+					text: () => Promise.resolve("Error")
+				})
+				.mockResolvedValue({ ok: true });
+
+			const preCheckState = { enabled: true, dailyCounter: 3, isRunning: true };
+			const result = await executeAndRecordCheck(product, preCheckState, siteUrl);
+
+			expect(result.shouldStopChain).toBe(false);
+			expect(result.newCounter).toBe(4);
 		});
 
 		test("uses pre-check state counter for incrementing", async () => {
@@ -1874,15 +1877,6 @@ describe("auto-eol-check-background extended", () => {
 				infoDate: ""
 			});
 
-			mockStoreGet.mockResolvedValueOnce("csv-data");
-			mockParseCSV.mockReturnValueOnce(makeCSVData(HEADER_ROW, [product]));
-
-			const store = {
-				get: jest
-					.fn()
-					.mockResolvedValue({ enabled: true, dailyCounter: 10, isRunning: true })
-			};
-
 			global.fetch = jest
 				.fn()
 				.mockResolvedValueOnce({
@@ -1892,8 +1886,8 @@ describe("auto-eol-check-background extended", () => {
 				})
 				.mockResolvedValue({ ok: true });
 
-			const state = { enabled: true, dailyCounter: 10 };
-			const result = await processNextProduct(state, siteUrl, store);
+			const preCheckState = { enabled: true, dailyCounter: 10, isRunning: true };
+			const result = await executeAndRecordCheck(product, preCheckState, siteUrl);
 
 			expect(result.newCounter).toBe(11);
 		});
