@@ -73,10 +73,10 @@ describe("Scraping Service - Puppeteer Configuration", () => {
 			expect(args).toContain("--no-zygote");
 		});
 
-		test("should include --single-process for memory optimization", () => {
+		test("should NOT include --single-process (causes silent crashes on complex pages)", () => {
 			const args = puppeteerConfig.getStandardBrowserArgs();
 
-			expect(args).toContain("--single-process");
+			expect(args).not.toContain("--single-process");
 		});
 
 		test("should include --disable-blink-features=AutomationControlled", () => {
