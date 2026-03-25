@@ -26,7 +26,10 @@ function getStandardBrowserArgs() {
 		"--disable-extensions",
 		"--disable-blink-features=AutomationControlled",
 		// MEMORY OPTIMIZATIONS (prevent OOM on 512MB limit)
-		"--single-process", // Run in single process to reduce overhead
+		// NOTE: --single-process removed - it causes silent crashes/hangs on complex pages
+		// (especially Japanese sites like axel.as-1.co.jp) within Render's 512MB memory limit.
+		// The renderer and browser sharing one process means a renderer crash kills everything
+		// silently, preventing error callbacks from being sent.
 		"--disable-features=site-per-process", // Reduce process isolation overhead
 		"--js-flags=--max-old-space-size=256", // Limit V8 heap to 256MB
 		"--disable-web-security", // Disable CORS (reduces memory for cross-origin checks)

@@ -507,10 +507,33 @@ async function handleScrapeRequest(req, res) {
 
 		// Start scraping in background (don't await - true fire-and-forget)
 		// Callback will be sent when scraping completes
-		handlePuppeteerScraping(url, callbackUrl, { jobId, urlIndex, snippet, url }, res).catch(
-			(error) => {
-				// Error already logged and callback already sent in handlePuppeteerScraping
+		// Wrap with overall timeout safety net to prevent silent hangs
+		const OVERALL_TIMEOUT_MS = 120000; // 2 minutes max for entire scraping operation
+		const scrapingPromise = handlePuppeteerScraping(url, callbackUrl, { jobId, urlIndex, snippet, url }, res);
+		const timeoutPromise = new Promise((_, reject) => {
+			setTimeout(() => reject(new Error(`Overall scraping timeout after ${OVERALL_TIMEOUT_MS / 1000}s`)), OVERALL_TIMEOUT_MS);
+		});
+
+		Promise.race([scrapingPromise, timeoutPromise]).catch(
+			async (error) => {
 				logger.error("Background Puppeteer scraping failed:", error.message);
+				// Only send error callback for timeout errors - handlePuppeteerScraping
+				// already sends its own error callback for normal failures
+				if (error.message.includes("Overall scraping timeout")) {
+					try {
+						await sendCallback(callbackUrl, {
+							jobId,
+							urlIndex,
+							content: `[Scraping failed: ${error.message}]`,
+							title: null,
+							snippet,
+							url
+						});
+						logger.info("Sent timeout error callback for stuck scraping task");
+					} catch (callbackError) {
+						logger.error("Failed to send error callback after timeout:", callbackError.message);
+					}
+				}
 			}
 		);
 
